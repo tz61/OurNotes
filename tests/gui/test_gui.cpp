@@ -2146,6 +2146,99 @@ TEST_CASE("library: a PDF dropped on a collection or an item goes there")
     CHECK(attached);
 }
 
+TEST_CASE("library: a PDF item dragged onto an item becomes its attachment, the target lit up")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "tms320.pdf";
+    writeSamplePdf(file);
+    auto datasheets = jstr(env.library.createCollection(env.lib, "Datasheet"), "key");
+    auto book = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "TMS"}});
+    auto pdf = env.library.importAttachment(env.lib, file, "");
+    env.library.addToCollection(env.lib, datasheets, {jstr(book, "key"), jstr(pdf, "key")});
+    LibraryView view;
+    view.resize(1200, 700);
+    view.show();
+    auto* tree = view.findChild<CollectionTree*>();
+    tree->selectScope({env.lib, ScopeKind::Collection, datasheets});
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : view.findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* model = static_cast<ItemsModel*>(items->model());
+    auto rowOf = [&](const QString& title) {
+        for (int r = 0; r < model->rowCount(); ++r)
+            if (model->index(r, 0).data().toString() == title)
+                return model->index(r, 0);
+        return QModelIndex();
+    };
+    auto target = rowOf("TMS"), dragged = rowOf(jqs(pdf, "title"));
+    REQUIRE(target.isValid());
+    REQUIRE(dragged.isValid());
+    std::unique_ptr<QMimeData> mime(model->mimeData({dragged}));
+    REQUIRE(mime->hasFormat(kItemsMime));
+    CHECK(mime->hasUrls());  // its file, for dropping outside the app
+
+    // the window does not import the list's own items as files
+    MainWindow window;
+    QDragEnterEvent intoWindow(QPoint(10, 10), Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &intoWindow);
+    CHECK(!intoWindow.isAccepted());
+
+    QPoint at = items->visualRect(target).center();
+    QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(items->viewport(), &enter);
+    QDragMoveEvent move(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(items->viewport(), &move);
+    CHECK(move.isAccepted());
+    // lit up like a selected row, at its far end where there is no text
+    auto shot = items->viewport()->grab().toImage();
+    QRect r = items->visualRect(target);
+    QColor lit = shot.pixelColor(QPoint(r.right() - 4, r.center().y()) * shot.devicePixelRatio());
+    QColor highlight = items->palette().color(QPalette::Highlight);
+    CHECK(std::abs(lit.red() - highlight.red()) + std::abs(lit.green() - highlight.green()) +
+              std::abs(lit.blue() - highlight.blue()) < 60);
+    QDropEvent drop(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(items->viewport(), &drop);
+    QApplication::processEvents();
+    CHECK(jstr(*env.library.item(env.lib, jstr(pdf, "key")), "parentItem") == jstr(book, "key"));
+    int attachments = 0;
+    for (auto& d : env.library.allItems(env.lib))
+        attachments += jstr(d, "itemType") == "attachment";
+    CHECK(attachments == 1);  // moved, not imported again
+
+    // a collection a drag hovers on is lit up too
+    QTreeWidgetItem* coll = nullptr;
+    for (QTreeWidgetItemIterator it(tree); *it; ++it)
+        if ((*it)->text(0) == "Datasheet")
+            coll = *it;
+    REQUIRE(coll);
+    tree->selectScope({env.lib, ScopeKind::Library, {}});
+    QApplication::processEvents();
+    std::unique_ptr<QMimeData> bookMime(model->mimeData({rowOf("TMS")}));
+    QPoint onColl = tree->visualItemRect(coll).center();
+    QDragEnterEvent enterTree(onColl, Qt::CopyAction, bookMime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(tree->viewport(), &enterTree);
+    QDragMoveEvent moveTree(onColl, Qt::CopyAction, bookMime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(tree->viewport(), &moveTree);
+    CHECK(moveTree.isAccepted());
+    shot = tree->viewport()->grab().toImage();
+    QRect cr = tree->visualItemRect(coll);
+    lit = shot.pixelColor(QPoint(cr.right() - 4, cr.center().y()) * shot.devicePixelRatio());
+    highlight = tree->palette().color(QPalette::Highlight);
+    CHECK(std::abs(lit.red() - highlight.red()) + std::abs(lit.green() - highlight.green()) +
+              std::abs(lit.blue() - highlight.blue()) < 60);
+    QDragLeaveEvent leave;
+    QApplication::sendEvent(tree->viewport(), &leave);
+    shot = tree->viewport()->grab().toImage();
+    lit = shot.pixelColor(QPoint(cr.right() - 4, cr.center().y()) * shot.devicePixelRatio());
+    CHECK(std::abs(lit.red() - highlight.red()) + std::abs(lit.green() - highlight.green()) +
+              std::abs(lit.blue() - highlight.blue()) >= 60);
+}
+
 TEST_CASE("main window: only an empty library is deleted, after asking")
 {
     app();

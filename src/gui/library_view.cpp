@@ -78,20 +78,50 @@ protected:
         if (!background_.isNull())
             viewport()->update();
     }
-    // alternate rows let the picture through too
     void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
-        if (background_.isNull()) {
-            QTreeView::drawRow(painter, option, index);
-            return;
-        }
         QStyleOptionViewItem o(option);
-        QColor alternate = o.palette.color(QPalette::AlternateBase);
-        alternate.setAlphaF(0.5);
-        o.palette.setColor(QPalette::AlternateBase, alternate);
+        // the item a drag would go into stands out, as if selected
+        if (dropTarget_.isValid() && index.siblingAtColumn(0) == dropTarget_)
+            o.state |= QStyle::State_Selected;
+        if (!background_.isNull()) {  // alternate rows let the picture through too
+            QColor alternate = o.palette.color(QPalette::AlternateBase);
+            alternate.setAlphaF(0.5);
+            o.palette.setColor(QPalette::AlternateBase, alternate);
+        }
         QTreeView::drawRow(painter, o, index);
     }
 
+    void dragMoveEvent(QDragMoveEvent* e) override
+    {
+        QTreeView::dragMoveEvent(e);
+        QModelIndex target;
+        if (e->isAccepted() && dropIndicatorPosition() == OnItem)
+            target = indexAt(e->position().toPoint()).siblingAtColumn(0);
+        setDropTarget(target);
+    }
+    void dragLeaveEvent(QDragLeaveEvent* e) override
+    {
+        QTreeView::dragLeaveEvent(e);
+        setDropTarget({});
+    }
+    void dropEvent(QDropEvent* e) override
+    {
+        setDropTarget({});
+        QTreeView::dropEvent(e);
+    }
+    void setDropTarget(const QModelIndex& index)
+    {
+        if (index == dropTarget_)
+            return;
+        dropTarget_ = index;
+        viewport()->update();
+    }
+
+public:
+    QModelIndex dropTarget() const { return dropTarget_; }
+
+protected:
     void keyPressEvent(QKeyEvent* e) override
     {
         if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && onDelete) {
@@ -117,6 +147,7 @@ private:
     QImage background_;
     QPixmap scaled_;  // background_ at the size it was last drawn
     QSize scaledFor_;
+    QPersistentModelIndex dropTarget_;  // the item a drag hovers to drop onto
 };
 
 } // namespace
@@ -304,6 +335,17 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
         menu.exec(header->mapToGlobal(pos));
     });
     connect(model_, &ItemsModel::filesDropped, this, &LibraryView::importFiles);
+    connect(model_, &ItemsModel::itemsMoved, this, [this](const QStringList& keys, const QString& parentKey) {
+        auto s = scope();
+        std::vector<std::string> moved;
+        for (auto& k : keys)
+            moved.push_back(ss(k));
+        // dragged off its item, a child stays in the collection shown
+        AppContext::get().library().moveToParent(s.libraryId, moved, ss(parentKey),
+                                                 s.kind == ScopeKind::Collection ? s.collectionKey : std::string());
+        if (!parentKey.isEmpty())
+            items_->expand(model_->indexOfKey(parentKey));
+    });
     connect(pane_, &ItemPane::openAttachment, this,
             [this](const QString& key) { emit openAttachmentRequested(libraryId(), key); });
     connect(pane_, &ItemPane::selectItem, this, [this](const QString& key) { selectItem(key); });

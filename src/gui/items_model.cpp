@@ -483,14 +483,52 @@ QMimeData* ItemsModel::mimeData(const QModelIndexList& indexes) const
 
 Qt::DropActions ItemsModel::supportedDropActions() const { return Qt::CopyAction | Qt::MoveAction; }
 
-bool ItemsModel::canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex&) const
+QStringList ItemsModel::movableKeys(const QMimeData* data, const QModelIndex& parent, QString* parentKey) const
 {
-    return data->hasUrls() && !data->hasFormat(kItemsMime);
+    QStringList keys;
+    auto obj = QJsonDocument::fromJson(data->data(kItemsMime)).object();
+    if (obj["library"].toInteger() != scope_.libraryId || !AppContext::get().editable(scope_.libraryId))
+        return keys;
+    QString target;
+    if (parent.isValid()) {
+        auto* n = nodeAt(parent.siblingAtColumn(0));
+        if (!n || n->parent || !schema::isRegularType(n->row.itemType))
+            return keys;  // onto a note, an attachment or a child: nothing
+        target = qs(n->row.key);
+    }
+    for (auto k : obj["keys"].toArray()) {
+        auto it = byKey_.find(ss(k.toString()));
+        if (it == byKey_.end())
+            continue;
+        auto& row = it->second->row;
+        if (row.itemType != "note" && row.itemType != "attachment")
+            continue;
+        if (target.isEmpty() ? !row.parentKey.empty() : qs(row.parentKey) != target && qs(row.key) != target)
+            keys << qs(row.key);
+    }
+    *parentKey = target;
+    return keys;
+}
+
+bool ItemsModel::canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex& parent) const
+{
+    QString target;
+    if (data->hasFormat(kItemsMime))
+        return !movableKeys(data, parent, &target).isEmpty();
+    return data->hasUrls();
 }
 
 bool ItemsModel::dropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex& parent)
 {
-    if (!data->hasUrls() || data->hasFormat(kItemsMime))
+    if (data->hasFormat(kItemsMime)) {
+        QString target;
+        auto keys = movableKeys(data, parent, &target);
+        if (keys.isEmpty())
+            return false;
+        emit itemsMoved(keys, target);
+        return true;
+    }
+    if (!data->hasUrls())
         return false;
     QStringList files;
     for (auto& url : data->urls())

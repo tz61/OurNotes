@@ -345,14 +345,39 @@ void CollectionTree::dragMoveEvent(QDragMoveEvent* e)
     QTreeWidgetItem* target = nullptr;
     if (acceptsDrop(e, &target)) {
         e->acceptProposedAction();
-        setDropIndicatorShown(true);
+        setDropTarget(target);
     } else {
         e->ignore();
+        setDropTarget(nullptr);
     }
+}
+
+void CollectionTree::dragLeaveEvent(QDragLeaveEvent* e)
+{
+    QTreeWidget::dragLeaveEvent(e);
+    setDropTarget(nullptr);
+}
+
+void CollectionTree::setDropTarget(QTreeWidgetItem* item)
+{
+    QModelIndex index = item ? indexFromItem(item) : QModelIndex();
+    if (index == dropTarget_)
+        return;
+    dropTarget_ = index;
+    viewport()->update();
+}
+
+void CollectionTree::drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    QStyleOptionViewItem o(option);
+    if (dropTarget_.isValid() && index.siblingAtColumn(0) == dropTarget_)
+        o.state |= QStyle::State_Selected;  // where the drag goes
+    QTreeWidget::drawRow(painter, o, index);
 }
 
 void CollectionTree::dropEvent(QDropEvent* e)
 {
+    setDropTarget(nullptr);
     QTreeWidgetItem* target = nullptr;
     if (!acceptsDrop(e, &target)) {
         e->ignore();

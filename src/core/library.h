@@ -171,6 +171,10 @@ public:
     // Save a locally edited item (sets dateModified, marks it for sync).
     void saveItem(int64_t lib, Json data);
     bool updateItem(int64_t lib, const std::string& key, const std::function<void(Json&)>& edit);
+    // Notes and attachments become parentKey's (a regular item), or standalone when it
+    // is empty (then in collectionKey, if given). Returns how many moved.
+    int moveToParent(int64_t lib, const std::vector<std::string>& keys, const std::string& parentKey,
+                     const std::string& collectionKey = {});
     void trashItems(int64_t lib, const std::vector<std::string>& keys, bool trashed = true);
     void eraseItems(int64_t lib, const std::vector<std::string>& keys);  // permanent, with children and files
     void emptyTrash(int64_t lib);

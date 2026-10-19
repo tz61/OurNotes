@@ -622,6 +622,37 @@ bool Library::updateItem(int64_t lib, const std::string& key, const std::functio
     return true;
 }
 
+int Library::moveToParent(int64_t lib, const std::vector<std::string>& keys, const std::string& parentKey,
+                          const std::string& collectionKey)
+{
+    if (!parentKey.empty()) {
+        auto parent = item(lib, parentKey);
+        if (!parent || !jstr(*parent, "parentItem").empty() || !schema::isRegularType(jstr(*parent, "itemType")))
+            return 0;
+    }
+    BatchGuard batch(*this);
+    sql::Transaction tx(db_);
+    int moved = 0;
+    for (auto& key : keys) {
+        if (key == parentKey)
+            continue;
+        moved += updateItem(lib, key, [&](Json& d) {
+            auto type = jstr(d, "itemType");
+            if (type != "note" && type != "attachment")
+                return;  // regular items have no parent, annotations stay with their file
+            if (parentKey.empty()) {
+                d.erase("parentItem");
+                if (!collectionKey.empty())
+                    d["collections"] = Json::array({collectionKey});
+            } else {
+                d["parentItem"] = parentKey;  // a child is in its parent's collections, not its own
+            }
+        });
+    }
+    tx.commit();
+    return moved;
+}
+
 void Library::trashItems(int64_t lib, const std::vector<std::string>& keys, bool trashed)
 {
     BatchGuard batch(*this);

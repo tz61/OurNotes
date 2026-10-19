@@ -69,6 +69,9 @@ public:
 signals:
     // Files dropped onto the list (parentKey empty) or onto an item.
     void filesDropped(const QStringList& paths, const QString& parentKey);
+    // The list's own notes and attachments dropped onto an item (parentKey), or off
+    // their item onto the list (empty).
+    void itemsMoved(const QStringList& keys, const QString& parentKey);
 
 private:
     struct Node {
@@ -86,6 +89,8 @@ private:
     QVariant sortValue(const Node& n, int column) const;
     void sortNodes(std::vector<std::unique_ptr<Node>>& nodes);
     const Node* nodeAt(const QModelIndex& index) const;
+    // What a drop of the list's own items onto `parent` would move, and where.
+    QStringList movableKeys(const QMimeData* data, const QModelIndex& parent, QString* parentKey) const;
 
     Scope scope_;
     QString search_;

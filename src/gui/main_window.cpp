@@ -523,7 +523,9 @@ void MainWindow::openFiles(const QStringList& files)
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* e)
 {
-    if (e->mimeData()->hasUrls())
+    // files from outside; the list's own items carry their files too, but dropped where
+    // they do not fit they must not be imported again
+    if (e->mimeData()->hasUrls() && !e->mimeData()->hasFormat(kItemsMime))
         e->acceptProposedAction();
 }
 

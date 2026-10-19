@@ -34,6 +34,8 @@ protected:
     void dragMoveEvent(QDragMoveEvent* e) override;
     void dropEvent(QDropEvent* e) override;
     void startDrag(Qt::DropActions actions) override;
+    void dragLeaveEvent(QDragLeaveEvent* e) override;
+    void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
 private:
     enum Roles { KindRole = Qt::UserRole + 1, LibraryRole, CollectionRole };
@@ -42,10 +44,13 @@ private:
     QTreeWidgetItem* findItem(const Scope& s) const;
     bool acceptsDrop(QDropEvent* e, QTreeWidgetItem** target) const;
     static QStringList droppedFiles(const QMimeData* mime);  // files dragged in from outside
+    void setDropTarget(QTreeWidgetItem* item);  // shown as selected while a drag hovers on it
 
     void newCollection(int64_t lib, const std::string& parentKey);
     void renameItem(QTreeWidgetItem* item);
     void deleteCollection(QTreeWidgetItem* item, bool trashItems);
+
+    QPersistentModelIndex dropTarget_;
 };
 
 } // namespace on::gui

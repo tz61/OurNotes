@@ -69,6 +69,33 @@ TEST_CASE("libraries: a database from before synced names is upgraded")
     CHECK(lib.library(info.id)->syncName == "Main");
 }
 
+TEST_CASE("items: notes and attachments move to another item, or out on their own")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto id = lib.defaultLibrary();
+    auto coll = jstr(lib.createCollection(id, "Datasheet"), "key");
+    auto book = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "TMS"}}), "key");
+    auto other = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "Other"}}), "key");
+    auto pdf = jstr(lib.createItem(id, Json{{"itemType", "attachment"}, {"linkMode", "linked_file"}, {"title", "tms.pdf"}}),
+                    "key");
+    lib.addToCollection(id, coll, {pdf});
+    auto note = jstr(lib.createNote(id, "<p>n</p>", other), "key");
+
+    CHECK(lib.moveToParent(id, {pdf, note, other}, book) == 2);  // a regular item stays where it is
+    CHECK(jstr(*lib.item(id, pdf), "parentItem") == book);
+    CHECK(jstr(*lib.item(id, note), "parentItem") == book);
+    CHECK(!lib.item(id, pdf)->contains("collections"));  // in its parent's collections now
+    CHECK(!lib.collectionItemKeys(id, coll).count(pdf));
+    CHECK(jstr(*lib.item(id, other), "parentItem").empty());
+
+    CHECK(lib.moveToParent(id, {pdf}, note) == 0);  // only a regular item takes children
+    CHECK(lib.moveToParent(id, {pdf}, "", coll) == 1);
+    CHECK(jstr(*lib.item(id, pdf), "parentItem").empty());
+    CHECK(lib.collectionItemKeys(id, coll).count(pdf));
+    CHECK(lib.dirtyObjects(id).size() >= 2);  // synced like any edit
+}
+
 TEST_CASE("collections and tags")
 {
     TempDir tmp;
