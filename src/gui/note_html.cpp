@@ -333,4 +333,57 @@ QString documentToNoteHtml(const QTextDocument* doc)
     return "<div data-schema-version=\"9\">" + body + "</div>";
 }
 
+QString commentHtmlForEditor(const QString& comment)
+{
+    // as typed in notes: $…$ with no space inside its ends, so prices stay text
+    static const QRegularExpression math(
+        R"re(\$\$([^$]*\S[^$]*)\$\$|(?<![\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?!\d))re");
+    static const QRegularExpression displayLine(R"re(^\s*\$\$[^$]*\S[^$]*\$\$\s*$)re");
+    QString html;
+    for (auto& line : comment.split('\n')) {
+        QString body;
+        qsizetype last = 0;
+        auto it = math.globalMatch(line);
+        while (it.hasNext()) {
+            auto m = it.next();
+            body += line.mid(last, m.capturedStart() - last).toHtmlEscaped();
+            bool display = m.capturedLength(1) > 0;
+            auto latex = (display ? m.captured(1) : m.captured(2)).trimmed();
+            body += "<img src=\"" + mathResourceName(latex, display) + "\" style=\"vertical-align: middle\">";
+            last = m.capturedEnd();
+        }
+        body += line.mid(last).toHtmlEscaped();
+        html += displayLine.match(line).hasMatch() ? "<p align=\"center\">" + body + "</p>" : "<p>" + body + "</p>";
+    }
+    return html;
+}
+
+QString documentToComment(const QTextDocument* doc)
+{
+    QStringList lines;
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        QString line;
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            QString latex;
+            bool display = false;
+            if (f.isImageFormat()) {
+                if (parseMathResourceName(f.toImageFormat().name(), &latex, &display))
+                    line += display ? "$$" + latex + "$$" : "$" + latex + "$";
+                continue;  // other pictures have no place in a comment
+            }
+            QString text = frag.text();  // a formula being edited is its $…$ source already
+            text.replace(QChar::LineSeparator, '\n');
+            text.replace(QChar::Nbsp, ' ');
+            text.remove(QChar::ObjectReplacementCharacter);
+            line += text;
+        }
+        lines << line;
+    }
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    return lines.join('\n');
+}
+
 } // namespace on::gui

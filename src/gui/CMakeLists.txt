@@ -29,6 +29,7 @@ set(OURNOTES_GUI_SOURCES
     ui_scale.cpp
     wrap_toolbar.cpp
     reader/annotation_sidebar.cpp
+    reader/comment_bubble.cpp
     reader/pdf_view.cpp
     reader/reader_tab.cpp
     reader/render_worker.cpp

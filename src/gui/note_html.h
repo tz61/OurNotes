@@ -21,4 +21,10 @@ QString noteHtmlForEditor(const QString& html, int64_t libraryId, QTextDocument*
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.
 QString documentToNoteHtml(const QTextDocument* doc);
 
+// Annotation comments are plain text in which $…$ and $$…$$ are formulas (as Zotero
+// keeps them). As HTML for a note editor, with the formulas rendered:
+QString commentHtmlForEditor(const QString& comment);
+// and back from the editor's document.
+QString documentToComment(const QTextDocument* doc);
+
 } // namespace on::gui

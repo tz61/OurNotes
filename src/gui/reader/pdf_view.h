@@ -18,6 +18,7 @@ class QPlainTextEdit;
 
 namespace on::gui {
 
+class CommentBubble;
 class RenderWorker;
 class SelectionPopup;
 
@@ -62,6 +63,11 @@ public:
     void selectAnnotation(const QString& key, bool scrollTo);
     QString selectedAnnotation() const { return selectedAnn_; }
     void editTextAnnotation(const QString& key);
+    // An annotation's comment over the page: shown, or edited in place (edit).
+    void showComment(const QString& key, bool edit);
+    // Saves a comment being edited and closes it (before the view goes away).
+    void finishComment();
+    CommentBubble* commentBubble() const { return bubble_; }
     QImage annotationImage(const Json& annotation, double scale);
 
     bool hasTextSelection() const { return selPage_ >= 0 && selFrom_ >= 0; }
@@ -186,6 +192,8 @@ private:
     void deleteSelectedAnnotation();
     void setAnnotationColor(const QString& key, const QString& color);
     void closeTextEditor(bool commit);
+    QString commentKeyAt(QPointF viewPos) const;  // an annotation with a comment to show there
+    void placeComment();
 
     // painting
     void paintAnnotations(QPainter& p, int page);
@@ -240,6 +248,13 @@ private:
     SelectionPopup* popup_ = nullptr;
     QPlainTextEdit* textEditor_ = nullptr;
     QString editingKey_;
+    CommentBubble* bubble_ = nullptr;
+    QTimer hoverTimer_;    // the mouse rests on an annotation: show its comment
+    QTimer unhoverTimer_;  // it left: hide the comment
+    QString hoverKey_;
+    QString pressedAnn_;  // a click on it edits its comment
+    QPointF pressPos_;
+    QPointF mousePos_{-1, -1};  // in the viewport, while the mouse is over it
 };
 
 } // namespace on::gui

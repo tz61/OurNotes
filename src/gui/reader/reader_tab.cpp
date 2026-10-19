@@ -190,6 +190,7 @@ ReaderTab::~ReaderTab()
         savePosition();
     if (restored_)
         saveViewState();
+    view_->finishComment();
     noteEditor_->flush();
 }
 

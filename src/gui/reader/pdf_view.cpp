@@ -25,6 +25,7 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 #include "gui/memory.h"
+#include "gui/reader/comment_bubble.h"
 #include "gui/reader/render_worker.h"
 #include "gui/theme.h"
 
@@ -134,6 +135,30 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
     horizontalScrollBar()->setSingleStep(40);
     popup_ = new SelectionPopup(this, viewport());
     popup_->hide();
+    bubble_ = new CommentBubble(viewport());
+    hoverTimer_.setSingleShot(true);
+    hoverTimer_.setInterval(350);
+    connect(&hoverTimer_, &QTimer::timeout, this, [this] {
+        if (!hoverKey_.isEmpty() && commentKeyAt(mousePos_) == hoverKey_)
+            showComment(hoverKey_, false);
+    });
+    unhoverTimer_.setSingleShot(true);
+    unhoverTimer_.setInterval(250);
+    connect(&unhoverTimer_, &QTimer::timeout, this, [this] {
+        if (bubble_->isVisible() && !bubble_->isEditing() && !bubble_->underMouse() &&
+            commentKeyAt(mousePos_) != bubble_->key())
+            bubble_->finish(false);
+    });
+    connect(bubble_, &CommentBubble::left, &unhoverTimer_, qOverload<>(&QTimer::start));
+    connect(bubble_, &CommentBubble::editRequested, this, [this](const QString& key) { showComment(key, true); });
+    connect(bubble_, &CommentBubble::edited, this, [this](const QString& key, const QString& comment) {
+        auto* a = findAnn(key);
+        if (!a || a->external || !editable_)
+            return;
+        Json data = a->data;
+        data["annotationComment"] = ss(comment);
+        emit annotationChanged(data);
+    });
     darkPages_ = darkPdfPages();
     if (auto* ctx = AppContext::tryGet())
         connect(ctx, &AppContext::appearanceChanged, this, [this] { setDarkPages(darkPdfPages()); });
@@ -232,6 +257,7 @@ void PdfView::hideEvent(QHideEvent* e)
 {
     QAbstractScrollArea::hideEvent(e);
     if (!e->spontaneous()) {  // another tab was chosen (not a minimised window)
+        bubble_->finish(true);
         imagesTimer_.start();
         releaseTimer_.start();
     }
@@ -479,11 +505,13 @@ void PdfView::resizeEvent(QResizeEvent* e)
         ++generation_;
         emit zoomChanged(zoom());
     }
+    placeComment();
 }
 
 void PdfView::scrollContentsBy(int, int)
 {
     hidePopup();
+    placeComment();
     if (textEditor_ && !editingKey_.isEmpty())
         if (auto* a = findAnn(editingKey_))
             textEditor_->setGeometry(toView(a->page, a->rects.empty() ? a->bounds : a->rects[0]).toRect());
@@ -774,6 +802,7 @@ void PdfView::setAnnotations(const std::vector<Json>& annotations)
     }
     if (!selectedAnn_.isEmpty() && !findAnn(selectedAnn_))
         selectedAnn_.clear();
+    placeComment();
     viewport()->update();
 }
 
@@ -1141,6 +1170,59 @@ void PdfView::setAnnotationColor(const QString& key, const QString& color)
     emit annotationChanged(data);
 }
 
+QString PdfView::commentKeyAt(QPointF viewPos) const
+{
+    if (pageRects_.empty() || !viewport()->rect().contains(viewPos.toPoint()))
+        return {};
+    const AnnView* a = commentBadgeAt(viewPos);
+    if (!a) {
+        QPointF content = viewPos + scrollOffset();
+        int page = pageAt(content, false);
+        if (page >= 0)
+            a = annotationAt(page, toPage(page, content));
+    }
+    // a text box shows its text on the page already
+    return a && !a->comment.isEmpty() && a->type != "text" ? a->key : QString();
+}
+
+void PdfView::showComment(const QString& key, bool edit)
+{
+    auto* a = findAnn(key);
+    if (!a || a->type == "text")
+        return;
+    if (a->external || !editable_)
+        edit = false;
+    if (!edit && a->comment.isEmpty())
+        return;
+    if (bubble_->isVisible() && bubble_->key() != key)
+        bubble_->finish(true);
+    QRectF anchor = toView(a->page, a->bounds);
+    hoverTimer_.stop();
+    unhoverTimer_.stop();
+    if (edit)
+        bubble_->edit(key, a->comment, anchor);
+    else
+        bubble_->preview(key, a->comment, anchor);
+}
+
+void PdfView::finishComment() { bubble_->finish(true); }
+
+void PdfView::placeComment()
+{
+    if (!bubble_->isVisible())
+        return;
+    auto* a = findAnn(bubble_->key());
+    if (!a) {
+        bubble_->finish(false);  // deleted meanwhile
+        return;
+    }
+    QRectF anchor = toView(a->page, a->bounds);
+    if (!bubble_->isEditing() && !anchor.intersects(viewport()->rect()))
+        bubble_->finish(false);
+    else
+        bubble_->place(anchor);
+}
+
 void PdfView::editTextAnnotation(const QString& key)
 {
     auto* a = findAnn(key);
@@ -1332,9 +1414,14 @@ void PdfView::mousePressEvent(QMouseEvent* e)
     setFocus();
     hidePopup();
     closeTextEditor(true);
+    bubble_->finish(true);
+    hoverTimer_.stop();
+    pressedAnn_.clear();
+    pressPos_ = e->position();
     if (auto* a = commentBadgeAt(e->position())) {
-        // with any tool, the badge selects its annotation (and the sidebar shows the comment)
+        // with any tool, the badge selects its annotation (and its comment opens)
         QString key = a->key;
+        pressedAnn_ = key;
         selectedAnn_ = key;
         clearTextSelection();
         emit annotationSelected(key);
@@ -1373,6 +1460,7 @@ void PdfView::mousePressEvent(QMouseEvent* e)
             }
             if (auto* a = annotationAt(page, pt)) {
                 selectedAnn_ = a->key;
+                pressedAnn_ = a->key;  // a click (not a drag) edits its comment
                 clearTextSelection();
                 emit annotationSelected(a->key);
                 if (!a->external && editable_ && a->type != "highlight" && a->type != "underline")
@@ -1469,6 +1557,23 @@ void PdfView::mousePressEvent(QMouseEvent* e)
 
 void PdfView::mouseMoveEvent(QMouseEvent* e)
 {
+    mousePos_ = e->position();
+    if (drag_ == Drag::None && e->buttons() == Qt::NoButton && !bubble_->isEditing()) {
+        // resting on an annotation shows its comment
+        auto key = commentKeyAt(e->position());
+        if (!key.isEmpty()) {
+            unhoverTimer_.stop();
+            if (!(bubble_->isVisible() && bubble_->key() == key) && hoverKey_ != key) {
+                hoverKey_ = key;
+                hoverTimer_.start();
+            }
+        } else {
+            hoverKey_.clear();
+            hoverTimer_.stop();
+            if (bubble_->isVisible())
+                unhoverTimer_.start();
+        }
+    }
     if (drag_ == Drag::None) {
         updateCursor(e->position());
         QAbstractScrollArea::mouseMoveEvent(e);
@@ -1582,11 +1687,16 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
     }
     pressedLink_.clear();
     dragPage_ = -1;
+    if (!pressedAnn_.isEmpty() && (e->position() - pressPos_).manhattanLength() < QApplication::startDragDistance())
+        showComment(pressedAnn_, true);
+    pressedAnn_.clear();
     viewport()->update();
 }
 
 void PdfView::mouseDoubleClickEvent(QMouseEvent* e)
 {
+    if (bubble_->isEditing() && !bubble_->isChanged())
+        bubble_->finish(false);  // opened by the first click of this double click
     if (e->button() != Qt::LeftButton || pageRects_.empty() || commentBadgeAt(e->position()))
         return;
     QPointF content = e->position() + scrollOffset();
@@ -1646,6 +1756,7 @@ void PdfView::keyPressEvent(QKeyEvent* e)
     case Qt::Key_Escape:
         clearTextSelection();
         hidePopup();
+        bubble_->finish(true);
         selectedAnn_.clear();
         if (tool_ != ReaderTool::Select)
             emit toolChangeRequested(ReaderTool::Select);
@@ -1734,20 +1845,15 @@ bool PdfView::viewportEvent(QEvent* e)
         }
     }
     if (e->type() == QEvent::ToolTip && !pageRects_.empty()) {
-        auto* he = static_cast<QHelpEvent*>(e);
-        if (auto* a = commentBadgeAt(he->pos())) {
-            QToolTip::showText(he->globalPos(), a->comment, viewport());
-            return true;
-        }
-        QPointF content = QPointF(he->pos()) + scrollOffset();
-        int page = pageAt(content, false);
-        if (page >= 0)
-            if (auto* a = annotationAt(page, toPage(page, content)); a && !a->comment.isEmpty() && a->type != "text") {
-                QToolTip::showText(he->globalPos(), a->comment, viewport());
-                return true;
-            }
-        QToolTip::hideText();
+        QToolTip::hideText();  // comments show in their bubble
         return true;
+    }
+    if (e->type() == QEvent::Leave) {
+        mousePos_ = {-1, -1};
+        hoverKey_.clear();
+        hoverTimer_.stop();
+        if (bubble_->isVisible() && !bubble_->isEditing())
+            unhoverTimer_.start();
     }
     return QAbstractScrollArea::viewportEvent(e);
 }

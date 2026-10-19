@@ -55,6 +55,7 @@
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 #include "gui/wrap_toolbar.h"
+#include "gui/reader/comment_bubble.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
 
@@ -1086,6 +1087,98 @@ TEST_CASE("notes: typing $...$ makes a formula, prices stay text")
     QTest::keyClicks(&edit, "$$\\sum_i x_i$$");
     CHECK(countMath(edit.document(), &latex) == 1);
     CHECK((edit.document()->begin().blockFormat().alignment() & Qt::AlignHCenter) != 0);
+}
+
+TEST_CASE("comments: plain text with formulas, to the editor and back")
+{
+    app();
+    for (QString comment : {QString("a $x_y$ b"), QString("first line\n$$\\sum_i x_i$$\nlast"),
+                            QString("costs $5 and $10"), QString("no formula"), QString()}) {
+        NoteTextEdit edit;
+        edit.setHtml(commentHtmlForEditor(comment));
+        edit.prepareDocument();
+        CHECK(documentToComment(edit.document()) == comment);
+    }
+    NoteTextEdit edit;
+    edit.setHtml(commentHtmlForEditor("a $x_y$ b, costs $5 and $10"));
+    CHECK(countMath(edit.document()) == 1);
+}
+
+TEST_CASE("comments: shown over the page on hover, edited in place after a click")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 900);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    Json highlight;
+    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) { highlight = d; });
+    view.setTool(ReaderTool::Highlight);
+    drag(view.viewport(), charCenter(view, 0), charCenter(view, 10));  // "Hello World"
+    REQUIRE(highlight.is_object());
+    view.setTool(ReaderTool::Select);
+    highlight["annotationComment"] = "Energy $E=mc^2$ here";
+    view.setAnnotations({highlight});
+    std::vector<Json> changed;
+    QObject::connect(&view, &PdfView::annotationChanged, [&](const Json& d) { changed.push_back(d); });
+    auto* bubble = view.commentBubble();
+    REQUIRE(bubble);
+    QPoint on = charCenter(view, 4).toPoint(), off = view.pageToViewport(0, {300, 400}).toPoint();
+
+    // resting on it shows the comment, as small as its text, below the highlight
+    QTest::mouseMove(view.viewport(), off);
+    QTest::mouseMove(view.viewport(), on);
+    REQUIRE(QTest::qWaitFor([&] { return bubble->isVisible(); }, 2000));
+    CHECK(!bubble->isEditing());
+    CHECK(bubble->editor()->isReadOnly());
+    CHECK(countMath(bubble->editor()->document()) == 1);
+    CHECK(bubble->width() < 300);
+    CHECK(bubble->y() > on.y());
+    auto snapshot = [&](const QString& name) {
+        if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+            view.grab().save(dir + "/" + name + ".png");
+    };
+    snapshot("comment-shown");
+    QTest::mouseMove(view.viewport(), off);
+    CHECK(QTest::qWaitFor([&] { return !bubble->isVisible(); }, 2000));
+
+    // a click edits it; Escape saves
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    REQUIRE(bubble->isVisible());
+    CHECK(bubble->isEditing());
+    CHECK(!bubble->editor()->isReadOnly());
+    QTest::keyClicks(bubble->editor(), " and $x_y$ too");
+    snapshot("comment-edited");
+    QTest::keyClick(bubble->editor(), Qt::Key_Escape);
+    CHECK(!bubble->isVisible());
+    REQUIRE(changed.size() == 1);
+    CHECK(jstr(changed[0], "annotationComment") == "Energy $E=mc^2$ here and $x_y$ too");
+    CHECK(jstr(changed[0], "key") == jstr(highlight, "key"));
+
+    // an unchanged comment is not saved again; clicking elsewhere closes it
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    REQUIRE(bubble->isEditing());
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, off);
+    CHECK(!bubble->isVisible());
+    CHECK(changed.size() == 1);
+
+    // a highlight without a comment gets an empty box to write in; read-only shows only
+    highlight["annotationComment"] = "";
+    view.setAnnotations({highlight});
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(bubble->isEditing());
+    QTest::keyClick(bubble->editor(), Qt::Key_Escape);
+    CHECK(changed.size() == 1);
+    highlight["annotationComment"] = "Read me";
+    view.setAnnotations({highlight});
+    view.setEditable(false);
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(bubble->isVisible());
+    CHECK(!bubble->isEditing());
 }
 
 TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")
