@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(OurNotes
-    VERSION 0.1.3
+    VERSION 0.1.4
     DESCRIPTION "Open-source reference manager with PDF annotation, notes and sync"
     HOMEPAGE_URL "https://github.com/ournotes/ournotes"
     LANGUAGES C CXX)
