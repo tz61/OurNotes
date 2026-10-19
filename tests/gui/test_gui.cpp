@@ -14,6 +14,9 @@
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QTabWidget>
+#include <QTabBar>
+#include <QToolBar>
+#include <QListWidget>
 #include <QTreeView>
 #include <QTreeWidget>
 
@@ -41,6 +44,7 @@
 #include "gui/sync_controller.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
+#include "gui/wrap_toolbar.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
 
@@ -450,7 +454,7 @@ TEST_CASE("main window: open tabs and the library view come back after a restart
         window.selectItem(paper);  // "second" in the library tab
         window.openAttachment(env.lib, keys[0]);
         window.openAttachment(env.lib, keys[1]);
-        auto* tabs = window.findChild<QTabWidget*>();
+        auto* tabs = window.findChild<QTabWidget*>("mainTabs");
         REQUIRE(tabs->count() == 3);
         tabs->setCurrentIndex(1);  // "first" is the tab being read
         window.close();
@@ -462,7 +466,7 @@ TEST_CASE("main window: open tabs and the library view come back after a restart
     window.show();
     QApplication::processEvents();
     QApplication::processEvents();
-    auto* tabs = window.findChild<QTabWidget*>();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
     REQUIRE(tabs->count() == 3);
     CHECK(tabs->currentIndex() == 1);
     auto* first = qobject_cast<ReaderTab*>(tabs->widget(1));
@@ -766,21 +770,22 @@ TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
 
 namespace {
 
-// Answers the "Remove Tag" confirmation once it shows up; *text gets its question.
-void answerTagConfirmation(bool remove, QString* text)
+// Answers a confirmation dialog (by object name) once it shows up: with its
+// destructive button, or Cancel. *text gets its question.
+void answerConfirmation(const QString& name, bool confirm, QString* text)
 {
     auto* timer = new QTimer;
     timer->setInterval(10);
-    QObject::connect(timer, &QTimer::timeout, [timer, remove, text] {
+    QObject::connect(timer, &QTimer::timeout, [timer, name, confirm, text] {
         for (auto* w : QApplication::topLevelWidgets()) {
             auto* box = qobject_cast<QMessageBox*>(w);
-            if (!box || !box->isVisible() || box->objectName() != "confirmRemoveTag")
+            if (!box || !box->isVisible() || box->objectName() != name)
                 continue;
             *text = box->text();
             if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
-                box->grab().save(dir + "/tag-remove-confirm.png");
+                box->grab().save(dir + "/" + name + ".png");
             for (auto* b : box->buttons())
-                if ((box->buttonRole(b) == QMessageBox::DestructiveRole) == remove) {
+                if ((box->buttonRole(b) == QMessageBox::DestructiveRole) == confirm) {
                     b->click();
                     break;
                 }
@@ -791,6 +796,8 @@ void answerTagConfirmation(bool remove, QString* text)
     });
     timer->start();
 }
+
+void answerTagConfirmation(bool remove, QString* text) { answerConfirmation("confirmRemoveTag", remove, text); }
 
 bool confirmationVisible()
 {
@@ -1080,6 +1087,131 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
         dlg.grab().save(dir + "/preferences-dark.png");
     combo->setCurrentIndex(combo->findData("system"));
     CHECK(appearanceFromConfig(env.config) == Appearance::System);
+}
+
+TEST_CASE("notes: the toolbar wraps instead of hiding buttons")
+{
+    app();
+    Env env;
+    NoteEditor editor;
+    editor.resize(230, 400);
+    editor.show();
+    QApplication::processEvents();
+    auto* bar = editor.findChild<WrapToolBar*>();
+    REQUIRE(bar);
+    QSet<int> rows;
+    int buttons = 0;
+    for (auto* b : bar->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (!b->isVisible())
+            continue;
+        ++buttons;
+        rows.insert(b->y());
+        CHECK(b->geometry().right() < bar->width());  // nothing sticks out or is cut off
+    }
+    CHECK(buttons >= 12);  // style, B I U S, lists, quote, link, formula, colour
+    CHECK(rows.size() >= 2);
+    CHECK(editor.findChild<QToolBar*>() == nullptr);
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        editor.grab().save(dir + "/note-toolbar-wrapped.png");
+}
+
+TEST_CASE("notes: a note can be moved to the trash from the list, after asking")
+{
+    app();
+    Env env;
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto note = env.library.createNote(env.lib, "<p>Idea: preparation</p>", jstr(paper, "key"));
+    ItemNotesPanel panel;
+    panel.resize(400, 600);
+    panel.show();
+    panel.setItem(env.lib, qs(jstr(paper, "key")));
+    QApplication::processEvents();
+    auto* list = panel.findChild<QListWidget*>();
+    REQUIRE(list);
+    REQUIRE(list->count() == 1);
+    list->setCurrentRow(0);
+    list->setFocus();
+    auto trashed = [&] { return jbool(*env.library.item(env.lib, jstr(note, "key")), "deleted"); };
+
+    QString question;
+    answerConfirmation("confirmTrashNote", false, &question);
+    QTest::keyClick(list, Qt::Key_Delete);
+    REQUIRE(QTest::qWaitFor([&] { return !question.isEmpty(); }));
+    CHECK(question.contains("Idea: preparation"));
+    CHECK(!trashed());
+
+    question.clear();
+    answerConfirmation("confirmTrashNote", true, &question);
+    QTest::keyClick(list, Qt::Key_Delete);
+    REQUIRE(QTest::qWaitFor([&] { return !question.isEmpty(); }));
+    CHECK(trashed());
+    CHECK(QTest::qWaitFor([&] { return list->count() == 0; }));
+}
+
+TEST_CASE("main window: many tabs wrap onto more rows")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    MainWindow window;
+    window.resize(900, 700);
+    window.show();
+    QApplication::processEvents();
+    for (int i = 0; i < 8; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(
+            env.lib, Json{{"itemType", "journalArticle"}, {"title", "A rather long paper title number " + std::to_string(i)}});
+        window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+    }
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 9);
+    CHECK(!tabs->tabBar()->isVisible());
+    auto* strip = window.findChild<QWidget*>("tabStrip");
+    REQUIRE(strip);
+    auto buttons = strip->findChildren<QWidget*>("tabButton");
+    REQUIRE(buttons.size() == 9);
+    QSet<int> rows;
+    for (auto* b : buttons) {
+        CHECK(b->isVisible());
+        rows.insert(b->y());
+        CHECK(b->geometry().right() < strip->width());
+    }
+    CHECK(rows.size() >= 2);  // wrapped, not squeezed into one row
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        window.grab().save(dir + "/tabs-wrapped.png");
+
+    // clicking a tab shows it; middle-clicking closes it; the library tab cannot be closed
+    auto buttonFor = [&](int index) -> QWidget* {
+        auto list = strip->findChildren<QWidget*>("tabButton");
+        std::sort(list.begin(), list.end(), [](QWidget* a, QWidget* b) {
+            return a->y() != b->y() ? a->y() < b->y() : a->x() < b->x();
+        });
+        return list.value(index);
+    };
+    QTest::mouseClick(buttonFor(3), Qt::LeftButton, {}, QPoint(20, buttonFor(3)->height() / 2));
+    CHECK(tabs->currentIndex() == 3);
+    auto title = tabs->tabText(3);
+    QTest::mouseClick(buttonFor(3), Qt::MiddleButton, {}, QPoint(20, 5));
+    QApplication::processEvents();
+    CHECK(tabs->count() == 8);
+    CHECK(tabs->tabText(3) != title);
+    QTest::mouseClick(buttonFor(0), Qt::MiddleButton, {}, QPoint(20, 5));
+    QApplication::processEvents();
+    CHECK(tabs->count() == 8);
+    CHECK(tabs->tabText(0) == "Library");
+
+    // dragging a tab onto another moves it
+    auto moved = tabs->tabText(5);
+    auto* from = buttonFor(5);
+    auto* to = buttonFor(2);
+    QTest::mousePress(from, Qt::LeftButton, {}, QPoint(20, 10));
+    QTest::mouseMove(from, from->mapFromGlobal(to->mapToGlobal(QPoint(20, 10))));
+    QTest::mouseRelease(from, Qt::LeftButton, {}, from->mapFromGlobal(to->mapToGlobal(QPoint(20, 10))));
+    QApplication::processEvents();
+    CHECK(tabs->tabText(2) == moved);
 }
 
 int main(int argc, char** argv)

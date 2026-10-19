@@ -9,10 +9,13 @@
 #include <vector>
 
 class QComboBox;
+class QListWidget;
 class QLabel;
 class QToolBar;
 
 namespace fp::gui {
+
+class WrapToolBar;
 
 class FittedImageHandler;
 
@@ -103,7 +106,7 @@ private:
     QString storeImage(const QImage& image);
 
     NoteTextEdit* edit_;
-    QToolBar* toolbar_;
+    WrapToolBar* toolbar_;
     QComboBox* blockStyle_;
     QAction* boldAct_;
     QAction* italicAct_;
@@ -116,5 +119,9 @@ private:
     QString lastSerialized_;  // the stored note as this editor writes it
     bool loading_ = false;
 };
+
+// Lets the notes listed in `list` (keys in Qt::UserRole) be moved to the trash, from
+// the context menu or with Delete, after asking.
+void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId);
 
 } // namespace fp::gui

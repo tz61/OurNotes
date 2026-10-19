@@ -42,6 +42,7 @@
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
 #include "gui/sync_controller.h"
+#include "gui/tab_widget.h"
 
 namespace fp::gui {
 
@@ -70,7 +71,9 @@ MainWindow::MainWindow()
 {
     setWindowTitle(FREEPEN_APP_NAME);
     setAcceptDrops(true);
-    tabs_ = new QTabWidget(this);
+    auto* tabs = new TabWidget(this);  // tabs wrap onto more rows when there are many
+    tabs_ = tabs;
+    tabs_->setObjectName("mainTabs");
     tabs_->setDocumentMode(true);
     tabs_->setTabsClosable(true);
     tabs_->setMovable(true);
@@ -78,7 +81,13 @@ MainWindow::MainWindow()
     tabs_->addTab(library_, icon("library"), tr("Library"));
     tabs_->tabBar()->setTabButton(0, QTabBar::RightSide, nullptr);
     tabs_->tabBar()->setTabButton(0, QTabBar::LeftSide, nullptr);
-    setCentralWidget(tabs_);
+    auto* central = new QWidget(this);
+    auto* centralLayout = new QVBoxLayout(central);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(0);
+    centralLayout->addWidget(tabs->tabStrip());
+    centralLayout->addWidget(tabs_, 1);
+    setCentralWidget(central);
     status_ = new QLabel(this);
     statusBar()->addWidget(status_, 1);
 

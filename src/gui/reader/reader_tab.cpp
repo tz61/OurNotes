@@ -264,6 +264,7 @@ void ReaderTab::buildContextPane()
         else
             noteEditor_->clear();
     });
+    enableNoteTrash(notesList_, [this] { return libraryId_; });
     splitter_->addWidget(contextPane_);
 }
 

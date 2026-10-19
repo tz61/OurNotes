@@ -2,6 +2,8 @@
 
 #include <QWidget>
 
+#include <vector>
+
 namespace fp::gui {
 
 FlowLayout::FlowLayout(QWidget* parent, int spacing) : QLayout(parent), spacing_(spacing)
@@ -49,6 +51,13 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
     auto m = contentsMargins();
     QRect area = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
     int x = area.x(), y = area.y(), lineHeight = 0;
+    std::vector<std::pair<QLayoutItem*, QRect>> line;  // items of the current row
+    auto finishLine = [&] {
+        if (!testOnly)  // centre the items of a row vertically
+            for (auto& [item, r] : line)
+                item->setGeometry(r.translated(0, (lineHeight - r.height()) / 2));
+        line.clear();
+    };
     for (auto* item : items_) {
         if (item->isEmpty())  // explicitly hidden widgets take no space
             continue;
@@ -56,16 +65,17 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
         hint.setWidth(std::min(hint.width(), std::max(1, area.width())));
         int nextX = x + hint.width() + spacing_;
         if (nextX - spacing_ > area.right() + 1 && lineHeight > 0) {
+            finishLine();
             x = area.x();
             y += lineHeight + spacing_;
             nextX = x + hint.width() + spacing_;
             lineHeight = 0;
         }
-        if (!testOnly)
-            item->setGeometry(QRect(QPoint(x, y), hint));
+        line.push_back({item, QRect(QPoint(x, y), hint)});
         x = nextX;
         lineHeight = std::max(lineHeight, hint.height());
     }
+    finishLine();
     return y + lineHeight - rect.y() + m.bottom();
 }
 

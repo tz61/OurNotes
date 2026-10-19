@@ -12,7 +12,11 @@
 #include <QImage>
 #include <QImageReader>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QMenu>
+#include <QPushButton>
+#include <QMessageBox>
+#include <QListWidget>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QRegularExpression>
@@ -33,6 +37,7 @@
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
 #include "gui/theme.h"
+#include "gui/wrap_toolbar.h"
 
 namespace fp::gui {
 
@@ -631,9 +636,7 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    toolbar_ = new QToolBar(this);
-    toolbar_->setIconSize(QSize(16, 16));
-    toolbar_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    toolbar_ = new WrapToolBar(this);  // wraps onto more rows when the pane is narrow
     edit_ = new NoteTextEdit(this);
     edit_->setAcceptRichText(true);
     edit_->setPlaceholderText(tr("Write a note…"));
@@ -966,6 +969,56 @@ QString NoteEditor::storeImage(const QImage& image)
              {"mtime", QFileInfo(qpath(file)).lastModified().toMSecsSinceEpoch()}};
     lib.createItem(libraryId_, att);
     return "attachment:" + qs(key);
+}
+
+void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId)
+{
+    auto trash = [list, libraryId](const QString& key, const QString& title) {
+        int64_t lib = libraryId();
+        if (key.isEmpty() || !AppContext::get().editable(lib))
+            return;
+        QMessageBox box(QMessageBox::Question, QObject::tr("Move to Trash"),
+                        QObject::tr("Move the note \"%1\" to the trash?").arg(title), QMessageBox::NoButton, list);
+        box.setObjectName("confirmTrashNote");
+        auto* move = box.addButton(QObject::tr("Move to Trash"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(move);
+        box.exec();
+        if (box.clickedButton() == static_cast<QAbstractButton*>(move))
+            AppContext::get().library().trashItems(lib, {ss(key)});
+    };
+    list->setContextMenuPolicy(Qt::CustomContextMenu);
+    QObject::connect(list, &QWidget::customContextMenuRequested, list, [list, libraryId, trash](const QPoint& pos) {
+        auto* item = list->itemAt(pos);
+        if (!item || !AppContext::get().editable(libraryId()))
+            return;
+        QMenu menu(list);
+        menu.addAction(icon("trash"), QObject::tr("Move Note to Trash…"), list,
+                       [trash, key = item->data(Qt::UserRole).toString(), title = item->text()] { trash(key, title); });
+        menu.exec(list->viewport()->mapToGlobal(pos));
+    });
+    // Delete (or Backspace) on the selected note
+    struct Keys : QObject {
+        std::function<void()> onDelete;
+        using QObject::QObject;
+        bool eventFilter(QObject*, QEvent* e) override
+        {
+            if (e->type() != QEvent::KeyPress)
+                return false;
+            auto* k = static_cast<QKeyEvent*>(e);
+            if (k->matches(QKeySequence::Delete) || k->key() == Qt::Key_Backspace) {
+                onDelete();
+                return true;
+            }
+            return false;
+        }
+    };
+    auto* keys = new Keys(list);
+    keys->onDelete = [list, trash] {
+        if (auto* item = list->currentItem())
+            trash(item->data(Qt::UserRole).toString(), item->text());
+    };
+    list->installEventFilter(keys);
 }
 
 } // namespace fp::gui

@@ -902,7 +902,6 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
     v->addLayout(head);
     auto* split = new QSplitter(Qt::Vertical, this);
     list_ = new QListWidget(split);
-    list_->setContextMenuPolicy(Qt::CustomContextMenu);
     editor_ = new NoteEditor(split);
     split->setStretchFactor(0, 0);
     split->setStretchFactor(1, 1);
@@ -919,16 +918,7 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
         if (item)
             editor_->setNote(libraryId_, item->data(Qt::UserRole).toString());
     });
-    connect(list_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
-        auto* item = list_->itemAt(pos);
-        if (!item || !AppContext::get().editable(libraryId_))
-            return;
-        QMenu menu(this);
-        menu.addAction(icon("trash"), tr("Move Note to Trash"), this, [this, key = item->data(Qt::UserRole).toString()] {
-            AppContext::get().library().trashItems(libraryId_, {ss(key)});
-        });
-        menu.exec(list_->viewport()->mapToGlobal(pos));
-    });
+    enableNoteTrash(list_, [this] { return libraryId_; });
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList&) {
                 if (!key_.isEmpty() && (lib == libraryId_ || lib == 0) && (type == "item" || type == "*"))

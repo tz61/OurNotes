@@ -20,9 +20,11 @@ set(FREEPEN_GUI_SOURCES
     note_html.cpp
     preferences.cpp
     sync_controller.cpp
+    tab_widget.cpp
     tag_selector.cpp
     theme.cpp
     ui_scale.cpp
+    wrap_toolbar.cpp
     reader/annotation_sidebar.cpp
     reader/pdf_view.cpp
     reader/reader_tab.cpp
