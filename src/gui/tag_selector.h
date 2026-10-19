@@ -21,6 +21,9 @@ public:
 signals:
     void selectionChanged(const QStringList& tags);
 
+protected:
+    void changeEvent(QEvent* e) override;
+
 private:
     void reload();
     void showMenu(const QPoint& pos);

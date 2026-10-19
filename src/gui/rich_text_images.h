@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QTextObjectInterface>
 
+#include <functional>
+
 class QTextDocument;
 
 namespace fp::gui {
@@ -18,7 +20,8 @@ public:
     // Installs the handler on `doc` (re-install after replacing the document layout).
     static FittedImageHandler* install(QTextDocument* doc, QObject* owner);
 
-    void setTextColor(const QColor& c) { textColor_ = c; }
+    // Colour for formulas, queried when laying out and painting (follows theme changes).
+    void setColorSource(std::function<QColor()> source) { colorSource_ = std::move(source); }
 
     QSizeF intrinsicSize(QTextDocument* doc, int posInDocument, const QTextFormat& format) override;
     void drawObject(QPainter* painter, const QRectF& rect, QTextDocument* doc, int posInDocument,
@@ -33,7 +36,8 @@ private:
     };
     Geometry geometry(QTextDocument* doc, int posInDocument, const QTextFormat& format, qreal dpr);
 
-    QColor textColor_ = Qt::black;
+    QColor color() const { return colorSource_ ? colorSource_() : QColor(Qt::black); }
+    std::function<QColor()> colorSource_;
 };
 
 } // namespace fp::gui

@@ -72,7 +72,7 @@ FittedImageHandler::Geometry FittedImageHandler::geometry(QTextDocument* doc, in
     bool display = false;
     if (parseMathResourceName(img.name(), &latex, &display)) {
         QFont font = formatFont(doc, format);
-        auto m = renderMath(latex, display, QFontInfo(font).pixelSize() * 1.2, textColor_, dpr);
+        auto m = renderMath(latex, display, QFontInfo(font).pixelSize() * 1.2, color(), dpr);
         // Qt centres AlignMiddle objects on half the x-height; pad the box so that
         // the formula's own baseline lands on the text baseline.
         qreal halfX = QFontMetricsF(font).xHeight() / 2;
@@ -120,7 +120,7 @@ void FittedImageHandler::drawObject(QPainter* painter, const QRectF& rect, QText
     bool display = false;
     if (parseMathResourceName(img.name(), &latex, &display)) {
         QFont font = formatFont(doc, format);
-        auto m = renderMath(latex, display, QFontInfo(font).pixelSize() * 1.2, textColor_, dpr);
+        auto m = renderMath(latex, display, QFontInfo(font).pixelSize() * 1.2, color(), dpr);
         painter->drawImage(QRectF(rect.left(), rect.top() + g.top, m.width * g.scale,
                                   (m.ascent + m.descent) * g.scale),
                            m.image);

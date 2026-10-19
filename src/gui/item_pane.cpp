@@ -52,9 +52,7 @@ QLabel* fieldLabel(const QString& text, QWidget* parent)
     auto* l = new QLabel(text + ":", parent);
     l->setAlignment(Qt::AlignRight | Qt::AlignTop);
     l->setContentsMargins(0, 4, 0, 0);
-    QPalette p = l->palette();
-    p.setColor(QPalette::WindowText, p.color(QPalette::Disabled, QPalette::WindowText));
-    l->setPalette(p);
+    l->setForegroundRole(QPalette::PlaceholderText);  // dimmed, follows theme switches
     return l;
 }
 
@@ -880,9 +878,7 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
     v->addWidget(split, 1);
     empty_ = new QLabel(tr("No notes yet."), this);
     empty_->setAlignment(Qt::AlignCenter);
-    QPalette p = empty_->palette();
-    p.setColor(QPalette::WindowText, p.color(QPalette::Disabled, QPalette::WindowText));
-    empty_->setPalette(p);
+    empty_->setForegroundRole(QPalette::PlaceholderText);
     v->addWidget(empty_, 1);
 
     connect(add_, &QToolButton::clicked, this, &ItemNotesPanel::addNote);
@@ -988,9 +984,7 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     message_ = new QLabel(this);
     message_->setAlignment(Qt::AlignCenter);
     message_->setWordWrap(true);
-    QPalette p = message_->palette();
-    p.setColor(QPalette::WindowText, p.color(QPalette::Disabled, QPalette::WindowText));
-    message_->setPalette(p);
+    message_->setForegroundRole(QPalette::PlaceholderText);
     addWidget(message_);
 
     // regular item

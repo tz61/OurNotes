@@ -94,14 +94,15 @@ const QHash<QString, QString>& sources()
 QColor textColor() { return QApplication::palette().color(QPalette::WindowText); }
 
 // Renders the SVG at exactly the size requested, so icons stay sharp at any
-// interface scale or screen density.
+// interface scale. "CUR" in the source is replaced by the current text colour when
+// painting, so monochrome icons follow light/dark theme switches.
 class SvgIconEngine : public QIconEngine {
 public:
-    explicit SvgIconEngine(QByteArray svg) : svg_(std::move(svg)), id_(qHash(svg_)) {}
+    explicit SvgIconEngine(QString body) : body_(std::move(body)), id_(qHash(body_)) {}
 
     void paint(QPainter* p, const QRect& rect, QIcon::Mode mode, QIcon::State) override
     {
-        QSvgRenderer renderer(svg_);
+        QSvgRenderer renderer(svg());
         p->save();
         p->setRenderHint(QPainter::Antialiasing);
         if (mode == QIcon::Disabled)
@@ -112,7 +113,12 @@ public:
 
     QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
     {
-        QString cacheKey = QString("fp-icon-%1-%2x%3-%4").arg(id_).arg(size.width()).arg(size.height()).arg(int(mode));
+        QString cacheKey = QString("fp-icon-%1-%2x%3-%4-%5")
+                               .arg(id_)
+                               .arg(size.width())
+                               .arg(size.height())
+                               .arg(int(mode))
+                               .arg(textColor().rgba());
         QPixmap pm;
         if (QPixmapCache::find(cacheKey, &pm))
             return pm;
@@ -132,31 +138,28 @@ public:
         return pm;
     }
 
-    QIconEngine* clone() const override { return new SvgIconEngine(svg_); }
+    QIconEngine* clone() const override { return new SvgIconEngine(body_); }
     QString key() const override { return QStringLiteral("freepen-svg"); }
 
 private:
-    QByteArray svg_;
+    QByteArray svg() const
+    {
+        return QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")
+            .arg(QString(body_).replace("CUR", textColor().name()))
+            .toUtf8();
+    }
+
+    QString body_;
     size_t id_;
 };
 
-QIcon render(const QString& svgBody)
-{
-    QString svg = QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")
-                      .arg(QString(svgBody).replace("CUR", textColor().name()));
-    return QIcon(new SvgIconEngine(svg.toUtf8()));
-}
+QIcon render(const QString& svgBody) { return QIcon(new SvgIconEngine(svgBody)); }
 
 } // namespace
 
 QIcon icon(const QString& name)
 {
     static QHash<QString, QIcon> cache;
-    static QColor cachedFor;
-    if (cachedFor != textColor()) {
-        cache.clear();
-        cachedFor = textColor();
-    }
     auto it = cache.find(name);
     if (it != cache.end())
         return *it;

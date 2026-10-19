@@ -32,6 +32,7 @@
 #include "gui/note_html.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
+#include "gui/theme.h"
 #include "gui/ui_scale.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
@@ -442,6 +443,202 @@ TEST_CASE("item pane: tags are shown as visible chips")
     auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
     if (!snapshots.isEmpty())
         tags->grab().save(snapshots + "/tags.png");
+}
+
+namespace {
+
+// The formula source being edited in place (text marked with kMathSourceProperty).
+QString mathSource(QTextDocument* doc)
+{
+    QString out;
+    for (auto b = doc->begin(); b.isValid(); b = b.next())
+        for (auto it = b.begin(); !it.atEnd(); ++it)
+            if (it.fragment().charFormat().property(kMathSourceProperty).toInt())
+                out += it.fragment().text();
+    return out;
+}
+
+// Centre of the n-th formula image in viewport coordinates.
+QPoint formulaCenter(NoteTextEdit& edit, int n = 0)
+{
+    auto* doc = edit.document();
+    for (auto b = doc->begin(); b.isValid(); b = b.next())
+        for (auto it = b.begin(); !it.atEnd(); ++it) {
+            auto f = it.fragment().charFormat();
+            if (!f.isImageFormat() || !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr) || n--)
+                continue;
+            QTextCursor before(doc), after(doc);
+            before.setPosition(it.fragment().position());
+            after.setPosition(it.fragment().position() + 1);
+            auto r1 = edit.cursorRect(before), r2 = edit.cursorRect(after);
+            return QPoint((r1.left() + r2.left()) / 2, r1.center().y());
+        }
+    return {};
+}
+
+} // namespace
+
+TEST_CASE("notes: $$ starts a formula that is typed in place")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    QTest::keyClicks(&edit, "Area $$");
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(mathSource(edit.document()) == "$$");  // an empty inline formula, cursor inside
+    QTest::keyClicks(&edit, "\\pi r^2");
+    CHECK(mathSource(edit.document()) == "$\\pi r^2$");
+    CHECK(documentToNoteHtml(edit.document()).contains("<span class=\"math\">$\\pi r^2$</span>"));
+    QTest::keyClicks(&edit, "$ here");  // typing the closing $ finishes the formula
+    QStringList latex;
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"\\pi r^2"});
+    CHECK(mathSource(edit.document()).isEmpty());
+    CHECK(edit.toPlainText().endsWith(" here"));
+    // the text after the formula is plain text, not formula-formatted
+    auto last = edit.document()->lastBlock();
+    auto f = (--last.end()).fragment().charFormat();
+    CHECK(!f.hasProperty(QTextFormat::ImageName));
+    CHECK(f.verticalAlignment() == QTextCharFormat::AlignNormal);
+
+    // undo brings back the source without rendering it again straight away
+    edit.clear();
+    QTest::keyClicks(&edit, "a $$x$");
+    REQUIRE(countMath(edit.document()) == 1);
+    edit.undo();
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(edit.toPlainText().contains("$x$"));
+
+    // on an empty line, $$ starts a centred display formula; $$ ends it and moves on
+    edit.clear();
+    QTest::keyClicks(&edit, "$$");
+    CHECK(mathSource(edit.document()) == "$$$$");
+    QTest::keyClicks(&edit, "E=mc^2$$next");
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"E=mc^2"});
+    CHECK((edit.document()->begin().blockFormat().alignment() & Qt::AlignHCenter) != 0);
+    CHECK(edit.document()->blockCount() == 2);
+    CHECK(edit.document()->lastBlock().text() == "next");
+    CHECK((edit.document()->lastBlock().blockFormat().alignment() & Qt::AlignHCenter) == 0);
+    CHECK(documentToNoteHtml(edit.document()).contains("<pre class=\"math\">$$E=mc^2$$</pre>"));
+}
+
+TEST_CASE("notes: clicking a formula edits it in place with a live preview")
+{
+    app();
+    Env env;
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    edit.activateWindow();
+    edit.setFocus();
+    QString note = "<div data-schema-version=\"9\"><p>Let <span class=\"math\">$x^2$</span> be.</p></div>";
+    edit.setHtml(noteHtmlForEditor(note, env.lib, edit.document()));
+    edit.prepareDocument();
+    QApplication::processEvents();
+    auto center = formulaCenter(edit);
+    REQUIRE(!center.isNull());
+
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, center);
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(mathSource(edit.document()) == "$x^2$");
+    auto* preview = edit.viewport()->findChild<QLabel*>();
+    REQUIRE(preview);
+    CHECK(preview->isVisible());
+    CHECK(!preview->pixmap().isNull());
+
+    QTest::keyClicks(&edit, "+1");
+    CHECK(mathSource(edit.document()) == "$x^2+1$");
+    QTest::keyClick(&edit, Qt::Key_Escape);
+    QStringList latex;
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x^2+1"});
+    CHECK(!preview->isVisible());
+    CHECK(edit.toPlainText().endsWith(" be."));
+
+    // moving the cursor out of the formula also renders it
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, formulaCenter(edit));
+    CHECK(countMath(edit.document()) == 0);
+    QTest::keyClick(&edit, Qt::Key_End);
+    CHECK(countMath(edit.document()) == 1);
+
+    // a formula left empty is removed
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, formulaCenter(edit));
+    for (int i = 0; i < 5; ++i)
+        QTest::keyClick(&edit, Qt::Key_Backspace);
+    CHECK(mathSource(edit.document()) == "$$");
+    QTest::keyClick(&edit, Qt::Key_Return);
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(edit.toPlainText() == "Let  be.");
+}
+
+TEST_CASE("appearance: dark mode, formula colour and readable note text")
+{
+    app();
+    Env env;
+    CHECK(appearanceFromConfig(env.config) == Appearance::System);
+
+    applyAppearance(Appearance::Dark);
+    CHECK(isDarkTheme());
+    NoteTextEdit edit;
+    edit.resize(400, 200);
+    edit.show();
+    QString note = "<div data-schema-version=\"9\"><p><span style=\"color: #000000\">Black text</span> "
+                   "<span class=\"math\">$\\frac{a}{b}$</span></p></div>";
+    edit.setHtml(noteHtmlForEditor(note, env.lib, edit.document()));
+    edit.prepareDocument();
+    QApplication::processEvents();
+
+    // black text from a light theme is shown in the text colour, but saved unchanged
+    auto first = edit.document()->begin().begin().fragment().charFormat();
+    CHECK(!first.hasProperty(QTextFormat::ForegroundBrush));
+    CHECK(documentToNoteHtml(edit.document()).contains("color: #000000"));
+    CHECK(!edit.document()->isModified());
+
+    // formulas are drawn in the text colour (light on dark) unless a colour is set
+    auto brightest = [&](auto pred) {
+        auto img = edit.viewport()->grab().toImage();
+        auto c = formulaCenter(edit) * img.devicePixelRatio();
+        int found = 0;
+        for (int y = c.y() - 12; y < c.y() + 12; ++y)
+            for (int x = c.x() - 12; x < c.x() + 12; ++x)
+                if (img.rect().contains(x, y) && pred(img.pixelColor(x, y)))
+                    ++found;
+        return found;
+    };
+    CHECK(brightest([](QColor c) { return c.lightness() > 200; }) > 3);
+    env.config.set("/notes/formulaColor", "#ff0000");
+    emit env.context.appearanceChanged();
+    QApplication::processEvents();
+    CHECK(brightest([](QColor c) { return c.red() > 180 && c.green() < 90; }) > 3);
+    env.config.set("/notes/formulaColor", "");
+
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        edit.grab().save(dir + "/note-dark.png");
+
+    // back to light: the original black is shown again
+    applyAppearance(Appearance::Light);
+    QApplication::processEvents();
+    CHECK(!isDarkTheme());
+    first = edit.document()->begin().begin().fragment().charFormat();
+    CHECK(first.foreground().color() == QColor(Qt::black));
+
+    // the preference switches live and is stored
+    SyncController sync;
+    PreferencesDialog dlg(&sync);
+    auto* combo = dlg.findChild<QComboBox*>("appearance");
+    REQUIRE(combo);
+    combo->setCurrentIndex(combo->findData("dark"));
+    CHECK(env.config.get("/ui/appearance").get<std::string>() == "dark");
+    CHECK(isDarkTheme());
+    // also windows that were never shown (Qt only updates those with a native window)
+    CHECK(dlg.palette().color(QPalette::Window) == QApplication::palette().color(QPalette::Window));
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        dlg.grab().save(dir + "/preferences-dark.png");
+    combo->setCurrentIndex(combo->findData("system"));
+    CHECK(appearanceFromConfig(env.config) == Appearance::System);
 }
 
 int main(int argc, char** argv)

@@ -207,6 +207,13 @@ void AnnotationCard::refresh()
                       .arg(bg.name(), pal.color(QPalette::Mid).name(), color.name()));
 }
 
+void AnnotationCard::changeEvent(QEvent* e)
+{
+    QFrame::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange)
+        QMetaObject::invokeMethod(this, &AnnotationCard::refresh, Qt::QueuedConnection);
+}
+
 void AnnotationCard::mousePressEvent(QMouseEvent* e)
 {
     emit activated(jqs(data_, "key"));

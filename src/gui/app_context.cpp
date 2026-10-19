@@ -22,6 +22,7 @@ AppContext::~AppContext()
 }
 
 AppContext& AppContext::get() { return *g_context; }
+AppContext* AppContext::tryGet() { return g_context; }
 
 bool AppContext::editable(int64_t libraryId)
 {

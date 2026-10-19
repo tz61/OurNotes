@@ -56,6 +56,7 @@ signals:
 
 protected:
     void mousePressEvent(QMouseEvent* e) override;
+    void changeEvent(QEvent* e) override;
 
 private:
     void refresh();

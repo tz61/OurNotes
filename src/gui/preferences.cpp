@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -26,6 +27,7 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 #include "gui/sync_controller.h"
+#include "gui/theme.h"
 #include "gui/ui_scale.h"
 #include "sync/http_transport.h"
 
@@ -110,6 +112,23 @@ QWidget* PreferencesDialog::generalPage()
         accept();
     });
 
+    // light/dark theme, applied immediately
+    appearance_ = new QComboBox(page);
+    appearance_->setObjectName("appearance");
+    appearance_->addItem(tr("Follow system"), appearanceKey(Appearance::System));
+    appearance_->addItem(tr("Light"), appearanceKey(Appearance::Light));
+    appearance_->addItem(tr("Dark"), appearanceKey(Appearance::Dark));
+    appearance_->setCurrentIndex(appearance_->findData(appearanceKey(appearanceFromConfig(cfg))));
+    form->addRow(tr("Appearance:"), appearance_);
+    connect(appearance_, &QComboBox::currentIndexChanged, this, [this] {
+        auto& config = AppContext::get().config();
+        config.set("/ui/appearance", ss(appearance_->currentData().toString()));
+        config.save();
+        applyAppearance(appearanceFromConfig(config));
+        emit AppContext::get().appearanceChanged();
+    });
+    form->addRow(tr("Formula colour:"), formulaColorRow(page));
+
     openPdf_ = new QComboBox(page);
     openPdf_->addItem(tr("in freePen"), "tab");
     openPdf_->addItem(tr("with the system PDF viewer"), "external");
@@ -122,6 +141,64 @@ QWidget* PreferencesDialog::generalPage()
     fulltext_->setChecked(cfg.get("/fulltext/enabled", true).get<bool>());
     form->addRow(QString(), fulltext_);
     return page;
+}
+
+// Formulas in notes use the text colour (white in dark mode) unless a colour is chosen.
+QWidget* PreferencesDialog::formulaColorRow(QWidget* page)
+{
+    auto* row = new QWidget(page);
+    auto* h = new QHBoxLayout(row);
+    h->setContentsMargins(0, 0, 0, 0);
+    auto* mode = new QComboBox(row);
+    mode->setObjectName("formulaColor");
+    mode->addItem(tr("Same as text"), false);
+    mode->addItem(tr("Custom"), true);
+    auto* swatch = new QPushButton(row);
+    swatch->setObjectName("formulaColorSwatch");
+    swatch->setToolTip(tr("Choose the formula colour"));
+    h->addWidget(mode);
+    h->addWidget(swatch);
+    auto* hint = new QLabel(tr("Single formulas can use \\textcolor{red}{…}."), row);
+    hint->setForegroundRole(QPalette::PlaceholderText);
+    hint->setWordWrap(true);
+    h->addWidget(hint, 1);
+
+    auto stored = [] { return qs(AppContext::get().config().get("/notes/formulaColor", "").get<std::string>()); };
+    auto refresh = [mode, swatch, stored] {
+        QColor c(stored());
+        bool custom = c.isValid();
+        QSignalBlocker block(mode);
+        mode->setCurrentIndex(custom ? 1 : 0);
+        swatch->setVisible(custom);
+        int s = swatch->fontMetrics().height();
+        swatch->setIcon(colorIcon(custom ? c.name() : QString(), s));
+        swatch->setText(custom ? c.name() : QString());
+    };
+    auto store = [](const QString& value) {
+        auto& config = AppContext::get().config();
+        config.set("/notes/formulaColor", ss(value));
+        config.save();
+        emit AppContext::get().appearanceChanged();
+    };
+    auto choose = [this, stored, store, refresh] {
+        QColor start(stored());
+        auto c = QColorDialog::getColor(start.isValid() ? start : palette().color(QPalette::Text), this,
+                                        tr("Formula Colour"));
+        if (c.isValid())
+            store(c.name());
+        refresh();
+    };
+    connect(mode, &QComboBox::currentIndexChanged, this, [mode, store, refresh, choose] {
+        if (mode->currentData().toBool())
+            choose();
+        else {
+            store(QString());
+            refresh();
+        }
+    });
+    connect(swatch, &QPushButton::clicked, this, choose);
+    refresh();
+    return row;
 }
 
 QWidget* PreferencesDialog::syncPage()

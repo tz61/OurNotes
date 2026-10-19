@@ -3,6 +3,10 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
+#include <QScrollBar>
+#include <QLabel>
+#include <QFontInfo>
+#include <QFontDatabase>
 #include <QDesktopServices>
 #include <QFileInfo>
 #include <QImage>
@@ -28,6 +32,7 @@
 #include "gui/math_render.h"
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
+#include "gui/theme.h"
 
 namespace fp::gui {
 
@@ -38,14 +43,31 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setLineWrapMode(QTextEdit::WidgetWidth);
     images_ = FittedImageHandler::install(document(), this);
-    images_->setTextColor(palette().color(QPalette::Text));
+    images_->setColorSource([this] { return formulaColor(palette().color(QPalette::Text)); });
+    preview_ = new QLabel(viewport());
+    preview_->setStyleSheet("QLabel { background: palette(base); border: 1px solid palette(mid); "
+                            "border-radius: 4px; padding: 6px; }");
+    preview_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    preview_->hide();
+    connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
+        if (committing_)
+            return;
+        // only leaving a formula renders it, so undo can bring back the source text
+        if (editingMath_)
+            commitMathEdits(false);
+        editingMath_ = runAtCursor().has_value();
+        updateMathPreview();
+    });
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &NoteTextEdit::updateMathPreview);
+    if (auto* ctx = AppContext::tryGet())
+        connect(ctx, &AppContext::appearanceChanged, this, [this] { viewport()->update(); });
 }
 
 void NoteTextEdit::changeEvent(QEvent* e)
 {
     QTextEdit::changeEvent(e);
-    if (e->type() == QEvent::PaletteChange && images_) {
-        images_->setTextColor(palette().color(QPalette::Text));
+    if (e->type() == QEvent::PaletteChange) {
+        adaptColors();
         viewport()->update();
     }
 }
@@ -59,11 +81,86 @@ static QTextImageFormat mathFormat(const QString& latex, bool display)
     return f;
 }
 
-void NoteTextEdit::placeMath(QTextCursor cursor, const QString& latex, bool display)
+static QString stripDelimiters(QString text, bool display)
 {
-    QTextCharFormat textFormat = cursor.charFormat();
-    if (textFormat.isImageFormat())
-        textFormat = QTextCharFormat();
+    QString delim = display ? "$$" : "$";
+    if (text.startsWith(delim) && text.endsWith(delim) && text.size() >= 2 * delim.size())
+        return text.mid(delim.size(), text.size() - 2 * delim.size()).trimmed();
+    while (text.startsWith('$'))
+        text.remove(0, 1);
+    while (text.endsWith('$') && !text.endsWith("\\$"))
+        text.chop(1);
+    return text.trimmed();
+}
+
+// Format for text around a formula: the text before it, without formula properties.
+QTextCharFormat NoteTextEdit::outerFormat(const QTextBlock& block, int formulaPosInBlock) const
+{
+    QTextCharFormat f;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        auto frag = it.fragment();
+        int pos = frag.position() - block.position();
+        if (pos >= formulaPosInBlock)
+            break;
+        auto cf = frag.charFormat();
+        if (!cf.isImageFormat() && !cf.hasProperty(kMathSourceProperty))
+            f = cf;
+    }
+    f.clearProperty(QTextFormat::ObjectIndex);
+    return f;
+}
+
+// --- formulas being edited in place -------------------------------------------------------
+//
+// A formula under edit is its LaTeX source between $…$ (or $$…$$), marked with the
+// kMathSourceProperty char format property. Moving the cursor out renders it again.
+
+QTextCharFormat NoteTextEdit::sourceFormat(bool display, QTextCharFormat base) const
+{
+    if (base.isImageFormat() || base.hasProperty(kMathSourceProperty))
+        base = QTextCharFormat();
+    base.setFontFamilies(QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()});
+    QColor tint = palette().color(QPalette::Highlight);
+    tint.setAlphaF(0.2);
+    base.setBackground(tint);
+    base.setProperty(kMathSourceProperty, display ? 2 : 1);
+    return base;
+}
+
+std::vector<NoteTextEdit::MathRun> NoteTextEdit::mathRuns() const
+{
+    std::vector<MathRun> runs;
+    for (auto block = document()->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            int kind = frag.charFormat().property(kMathSourceProperty).toInt();
+            if (!kind)
+                continue;
+            if (!runs.empty() && runs.back().end == frag.position() && runs.back().display == (kind == 2))
+                runs.back().end = frag.position() + frag.length();
+            else
+                runs.push_back({frag.position(), frag.position() + frag.length(), kind == 2});
+        }
+    return runs;
+}
+
+std::optional<NoteTextEdit::MathRun> NoteTextEdit::runAtCursor() const
+{
+    int p = textCursor().position();
+    for (auto& r : mathRuns())
+        if (p > r.start && p < r.end)
+            return r;
+    return std::nullopt;
+}
+
+void NoteTextEdit::startMathEdit(QTextCursor cursor, const QString& latex, bool display)
+{
+    if (isReadOnly())
+        return;
+    commitMathEdits(true);  // one formula at a time
+    auto format = sourceFormat(display, cursor.charFormat());
+    QString delim = display ? "$$" : "$";
+    committing_ = true;  // don't render the new formula while it is being created
     cursor.beginEditBlock();
     cursor.removeSelectedText();
     if (display) {
@@ -73,28 +170,109 @@ void NoteTextEdit::placeMath(QTextCursor cursor, const QString& latex, bool disp
         QTextBlockFormat centred = cursor.blockFormat();
         centred.setAlignment(Qt::AlignHCenter);
         cursor.setBlockFormat(centred);
-        cursor.insertImage(mathFormat(latex, true));
-        cursor.insertBlock();
-        QTextBlockFormat normal = cursor.blockFormat();
-        normal.setAlignment(Qt::AlignLeft);
-        cursor.setBlockFormat(normal);
-    } else {
-        cursor.insertImage(mathFormat(latex, false));
     }
-    cursor.setCharFormat(textFormat);
+    int start = cursor.position();
+    cursor.insertText(delim + latex + delim, format);
+    cursor.setPosition(start + delim.size() + latex.size());
     cursor.endEditBlock();
     setTextCursor(cursor);
+    committing_ = false;
+    editingMath_ = true;
+    updateMathPreview();
 }
 
 void NoteTextEdit::insertMath(bool display)
 {
-    if (isReadOnly())
+    if (runAtCursor())
         return;
     auto cursor = textCursor();
-    MathDialog dlg(cursor.selectedText().replace(QChar::ParagraphSeparator, ' '), display, this);
-    if (dlg.exec() != QDialog::Accepted || dlg.latex().isEmpty())
+    startMathEdit(cursor, cursor.selectedText().replace(QChar::ParagraphSeparator, ' ').trimmed(), display);
+}
+
+void NoteTextEdit::editMathInPlace(QTextCursor selection)
+{
+    QString latex;
+    bool display = false;
+    if (selection.isNull() || isReadOnly() ||
+        !parseMathResourceName(selection.charFormat().toImageFormat().name(), &latex, &display))
         return;
-    placeMath(cursor, dlg.latex(), dlg.isDisplay());
+    startMathEdit(selection, latex, display);
+}
+
+void NoteTextEdit::commitMathEdits(bool all)
+{
+    if (committing_)
+        return;
+    auto runs = mathRuns();
+    if (runs.empty())
+        return;
+    committing_ = true;
+    auto user = textCursor();
+    int p = user.position();
+    bool after = false;  // the user's cursor ends up right after a rendered formula
+    QTextCharFormat textFormat;
+    for (auto it = runs.rbegin(); it != runs.rend(); ++it) {
+        if (!all && p > it->start && p < it->end)
+            continue;  // still being edited
+        QTextCursor c(document());
+        c.setPosition(it->start);
+        c.setPosition(it->end, QTextCursor::KeepAnchor);
+        QString latex = stripDelimiters(c.selectedText(), it->display);
+        c.beginEditBlock();
+        if (latex.isEmpty())
+            c.removeSelectedText();
+        else
+            c.insertImage(mathFormat(latex, it->display));
+        c.endEditBlock();
+        if (p == it->end && !latex.isEmpty()) {
+            after = true;
+            textFormat = outerFormat(c.block(), c.positionInBlock() - 1);
+        }
+    }
+    if (after) {
+        user = textCursor();
+        user.setCharFormat(textFormat);
+        setTextCursor(user);
+    }
+    committing_ = false;
+    if (all)
+        editingMath_ = false;
+    updateMathPreview();
+}
+
+void NoteTextEdit::updateMathPreview()
+{
+    auto run = runAtCursor();
+    if (!run) {
+        preview_->hide();
+        return;
+    }
+    QTextCursor c(document());
+    c.setPosition(run->start);
+    c.setPosition(run->end, QTextCursor::KeepAnchor);
+    QString latex = stripDelimiters(c.selectedText(), run->display);
+    if (latex.isEmpty()) {
+        preview_->setText(tr("Type LaTeX, e.g. \\frac{a}{b}"));
+    } else {
+        auto m = renderMath(latex, run->display, QFontInfo(font()).pixelSize() * 1.25,
+                            formulaColor(palette().color(QPalette::Text)), devicePixelRatioF());
+        preview_->setPixmap(QPixmap::fromImage(m.image));
+        preview_->setToolTip(m.ok ? QString() : m.error);
+    }
+    preview_->adjustSize();
+    QTextCursor endC(document());
+    endC.setPosition(run->end);
+    QRect r = cursorRect(endC);
+    int x = std::clamp(r.left() - preview_->width() / 2, 4, std::max(4, viewport()->width() - preview_->width() - 4));
+    int y = r.bottom() + 6;
+    if (y + preview_->height() > viewport()->height()) {
+        QTextCursor startC(document());
+        startC.setPosition(run->start);
+        y = std::max(0, cursorRect(startC).top() - preview_->height() - 6);
+    }
+    preview_->move(x, y);
+    preview_->show();
+    preview_->raise();
 }
 
 QTextCursor NoteTextEdit::mathAt(const QPoint& pos)
@@ -121,7 +299,7 @@ QTextCursor NoteTextEdit::mathAt(const QPoint& pos)
     return {};
 }
 
-bool NoteTextEdit::editMath(QTextCursor selection)
+bool NoteTextEdit::editMathInDialog(QTextCursor selection)
 {
     QString latex;
     bool display = false;
@@ -132,18 +310,18 @@ bool NoteTextEdit::editMath(QTextCursor selection)
     MathDialog dlg(latex, display, this);
     if (dlg.exec() != QDialog::Accepted)
         return true;
-    if (dlg.latex().isEmpty()) {
+    if (dlg.latex().isEmpty())
         selection.removeSelectedText();
-    } else if (dlg.isDisplay() == display) {
-        selection.insertImage(mathFormat(dlg.latex(), display));
-    } else {
-        placeMath(selection, dlg.latex(), dlg.isDisplay());
-    }
+    else
+        selection.insertImage(mathFormat(dlg.latex(), dlg.isDisplay()));
     return true;
 }
 
-void NoteTextEdit::prepareMath()
+void NoteTextEdit::prepareDocument()
 {
+    editingMath_ = false;
+    preview_->hide();
+    ++internal_;
     for (auto block = document()->begin(); block.isValid(); block = block.next())
         for (auto it = block.begin(); !it.atEnd(); ++it) {
             auto frag = it.fragment();
@@ -161,6 +339,58 @@ void NoteTextEdit::prepareMath()
             img.setToolTip(latex);
             c.setCharFormat(img);
         }
+    --internal_;
+    adaptColors();
+}
+
+// Text colours that are unreadable on the current background (black text from a
+// light theme in dark mode, and vice versa) are shown in the normal text colour; the
+// original is kept in kOriginalForegroundProperty and written back when saving.
+void NoteTextEdit::adaptColors()
+{
+    QColor base = palette().color(QPalette::Base);
+    struct Change {
+        int start, end;
+        QTextCharFormat format;
+    };
+    std::vector<Change> changes;
+    for (auto block = document()->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            if (f.isImageFormat())
+                continue;
+            bool hidden = f.hasProperty(kOriginalForegroundProperty);
+            if (!hidden && !f.hasProperty(QTextFormat::ForegroundBrush))
+                continue;
+            QColor original = hidden ? f.property(kOriginalForegroundProperty).value<QColor>() : f.foreground().color();
+            bool unreadable = std::abs(original.lightness() - base.lightness()) < 90;
+            if (unreadable && !hidden) {
+                f.setProperty(kOriginalForegroundProperty, original);
+                f.clearForeground();
+            } else if (!unreadable && hidden) {
+                f.setForeground(original);
+                f.clearProperty(kOriginalForegroundProperty);
+            } else {
+                continue;
+            }
+            changes.push_back({frag.position(), frag.position() + frag.length(), f});
+        }
+    if (changes.empty())
+        return;
+    ++internal_;
+    bool modified = document()->isModified();
+    bool undo = document()->isUndoRedoEnabled();
+    document()->setUndoRedoEnabled(false);  // display-only adjustment, not an edit
+    for (auto& ch : changes) {
+        QTextCursor c(document());
+        c.setPosition(ch.start);
+        c.setPosition(ch.end, QTextCursor::KeepAnchor);
+        c.setCharFormat(ch.format);
+    }
+    document()->setUndoRedoEnabled(undo);
+    document()->setModified(modified);
+    --internal_;
 }
 
 // Typing the closing $ of $…$ (or $$…$$ on its own line) turns it into a formula.
@@ -174,35 +404,121 @@ bool NoteTextEdit::convertTypedMath()
     QString before = block.text().left(cursor.positionInBlock());
     static const QRegularExpression displayRe(R"(^\$\$([^$]*\S[^$]*)\$\$$)");
     static const QRegularExpression inlineRe(R"((?:^|[^\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$$)");
+    QTextCursor sel(document());
     if (auto m = displayRe.match(before); m.hasMatch()) {
-        QTextCursor sel(document());
         sel.setPosition(block.position());
         sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
-        placeMath(sel, m.captured(1).trimmed(), true);
+        commitAs(sel, m.captured(1).trimmed(), true);
         return true;
     }
     if (auto m = inlineRe.match(before); m.hasMatch()) {
-        QTextCursor sel(document());
         sel.setPosition(block.position() + m.capturedStart(1) - 1);
         sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
-        placeMath(sel, m.captured(1), false);
+        commitAs(sel, m.captured(1), false);
+        return true;
+    }
+    // "$$" starts an empty formula to type into: a display formula on an empty line,
+    // an inline one anywhere else
+    static const QRegularExpression pairRe(R"((?:^|[^\\$])\$\$$)");
+    if (pairRe.match(before).hasMatch()) {
+        sel.setPosition(cursor.position() - 2);
+        sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
+        bool display = before == "$$" && block.length() - 1 == 2;
+        startMathEdit(sel, {}, display);
         return true;
     }
     return false;
 }
 
+void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool display)
+{
+    QTextCharFormat textFormat = selection.charFormat();
+    if (textFormat.isImageFormat() || textFormat.hasProperty(kMathSourceProperty))
+        textFormat = QTextCharFormat();
+    selection.beginEditBlock();
+    selection.removeSelectedText();
+    if (display) {
+        QTextBlockFormat centred = selection.blockFormat();
+        centred.setAlignment(Qt::AlignHCenter);
+        selection.setBlockFormat(centred);
+    }
+    selection.insertImage(mathFormat(latex, display));
+    if (display) {
+        selection.insertBlock();
+        QTextBlockFormat normal = selection.blockFormat();
+        normal.setAlignment(Qt::AlignLeft);
+        selection.setBlockFormat(normal);
+    }
+    selection.setCharFormat(textFormat);
+    selection.endEditBlock();
+    setTextCursor(selection);
+}
+
 void NoteTextEdit::keyPressEvent(QKeyEvent* e)
 {
+    if (!isReadOnly()) {
+        if (auto run = runAtCursor()) {
+            auto cursor = textCursor();
+            int closing = run->end - (run->display ? 2 : 1);
+            bool leave = e->key() == Qt::Key_Escape ||
+                         ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && !(e->modifiers() & Qt::ShiftModifier));
+            if (e->text() == "$" && cursor.position() >= closing) {
+                // type over the closing delimiter; leaving the formula renders it
+                if (cursor.position() + 1 >= run->end)
+                    leaveMath(*run, run->display);
+                else {
+                    cursor.movePosition(QTextCursor::NextCharacter);
+                    setTextCursor(cursor);
+                }
+                return;
+            }
+            if (leave) {
+                leaveMath(*run, run->display && e->key() != Qt::Key_Escape);
+                return;
+            }
+        }
+    }
     QTextEdit::keyPressEvent(e);
-    if (e->text() == "$" && !isReadOnly())
+    if (e->text() == "$" && !isReadOnly() && !runAtCursor())
         convertTypedMath();
 }
 
-void NoteTextEdit::mouseDoubleClickEvent(QMouseEvent* e)
+// Moves the cursor past a formula being edited, which renders it; after a display
+// formula, nextLine continues on the following line (a new one at the end).
+void NoteTextEdit::leaveMath(const MathRun& run, bool nextLine)
 {
-    if (editMath(mathAt(e->position().toPoint())))
+    auto cursor = textCursor();
+    cursor.setPosition(run.end);
+    setTextCursor(cursor);
+    if (!nextLine)
         return;
-    QTextEdit::mouseDoubleClickEvent(e);
+    cursor = textCursor();
+    if (!cursor.atBlockEnd())
+        return;
+    if (cursor.block().next().isValid()) {
+        cursor.movePosition(QTextCursor::NextBlock);
+    } else {
+        auto textFormat = cursor.charFormat();
+        cursor.insertBlock();
+        QTextBlockFormat normal = cursor.blockFormat();
+        normal.setAlignment(Qt::AlignLeft);
+        cursor.setBlockFormat(normal);
+        cursor.setCharFormat(textFormat);
+    }
+    setTextCursor(cursor);
+}
+
+void NoteTextEdit::focusOutEvent(QFocusEvent* e)
+{
+    QTextEdit::focusOutEvent(e);
+    if (e->reason() != Qt::PopupFocusReason)
+        commitMathEdits(true);
+}
+
+void NoteTextEdit::mousePressEvent(QMouseEvent* e)
+{
+    pressPos_ = e->position().toPoint();
+    QTextEdit::mousePressEvent(e);
 }
 
 void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
@@ -213,12 +529,14 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
     if (!math.isNull()) {
         QString latex;
         parseMathResourceName(math.charFormat().toImageFormat().name(), &latex, nullptr);
-        auto* editAct = new QAction(tr("Edit Formula…"), menu.get());
-        connect(editAct, &QAction::triggered, this, [this, math] { editMath(math); });
+        auto* editAct = new QAction(tr("Edit Formula"), menu.get());
+        connect(editAct, &QAction::triggered, this, [this, math] { editMathInPlace(math); });
+        auto* dialogAct = new QAction(tr("Formula Editor…"), menu.get());
+        connect(dialogAct, &QAction::triggered, this, [this, math] { editMathInDialog(math); });
         auto* copyAct = new QAction(tr("Copy LaTeX"), menu.get());
         connect(copyAct, &QAction::triggered, this, [latex] { QApplication::clipboard()->setText(latex); });
-        menu->insertAction(first, editAct);
-        menu->insertAction(first, copyAct);
+        for (auto* a : {editAct, dialogAct, copyAct})
+            menu->insertAction(first, a);
         menu->insertSeparator(first);
     }
     if (!isReadOnly()) {
@@ -288,12 +606,21 @@ void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
         return;
     }
     QTextEdit::mouseReleaseEvent(e);
+    // a click (not a drag) on a formula opens it for editing right here
+    if (e->button() == Qt::LeftButton && (e->position().toPoint() - pressPos_).manhattanLength() < 4) {
+        auto math = mathAt(e->position().toPoint());
+        if (!math.isNull())
+            editMathInPlace(math);
+    }
 }
 
 void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
 {
     bool overLink = !anchorAt(e->pos()).isEmpty() && (e->modifiers() & Qt::ControlModifier);
-    viewport()->setCursor(overLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
+    bool overMath = !isReadOnly() && !mathAt(e->pos()).isNull();
+    viewport()->setCursor(overLink || overMath ? Qt::PointingHandCursor : Qt::IBeamCursor);
+    if (overMath)
+        viewport()->setToolTip(tr("Click to edit the formula"));
     QTextEdit::mouseMoveEvent(e);
 }
 
@@ -409,7 +736,7 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     saveTimer_.setInterval(700);
     connect(&saveTimer_, &QTimer::timeout, this, &NoteEditor::save);
     connect(edit_->document(), &QTextDocument::contentsChanged, this, [this] {
-        if (!loading_ && !key_.isEmpty())
+        if (!loading_ && !key_.isEmpty() && !edit_->isInternalEdit())
             saveTimer_.start();
     });
     connect(edit_, &QTextEdit::cursorPositionChanged, this, &NoteEditor::updateToolbar);
@@ -467,9 +794,10 @@ void NoteEditor::load()
     int pos = edit_->textCursor().position();
     edit_->document()->clear();
     edit_->setHtml(noteHtmlForEditor(html, libraryId_, edit_->document()));
-    edit_->prepareMath();
+    edit_->prepareDocument();
     edit_->document()->clearUndoRedoStacks();
     edit_->document()->setModified(false);
+    lastSerialized_ = documentToNoteHtml(edit_->document());
     auto cursor = edit_->textCursor();
     cursor.setPosition(std::min(pos, edit_->document()->characterCount() - 1));
     edit_->setTextCursor(cursor);
@@ -487,9 +815,9 @@ void NoteEditor::save()
     if (key_.isEmpty() || !edit_->document()->isModified())
         return;
     auto html = documentToNoteHtml(edit_->document());
-    if (html == lastSaved_)
+    if (html == lastSaved_ || html == lastSerialized_)
         return;
-    lastSaved_ = html;
+    lastSaved_ = lastSerialized_ = html;
     edit_->document()->setModified(false);
     auto& lib = AppContext::get().library();
     lib.updateItem(libraryId_, ss(key_), [&](Json& d) { d["note"] = ss(html); });

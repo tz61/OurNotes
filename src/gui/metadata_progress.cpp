@@ -123,13 +123,7 @@ MetadataProgressDialog::MetadataProgressDialog(int64_t libraryId, std::vector<Jo
     tf.setBold(true);
     title_->setFont(tf);
     subtitle_ = new QLabel(this);
-    // secondary text: between the text and background colours
-    QPalette dim = subtitle_->palette();
-    QColor fg = dim.color(QPalette::WindowText), bg = dim.color(QPalette::Window);
-    dim.setColor(QPalette::WindowText, QColor::fromRgbF(fg.redF() * 0.62 + bg.redF() * 0.38,
-                                                        fg.greenF() * 0.62 + bg.greenF() * 0.38,
-                                                        fg.blueF() * 0.62 + bg.blueF() * 0.38));
-    subtitle_->setPalette(dim);
+    subtitle_->setForegroundRole(QPalette::PlaceholderText);
     bar_ = new FancyProgressBar(this);
     bar_->setMaximum((int)jobs_.size());
     v->addWidget(title_);
@@ -163,7 +157,7 @@ MetadataProgressDialog::MetadataProgressDialog(int64_t libraryId, std::vector<Jo
 
     auto* footer = new QHBoxLayout;
     summary_ = new QLabel(this);
-    summary_->setPalette(dim);
+    summary_->setForegroundRole(QPalette::PlaceholderText);
     button_ = new QPushButton(tr("Cancel"), this);
     footer->addWidget(summary_, 1);
     footer->addWidget(button_);

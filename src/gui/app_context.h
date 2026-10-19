@@ -17,6 +17,7 @@ public:
     ~AppContext() override;
 
     static AppContext& get();
+    static AppContext* tryGet();  // nullptr when no context exists (e.g. in unit tests)
     Config& config() { return config_; }
     Library& library() { return library_; }
 
@@ -27,6 +28,8 @@ signals:
     // type: "item" | "collection" | "setting" | "library" | "*" (everything)
     void changed(qint64 libraryId, const QString& type, const QString& action, const QStringList& keys);
     void syncFinished();
+    // Theme or formula colour settings changed.
+    void appearanceChanged();
 
 private:
     Config& config_;

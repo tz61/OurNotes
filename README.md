@@ -24,9 +24,13 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   Annotations* writes yours into a copy of the file.
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
-  LaTeX math: type `$…$` or `$$…$$` (or press Ctrl+M / Ctrl+Shift+M), double-click a
-  formula to edit it; rendered with MicroTeX and stored like Zotero's math. Images are
-  scaled to fit the note width. Selecting a paper shows its notes in a tab next to Info.
+  LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display
+  formula) and type its LaTeX in place with a live preview; Ctrl+M / Ctrl+Shift+M do the
+  same. Click a formula to edit it in the note; leaving it (arrow keys, Enter, Esc, the
+  closing `$`) renders it again. Rendered with MicroTeX in the text colour (or a colour
+  set in Preferences; `\textcolor{red}{…}` for single formulas) and stored like
+  Zotero's math. Images are scaled to fit the note width. Selecting a paper shows its
+  notes in a tab next to Info.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
   dropping PDFs (metadata is found from the identifiers or title in the file, with a
   progress window), or by importing BibTeX / RIS / CSL JSON. PDF text is read locally;
@@ -112,7 +116,8 @@ freepen-cli import-zotero ~/Zotero
 
 The interface is scaled to 150% by default; change it in *Preferences → General →
 Interface scale* (100–300%, applied on restart). A `QT_SCALE_FACTOR` set in the
-environment takes precedence.
+environment takes precedence. *Appearance* follows the system's light or dark theme by
+default, or can be set to Light or Dark (applied immediately).
 
 Data lives in `~/freePen` (database `freepen.sqlite`, files in `storage/<KEY>/`), like
 Zotero's data directory; change it in *Preferences → General* or with

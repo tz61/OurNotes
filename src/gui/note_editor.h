@@ -5,8 +5,11 @@
 #include <QWidget>
 
 #include <functional>
+#include <optional>
+#include <vector>
 
 class QComboBox;
+class QLabel;
 class QToolBar;
 
 namespace fp::gui {
@@ -21,28 +24,52 @@ public:
     explicit NoteTextEdit(QWidget* parent = nullptr);
     std::function<QString(const QImage&)> storeImage;  // returns a resource name
 
-    // Opens the formula editor and inserts the result at the cursor.
+    // Starts an empty formula (or one made of the selected text) at the cursor, in place.
     void insertMath(bool display);
-    // After loading HTML: make formulas sit on the text baseline.
-    void prepareMath();
+    // After loading HTML: formulas on the text baseline, readable text colours.
+    void prepareDocument();
+    // Renders formulas whose source is being edited (all of them, or those the
+    // cursor has left).
+    void commitMathEdits(bool all);
+    // True while the editor adjusts the document itself (not a user edit).
+    bool isInternalEdit() const { return internal_ > 0; }
 
 protected:
     bool canInsertFromMimeData(const QMimeData* source) const override;
     void insertFromMimeData(const QMimeData* source) override;
+    void mousePressEvent(QMouseEvent* e) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;
-    void mouseDoubleClickEvent(QMouseEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
+    void focusOutEvent(QFocusEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
 
 private:
+    struct MathRun {
+        int start = 0, end = 0;
+        bool display = false;
+    };
     bool convertTypedMath();
+    void commitAs(QTextCursor selection, const QString& latex, bool display);
     QTextCursor mathAt(const QPoint& viewportPos);  // selects the formula under the point
-    bool editMath(QTextCursor selection);
-    void placeMath(QTextCursor cursor, const QString& latex, bool display);
+    void editMathInPlace(QTextCursor selection);
+    bool editMathInDialog(QTextCursor selection);
+    void startMathEdit(QTextCursor cursor, const QString& latex, bool display);
+    QTextCharFormat sourceFormat(bool display, QTextCharFormat base) const;
+    std::vector<MathRun> mathRuns() const;
+    std::optional<MathRun> runAtCursor() const;
+    void updateMathPreview();
+    void leaveMath(const MathRun& run, bool nextLine);
+    QTextCharFormat outerFormat(const QTextBlock& block, int formulaPosInBlock) const;
+    void adaptColors();
 
     FittedImageHandler* images_ = nullptr;
+    QLabel* preview_ = nullptr;
+    QPoint pressPos_;
+    int internal_ = 0;
+    bool committing_ = false;
+    bool editingMath_ = false;  // the cursor was inside a formula's source
 };
 
 // Rich-text editor for a note item. Changes are saved automatically shortly
@@ -86,6 +113,7 @@ private:
     int64_t libraryId_ = 0;
     QString key_;
     QString lastSaved_;
+    QString lastSerialized_;  // the stored note as this editor writes it
     bool loading_ = false;
 };
 

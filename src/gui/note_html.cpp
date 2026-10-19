@@ -97,9 +97,22 @@ bool isMonospace(const QTextCharFormat& f)
     return false;
 }
 
+QString mathSourceLatex(const QString& text, bool display)
+{
+    QString delim = display ? "$$" : "$";
+    QString t = text;
+    if (t.startsWith(delim) && t.endsWith(delim) && t.size() >= 2 * delim.size())
+        t = t.mid(delim.size(), t.size() - 2 * delim.size());
+    return t.trimmed();
+}
+
 QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefault)
 {
     auto f = frag.charFormat();
+    if (int kind = f.property(kMathSourceProperty).toInt()) {
+        auto latex = mathSourceLatex(frag.text(), kind == 2);
+        return latex.isEmpty() ? QString() : "<span class=\"math\">$" + esc(latex) + "$</span>";
+    }
     if (f.isImageFormat()) {
         auto img = f.toImageFormat();
         QString attrs;
@@ -140,7 +153,9 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     if (isMonospace(f) && !isMonospace(blockDefault))
         wrap("code");
     QStringList style;
-    if (f.hasProperty(QTextFormat::ForegroundBrush) && !f.isAnchor())
+    if (f.hasProperty(kOriginalForegroundProperty))
+        style << "color: " + f.property(kOriginalForegroundProperty).value<QColor>().name();
+    else if (f.hasProperty(QTextFormat::ForegroundBrush) && !f.isAnchor())
         style << "color: " + f.foreground().color().name();
     if (f.hasProperty(QTextFormat::BackgroundBrush) && f.background().style() != Qt::NoBrush)
         style << "background-color: " + f.background().color().name();
@@ -258,7 +273,14 @@ void serializeFrame(QTextFrame* frame, QString& out)
         }
         closeLists(0);
         openList = nullptr;
-        // a paragraph holding only a display formula
+        // a paragraph holding only a display formula (rendered, or being edited)
+        if (auto first = block.begin(); !first.atEnd() && first.fragment().charFormat().property(kMathSourceProperty).toInt() == 2 &&
+                                        first.fragment().length() == block.length() - 1) {
+            auto latex = mathSourceLatex(first.fragment().text(), true);
+            if (!latex.isEmpty())
+                out += "<pre class=\"math\">$$" + esc(latex) + "$$</pre>";
+            continue;
+        }
         if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
             auto f = block.begin().fragment().charFormat();
             QString latex;

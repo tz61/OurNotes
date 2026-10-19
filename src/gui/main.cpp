@@ -14,6 +14,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/main_window.h"
+#include "gui/theme.h"
 #include "gui/ui_scale.h"
 
 using namespace fp;
@@ -48,6 +49,7 @@ int main(int argc, char** argv)
     QApplication::setApplicationVersion(FREEPEN_VERSION);
     QApplication::setDesktopFileName("freepen");
     QApplication::setWindowIcon(QIcon(":/freepen.svg"));
+    applyAppearance(appearanceFromConfig(*config));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("freePen reference manager");

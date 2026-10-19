@@ -29,6 +29,7 @@ private:
     QWidget* generalPage();
     QWidget* syncPage();
     QWidget* advancedPage();
+    QWidget* formulaColorRow(QWidget* page);
     void reloadTargets();
     void addServer();
     void addFolder();
@@ -44,6 +45,7 @@ private:
     QCheckBox* subcollections_;
     QCheckBox* fulltext_;
     QComboBox* scale_;
+    QComboBox* appearance_;
     QLabel* scaleHint_;
     QLabel* syncStatus_;
     bool restart_ = false;

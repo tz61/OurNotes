@@ -1,5 +1,6 @@
 #include "gui/tag_selector.h"
 
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -56,6 +57,13 @@ TagSelector::TagSelector(QWidget* parent) : QWidget(parent)
                 if ((lib == libraryId_ || lib == 0) && (type == "item" || type == "setting" || type == "*"))
                     reload();
             });
+}
+
+void TagSelector::changeEvent(QEvent* e)
+{
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange)
+        QMetaObject::invokeMethod(this, &TagSelector::reload, Qt::QueuedConnection);
 }
 
 void TagSelector::setLibrary(int64_t libraryId)
