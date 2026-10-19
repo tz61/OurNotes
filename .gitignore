@@ -1,0 +1,9 @@
+/build*/
+/.deps/
+/.cache/
+/.vscode/
+/.idea/
+compile_commands.json
+CMakeUserPresets.json
+*.swp
+__pycache__/

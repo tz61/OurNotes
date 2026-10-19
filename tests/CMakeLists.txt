@@ -1,0 +1,17 @@
+add_library(fp_test_main STATIC test_main.cpp)
+target_link_libraries(fp_test_main PUBLIC fp_doctest)
+
+# fp_add_test(<name> <sources...> LIBS <libs...>)
+function(fp_add_test name)
+    cmake_parse_arguments(T "" "" "LIBS" ${ARGN})
+    add_executable(${name} ${T_UNPARSED_ARGUMENTS})
+    target_link_libraries(${name} PRIVATE fp_test_main ${T_LIBS})
+    target_compile_definitions(${name} PRIVATE FREEPEN_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+foreach(dir core sync formats pdf)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
+        add_subdirectory(${dir})
+    endif()
+endforeach()

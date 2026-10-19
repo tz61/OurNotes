@@ -1,0 +1,5 @@
+#pragma once
+
+#define FREEPEN_VERSION "@PROJECT_VERSION@"
+#define FREEPEN_APP_NAME "freePen"
+#define FREEPEN_SYNC_API_VERSION 1

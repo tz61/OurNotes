@@ -1,0 +1,3718 @@
+{
+ "version": 44,
+ "itemTypes": [
+  {
+   "itemType": "annotation",
+   "fields": [],
+   "creatorTypes": []
+  },
+  {
+   "itemType": "artwork",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "artworkMedium",
+     "baseField": "medium"
+    },
+    {
+     "field": "artworkSize"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "eventPlace"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "artist",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "attachment",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "url"
+    }
+   ],
+   "creatorTypes": []
+  },
+  {
+   "itemType": "audioRecording",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "audioRecordingFormat",
+     "baseField": "medium"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "label",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "performer",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "originalCreator"
+    },
+    {
+     "creatorType": "composer"
+    },
+    {
+     "creatorType": "wordsBy"
+    },
+    {
+     "creatorType": "translator"
+    }
+   ]
+  },
+  {
+   "itemType": "bill",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "billNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "code"
+    },
+    {
+     "field": "codeVolume",
+     "baseField": "volume"
+    },
+    {
+     "field": "section"
+    },
+    {
+     "field": "codePages",
+     "baseField": "pages"
+    },
+    {
+     "field": "legislativeBody",
+     "baseField": "authority"
+    },
+    {
+     "field": "session"
+    },
+    {
+     "field": "history"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "sponsor",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "cosponsor"
+    }
+   ]
+  },
+  {
+   "itemType": "blogPost",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "blogTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "websiteType",
+     "baseField": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "commenter"
+    }
+   ]
+  },
+  {
+   "itemType": "book",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "originalDate"
+    },
+    {
+     "field": "originalPublisher"
+    },
+    {
+     "field": "originalPlace"
+    },
+    {
+     "field": "format",
+     "baseField": "medium"
+    },
+    {
+     "field": "numPages"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "bookSection",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "bookTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "originalDate"
+    },
+    {
+     "field": "originalPublisher"
+    },
+    {
+     "field": "originalPlace"
+    },
+    {
+     "field": "format",
+     "baseField": "medium"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    },
+    {
+     "creatorType": "bookAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "case",
+   "fields": [
+    {
+     "field": "caseName",
+     "baseField": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "court",
+     "baseField": "authority"
+    },
+    {
+     "field": "dateDecided",
+     "baseField": "date"
+    },
+    {
+     "field": "docketNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "reporter"
+    },
+    {
+     "field": "reporterVolume",
+     "baseField": "volume"
+    },
+    {
+     "field": "firstPage",
+     "baseField": "pages"
+    },
+    {
+     "field": "history"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "counsel"
+    }
+   ]
+  },
+  {
+   "itemType": "computerProgram",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "versionNumber"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "system"
+    },
+    {
+     "field": "company",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "programmingLanguage"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "programmer",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "conferencePaper",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "proceedingsTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "conferenceName"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "eventPlace"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "issue"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "dataset",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "identifier",
+     "baseField": "number"
+    },
+    {
+     "field": "type"
+    },
+    {
+     "field": "versionNumber"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "repository",
+     "baseField": "publisher"
+    },
+    {
+     "field": "repositoryLocation",
+     "baseField": "place"
+    },
+    {
+     "field": "format",
+     "baseField": "medium"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "dictionaryEntry",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "dictionaryTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "document",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "reviewedAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "email",
+   "fields": [
+    {
+     "field": "subject",
+     "baseField": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "recipient"
+    }
+   ]
+  },
+  {
+   "itemType": "encyclopediaArticle",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "encyclopediaTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "film",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "distributor",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "genre",
+     "baseField": "type"
+    },
+    {
+     "field": "videoRecordingFormat",
+     "baseField": "medium"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "director",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "producer"
+    },
+    {
+     "creatorType": "scriptwriter"
+    },
+    {
+     "creatorType": "castMember"
+    },
+    {
+     "creatorType": "host"
+    },
+    {
+     "creatorType": "guest"
+    },
+    {
+     "creatorType": "narrator"
+    }
+   ]
+  },
+  {
+   "itemType": "forumPost",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "forumTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "postType",
+     "baseField": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "hearing",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "committee"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "documentNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "legislativeBody",
+     "baseField": "authority"
+    },
+    {
+     "field": "session"
+    },
+    {
+     "field": "history"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "contributor",
+     "primary": true
+    }
+   ]
+  },
+  {
+   "itemType": "instantMessage",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "recipient"
+    }
+   ]
+  },
+  {
+   "itemType": "interview",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "interviewMedium",
+     "baseField": "medium"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "interviewee",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "interviewer"
+    }
+   ]
+  },
+  {
+   "itemType": "journalArticle",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "publicationTitle"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "issue"
+    },
+    {
+     "field": "section"
+    },
+    {
+     "field": "partNumber"
+    },
+    {
+     "field": "partTitle"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "seriesText"
+    },
+    {
+     "field": "journalAbbreviation"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "PMID"
+    },
+    {
+     "field": "PMCID"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "reviewedAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "letter",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "letterType",
+     "baseField": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "eventPlace"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "recipient"
+    }
+   ]
+  },
+  {
+   "itemType": "magazineArticle",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "publicationTitle"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "issue"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "reviewedAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "manuscript",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "manuscriptType",
+     "baseField": "type"
+    },
+    {
+     "field": "institution",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "numPages"
+    },
+    {
+     "field": "number"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    }
+   ]
+  },
+  {
+   "itemType": "map",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "mapType",
+     "baseField": "type"
+    },
+    {
+     "field": "scale"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "cartographer",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "newspaperArticle",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "publicationTitle"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "issue"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "section"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "reviewedAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "note",
+   "fields": [],
+   "creatorTypes": []
+  },
+  {
+   "itemType": "patent",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "country"
+    },
+    {
+     "field": "assignee"
+    },
+    {
+     "field": "issuingAuthority",
+     "baseField": "authority"
+    },
+    {
+     "field": "patentNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "filingDate"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "applicationNumber"
+    },
+    {
+     "field": "priorityNumbers"
+    },
+    {
+     "field": "issueDate",
+     "baseField": "date"
+    },
+    {
+     "field": "priorityDate",
+     "baseField": "originalDate"
+    },
+    {
+     "field": "references"
+    },
+    {
+     "field": "legalStatus",
+     "baseField": "status"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "inventor",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "attorneyAgent"
+    }
+   ]
+  },
+  {
+   "itemType": "podcast",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "episodeNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "audioFileType",
+     "baseField": "medium"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "podcaster",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "director"
+    },
+    {
+     "creatorType": "producer"
+    },
+    {
+     "creatorType": "scriptwriter"
+    },
+    {
+     "creatorType": "castMember"
+    },
+    {
+     "creatorType": "guest"
+    },
+    {
+     "creatorType": "executiveProducer"
+    },
+    {
+     "creatorType": "seriesCreator"
+    }
+   ]
+  },
+  {
+   "itemType": "preprint",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "genre",
+     "baseField": "type"
+    },
+    {
+     "field": "repository",
+     "baseField": "publisher"
+    },
+    {
+     "field": "archiveID",
+     "baseField": "number"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "reviewedAuthor"
+    }
+   ]
+  },
+  {
+   "itemType": "presentation",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "presentationType",
+     "baseField": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "meetingName"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "sessionTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "presenter",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "chair"
+    },
+    {
+     "creatorType": "organizer"
+    }
+   ]
+  },
+  {
+   "itemType": "radioBroadcast",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "programTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "episodeNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "audioRecordingFormat",
+     "baseField": "medium"
+    },
+    {
+     "field": "network",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "creator",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "director"
+    },
+    {
+     "creatorType": "producer"
+    },
+    {
+     "creatorType": "scriptwriter"
+    },
+    {
+     "creatorType": "castMember"
+    },
+    {
+     "creatorType": "host"
+    },
+    {
+     "creatorType": "guest"
+    },
+    {
+     "creatorType": "executiveProducer"
+    },
+    {
+     "creatorType": "seriesCreator"
+    }
+   ]
+  },
+  {
+   "itemType": "report",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "reportNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "reportType",
+     "baseField": "type"
+    },
+    {
+     "field": "institution",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "editor"
+    },
+    {
+     "creatorType": "seriesEditor"
+    }
+   ]
+  },
+  {
+   "itemType": "standard",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "organization",
+     "baseField": "authority"
+    },
+    {
+     "field": "committee"
+    },
+    {
+     "field": "type"
+    },
+    {
+     "field": "number"
+    },
+    {
+     "field": "versionNumber"
+    },
+    {
+     "field": "edition"
+    },
+    {
+     "field": "status"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "partNumber"
+    },
+    {
+     "field": "partTitle"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "numPages"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "editor"
+    }
+   ]
+  },
+  {
+   "itemType": "statute",
+   "fields": [
+    {
+     "field": "nameOfAct",
+     "baseField": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "code"
+    },
+    {
+     "field": "codeNumber"
+    },
+    {
+     "field": "publicLawNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "dateEnacted",
+     "baseField": "date"
+    },
+    {
+     "field": "pages"
+    },
+    {
+     "field": "section"
+    },
+    {
+     "field": "session"
+    },
+    {
+     "field": "history"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "thesis",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "thesisType",
+     "baseField": "type"
+    },
+    {
+     "field": "university",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "series"
+    },
+    {
+     "field": "seriesNumber"
+    },
+    {
+     "field": "numPages"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "ISSN"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    }
+   ]
+  },
+  {
+   "itemType": "tvBroadcast",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "programTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "episodeNumber",
+     "baseField": "number"
+    },
+    {
+     "field": "videoRecordingFormat",
+     "baseField": "medium"
+    },
+    {
+     "field": "network",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "director",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "producer"
+    },
+    {
+     "creatorType": "scriptwriter"
+    },
+    {
+     "creatorType": "castMember"
+    },
+    {
+     "creatorType": "host"
+    },
+    {
+     "creatorType": "guest"
+    },
+    {
+     "creatorType": "narrator"
+    },
+    {
+     "creatorType": "executiveProducer"
+    },
+    {
+     "creatorType": "seriesCreator"
+    }
+   ]
+  },
+  {
+   "itemType": "videoRecording",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "videoRecordingFormat",
+     "baseField": "medium"
+    },
+    {
+     "field": "seriesTitle"
+    },
+    {
+     "field": "volume"
+    },
+    {
+     "field": "numberOfVolumes"
+    },
+    {
+     "field": "studio",
+     "baseField": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "runningTime"
+    },
+    {
+     "field": "ISBN"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "archive"
+    },
+    {
+     "field": "archiveLocation"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "libraryCatalog"
+    },
+    {
+     "field": "callNumber"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "creator",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    },
+    {
+     "creatorType": "director"
+    },
+    {
+     "creatorType": "producer"
+    },
+    {
+     "creatorType": "scriptwriter"
+    },
+    {
+     "creatorType": "castMember"
+    },
+    {
+     "creatorType": "host"
+    },
+    {
+     "creatorType": "guest"
+    },
+    {
+     "creatorType": "narrator"
+    },
+    {
+     "creatorType": "executiveProducer"
+    }
+   ]
+  },
+  {
+   "itemType": "webpage",
+   "fields": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "abstractNote"
+    },
+    {
+     "field": "websiteTitle",
+     "baseField": "publicationTitle"
+    },
+    {
+     "field": "websiteType",
+     "baseField": "type"
+    },
+    {
+     "field": "date"
+    },
+    {
+     "field": "publisher"
+    },
+    {
+     "field": "place"
+    },
+    {
+     "field": "DOI"
+    },
+    {
+     "field": "citationKey"
+    },
+    {
+     "field": "url"
+    },
+    {
+     "field": "accessDate"
+    },
+    {
+     "field": "shortTitle"
+    },
+    {
+     "field": "language"
+    },
+    {
+     "field": "rights"
+    },
+    {
+     "field": "extra"
+    }
+   ],
+   "creatorTypes": [
+    {
+     "creatorType": "author",
+     "primary": true
+    },
+    {
+     "creatorType": "contributor"
+    },
+    {
+     "creatorType": "translator"
+    }
+   ]
+  }
+ ],
+ "locales": {
+  "en-US": {
+   "itemTypes": {
+    "annotation": "Annotation",
+    "artwork": "Artwork",
+    "attachment": "Attachment",
+    "audioRecording": "Audio Recording",
+    "bill": "Bill",
+    "blogPost": "Blog Post",
+    "book": "Book",
+    "bookSection": "Book Section",
+    "case": "Case",
+    "computerProgram": "Software",
+    "conferencePaper": "Conference Paper",
+    "dataset": "Dataset",
+    "dictionaryEntry": "Dictionary Entry",
+    "document": "Document",
+    "email": "E-mail",
+    "encyclopediaArticle": "Encyclopedia Article",
+    "film": "Film",
+    "forumPost": "Forum Post",
+    "hearing": "Hearing",
+    "instantMessage": "Instant Message",
+    "interview": "Interview",
+    "journalArticle": "Journal Article",
+    "letter": "Letter",
+    "magazineArticle": "Magazine Article",
+    "manuscript": "Manuscript",
+    "map": "Map",
+    "newspaperArticle": "Newspaper Article",
+    "note": "Note",
+    "patent": "Patent",
+    "podcast": "Podcast",
+    "preprint": "Preprint",
+    "presentation": "Presentation",
+    "radioBroadcast": "Radio Broadcast",
+    "report": "Report",
+    "standard": "Standard",
+    "statute": "Statute",
+    "thesis": "Thesis",
+    "tvBroadcast": "TV Broadcast",
+    "videoRecording": "Video Recording",
+    "webpage": "Web Page"
+   },
+   "fields": {
+    "abstractNote": "Abstract",
+    "accessDate": "Accessed",
+    "applicationNumber": "Application Number",
+    "archive": "Archive",
+    "archiveID": "Archive ID",
+    "archiveLocation": "Loc. in Archive",
+    "artworkMedium": "Medium",
+    "artworkSize": "Artwork Size",
+    "assignee": "Assignee",
+    "audioFileType": "File Type",
+    "audioRecordingFormat": "Format",
+    "authority": "Authority",
+    "billNumber": "Bill Number",
+    "blogTitle": "Blog Title",
+    "bookTitle": "Book Title",
+    "callNumber": "Call Number",
+    "caseName": "Case Name",
+    "citationKey": "Citation Key",
+    "code": "Code",
+    "codeNumber": "Code Number",
+    "codePages": "Code Pages",
+    "codeVolume": "Code Volume",
+    "committee": "Committee",
+    "company": "Company",
+    "conferenceName": "Conference Name",
+    "country": "Country",
+    "court": "Court",
+    "date": "Date",
+    "dateAdded": "Date Added",
+    "dateDecided": "Date Decided",
+    "dateEnacted": "Date Enacted",
+    "dateModified": "Modified",
+    "dictionaryTitle": "Dictionary Title",
+    "distributor": "Distributor",
+    "docketNumber": "Docket Number",
+    "documentNumber": "Document Number",
+    "DOI": "DOI",
+    "edition": "Edition",
+    "encyclopediaTitle": "Encyclopedia Title",
+    "episodeNumber": "Episode Number",
+    "eventPlace": "Event Place",
+    "extra": "Extra",
+    "filingDate": "Filing Date",
+    "firstPage": "First Page",
+    "format": "Format",
+    "forumTitle": "Forum/Listserv Title",
+    "genre": "Genre",
+    "history": "History",
+    "identifier": "Identifier",
+    "institution": "Institution",
+    "interviewMedium": "Medium",
+    "ISBN": "ISBN",
+    "ISSN": "ISSN",
+    "issue": "Issue",
+    "issueDate": "Issue Date",
+    "issuingAuthority": "Issuing Authority",
+    "itemType": "Item Type",
+    "journalAbbreviation": "Journal Abbr",
+    "label": "Label",
+    "language": "Language",
+    "legalStatus": "Legal Status",
+    "legislativeBody": "Legislative Body",
+    "letterType": "Type",
+    "libraryCatalog": "Library Catalog",
+    "manuscriptType": "Type",
+    "mapType": "Type",
+    "medium": "Medium",
+    "meetingName": "Meeting Name",
+    "nameOfAct": "Name of Act",
+    "network": "Network",
+    "number": "Number",
+    "numberOfVolumes": "# of Volumes",
+    "numPages": "# of Pages",
+    "organization": "Organization",
+    "originalDate": "Original Date",
+    "originalPlace": "Original Place",
+    "originalPublisher": "Original Publisher",
+    "pages": "Pages",
+    "partNumber": "Part Number",
+    "partTitle": "Part Title",
+    "patentNumber": "Patent Number",
+    "place": "Place",
+    "PMCID": "PMCID",
+    "PMID": "PMID",
+    "postType": "Post Type",
+    "presentationType": "Type",
+    "priorityDate": "Priority Date",
+    "priorityNumbers": "Priority Numbers",
+    "proceedingsTitle": "Proceedings Title",
+    "programmingLanguage": "Prog. Language",
+    "programTitle": "Program Title",
+    "publicationTitle": "Publication",
+    "publicLawNumber": "Public Law Number",
+    "publisher": "Publisher",
+    "references": "References",
+    "reporter": "Reporter",
+    "reporterVolume": "Reporter Volume",
+    "reportNumber": "Report Number",
+    "reportType": "Report Type",
+    "repository": "Repository",
+    "repositoryLocation": "Repo. Location",
+    "rights": "License",
+    "runningTime": "Running Time",
+    "scale": "Scale",
+    "section": "Section",
+    "series": "Series",
+    "seriesNumber": "Series Number",
+    "seriesText": "Series Text",
+    "seriesTitle": "Series Title",
+    "session": "Session",
+    "sessionTitle": "Session Title",
+    "shortTitle": "Short Title",
+    "status": "Status",
+    "studio": "Studio",
+    "subject": "Subject",
+    "system": "System",
+    "thesisType": "Type",
+    "title": "Title",
+    "type": "Type",
+    "university": "University",
+    "url": "URL",
+    "versionNumber": "Version",
+    "videoRecordingFormat": "Format",
+    "volume": "Volume",
+    "websiteTitle": "Website Title",
+    "websiteType": "Website Type"
+   },
+   "creatorTypes": {
+    "artist": "Artist",
+    "attorneyAgent": "Attorney/Agent",
+    "author": "Author",
+    "bookAuthor": "Book Author",
+    "cartographer": "Cartographer",
+    "castMember": "Cast Member",
+    "chair": "Chair",
+    "commenter": "Commenter",
+    "composer": "Composer",
+    "contributor": "Contributor",
+    "cosponsor": "Cosponsor",
+    "counsel": "Counsel",
+    "creator": "Creator",
+    "director": "Director",
+    "editor": "Editor",
+    "executiveProducer": "Executive Producer",
+    "guest": "Guest",
+    "host": "Host",
+    "interviewee": "Interview With",
+    "interviewer": "Interviewer",
+    "inventor": "Inventor",
+    "narrator": "Narrator",
+    "organizer": "Organizer",
+    "originalCreator": "Original Creator",
+    "performer": "Performer",
+    "podcaster": "Podcaster",
+    "presenter": "Presenter",
+    "producer": "Producer",
+    "programmer": "Programmer",
+    "recipient": "Recipient",
+    "reviewedAuthor": "Reviewed Author",
+    "scriptwriter": "Scriptwriter",
+    "seriesCreator": "Series Creator",
+    "seriesEditor": "Series Editor",
+    "sponsor": "Sponsor",
+    "translator": "Translator",
+    "wordsBy": "Words By"
+   }
+  }
+ },
+ "csl": {
+  "types": {
+   "article": [
+    "preprint"
+   ],
+   "article-journal": [
+    "journalArticle"
+   ],
+   "article-magazine": [
+    "magazineArticle"
+   ],
+   "article-newspaper": [
+    "newspaperArticle"
+   ],
+   "bill": [
+    "bill"
+   ],
+   "book": [
+    "book"
+   ],
+   "broadcast": [
+    "podcast",
+    "tvBroadcast",
+    "radioBroadcast"
+   ],
+   "chapter": [
+    "bookSection"
+   ],
+   "dataset": [
+    "dataset"
+   ],
+   "document": [
+    "document",
+    "attachment",
+    "note"
+   ],
+   "entry-dictionary": [
+    "dictionaryEntry"
+   ],
+   "entry-encyclopedia": [
+    "encyclopediaArticle"
+   ],
+   "graphic": [
+    "artwork"
+   ],
+   "hearing": [
+    "hearing"
+   ],
+   "interview": [
+    "interview"
+   ],
+   "legal_case": [
+    "case"
+   ],
+   "legislation": [
+    "statute"
+   ],
+   "manuscript": [
+    "manuscript"
+   ],
+   "map": [
+    "map"
+   ],
+   "motion_picture": [
+    "film",
+    "videoRecording"
+   ],
+   "paper-conference": [
+    "conferencePaper"
+   ],
+   "patent": [
+    "patent"
+   ],
+   "personal_communication": [
+    "letter",
+    "email",
+    "instantMessage"
+   ],
+   "post": [
+    "forumPost"
+   ],
+   "post-weblog": [
+    "blogPost"
+   ],
+   "report": [
+    "report"
+   ],
+   "software": [
+    "computerProgram"
+   ],
+   "song": [
+    "audioRecording"
+   ],
+   "speech": [
+    "presentation"
+   ],
+   "standard": [
+    "standard"
+   ],
+   "thesis": [
+    "thesis"
+   ],
+   "webpage": [
+    "webpage"
+   ]
+  },
+  "fields": {
+   "text": {
+    "abstract": [
+     "abstractNote"
+    ],
+    "archive": [
+     "archive"
+    ],
+    "archive_location": [
+     "archiveLocation"
+    ],
+    "authority": [
+     "authority"
+    ],
+    "call-number": [
+     "callNumber",
+     "applicationNumber"
+    ],
+    "chapter-number": [
+     "session"
+    ],
+    "citation-key": [
+     "citationKey"
+    ],
+    "collection-number": [
+     "seriesNumber"
+    ],
+    "collection-title": [
+     "seriesTitle",
+     "series"
+    ],
+    "container-title": [
+     "publicationTitle",
+     "reporter",
+     "code"
+    ],
+    "dimensions": [
+     "artworkSize",
+     "runningTime"
+    ],
+    "DOI": [
+     "DOI"
+    ],
+    "edition": [
+     "edition"
+    ],
+    "event-place": [
+     "eventPlace"
+    ],
+    "event-title": [
+     "meetingName",
+     "conferenceName"
+    ],
+    "genre": [
+     "type",
+     "programmingLanguage"
+    ],
+    "ISBN": [
+     "ISBN"
+    ],
+    "ISSN": [
+     "ISSN"
+    ],
+    "issue": [
+     "issue",
+     "priorityNumbers"
+    ],
+    "journalAbbreviation": [
+     "journalAbbreviation"
+    ],
+    "language": [
+     "language"
+    ],
+    "license": [
+     "rights"
+    ],
+    "medium": [
+     "medium",
+     "system"
+    ],
+    "note": [
+     "extra"
+    ],
+    "number": [
+     "number"
+    ],
+    "number-of-pages": [
+     "numPages"
+    ],
+    "number-of-volumes": [
+     "numberOfVolumes"
+    ],
+    "original-publisher": [
+     "originalPublisher"
+    ],
+    "original-publisher-place": [
+     "originalPlace"
+    ],
+    "part-number": [
+     "partNumber"
+    ],
+    "part-title": [
+     "partTitle"
+    ],
+    "page": [
+     "pages"
+    ],
+    "PMID": [
+     "PMID"
+    ],
+    "PMCID": [
+     "PMCID"
+    ],
+    "publisher": [
+     "publisher"
+    ],
+    "publisher-place": [
+     "place"
+    ],
+    "references": [
+     "history",
+     "references"
+    ],
+    "scale": [
+     "scale"
+    ],
+    "section": [
+     "section",
+     "committee"
+    ],
+    "shortTitle": [
+     "shortTitle"
+    ],
+    "source": [
+     "libraryCatalog"
+    ],
+    "status": [
+     "status"
+    ],
+    "title": [
+     "title"
+    ],
+    "title-short": [
+     "shortTitle"
+    ],
+    "URL": [
+     "url"
+    ],
+    "version": [
+     "versionNumber"
+    ],
+    "volume": [
+     "volume",
+     "codeNumber"
+    ]
+   },
+   "date": {
+    "accessed": "accessDate",
+    "issued": "date",
+    "submitted": "filingDate",
+    "original-date": "originalDate"
+   }
+  },
+  "names": {
+   "author": "author",
+   "bookAuthor": "container-author",
+   "chair": "chair",
+   "castMember": "performer",
+   "composer": "composer",
+   "contributor": "contributor",
+   "creator": "author",
+   "director": "director",
+   "editor": "editor",
+   "executiveProducer": "executive-producer",
+   "guest": "guest",
+   "host": "host",
+   "interviewer": "interviewer",
+   "narrator": "narrator",
+   "originalCreator": "original-author",
+   "organizer": "organizer",
+   "podcaster": "host",
+   "producer": "producer",
+   "recipient": "recipient",
+   "reviewedAuthor": "reviewed-author",
+   "seriesCreator": "series-creator",
+   "seriesEditor": "collection-editor",
+   "scriptwriter": "script-writer",
+   "translator": "translator"
+  }
+ }
+}

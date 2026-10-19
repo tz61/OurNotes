@@ -1,0 +1,70 @@
+# Locate MuPDF and expose the imported target MuPDF::MuPDF.
+#
+# Resolution order:
+#   1. -DMUPDF_ROOT=<prefix>   prefix containing include/mupdf and lib/libmupdf(.a|.lib)
+#                              (+ libmupdf-third / libthirdparty when built from source)
+#   2. a system installation (Homebrew, distro packages)
+#   3. FREEPEN_BUNDLE_MUPDF=ON (default on Unix): download and build MuPDF with make.
+
+set(MUPDF_ROOT "" CACHE PATH "Prefix of a MuPDF installation")
+set(FREEPEN_MUPDF_VERSION "1.28.5")
+set(FREEPEN_MUPDF_SHA256 "98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934")
+if(UNIX)
+    option(FREEPEN_BUNDLE_MUPDF "Download and build MuPDF if it is not found" ON)
+else()
+    option(FREEPEN_BUNDLE_MUPDF "Download and build MuPDF if it is not found" OFF)
+endif()
+
+set(_mupdf_hints)
+if(MUPDF_ROOT)
+    set(_mupdf_hints HINTS "${MUPDF_ROOT}" NO_DEFAULT_PATH)
+endif()
+find_path(MUPDF_INCLUDE_DIR mupdf/fitz.h ${_mupdf_hints} PATH_SUFFIXES include)
+find_library(MUPDF_LIBRARY NAMES mupdf libmupdf ${_mupdf_hints} PATH_SUFFIXES lib lib64)
+find_library(MUPDF_THIRD_LIBRARY NAMES mupdf-third libmupdf-third libthirdparty ${_mupdf_hints} PATH_SUFFIXES lib lib64)
+
+add_library(MuPDF::MuPDF INTERFACE IMPORTED GLOBAL)
+
+if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
+    message(STATUS "freePen: using MuPDF from ${MUPDF_LIBRARY}")
+    target_include_directories(MuPDF::MuPDF INTERFACE "${MUPDF_INCLUDE_DIR}")
+    target_link_libraries(MuPDF::MuPDF INTERFACE "${MUPDF_LIBRARY}")
+    if(MUPDF_THIRD_LIBRARY)
+        target_link_libraries(MuPDF::MuPDF INTERFACE "${MUPDF_THIRD_LIBRARY}")
+    else()
+        # Distribution builds link the third-party libraries dynamically.
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(MUPDF_DEPS QUIET IMPORTED_TARGET freetype2 harfbuzz libopenjp2 jbig2dec libjpeg zlib gumbo)
+            if(MUPDF_DEPS_FOUND)
+                target_link_libraries(MuPDF::MuPDF INTERFACE PkgConfig::MUPDF_DEPS)
+            endif()
+        endif()
+    endif()
+elseif(FREEPEN_BUNDLE_MUPDF)
+    include(ExternalProject)
+    find_program(MAKE_EXECUTABLE NAMES gmake make REQUIRED)
+    set(_prefix "${CMAKE_BINARY_DIR}/mupdf")
+    set(_flags build=release HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no mujs=no "XCFLAGS=-fPIC")
+    ExternalProject_Add(mupdf_ext
+        URL "https://mupdf.com/downloads/archive/mupdf-${FREEPEN_MUPDF_VERSION}-source.tar.gz"
+        URL_HASH SHA256=${FREEPEN_MUPDF_SHA256}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        PREFIX "${_prefix}"
+        BUILD_IN_SOURCE TRUE
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ${MAKE_EXECUTABLE} -j8 ${_flags} libs
+        INSTALL_COMMAND ${MAKE_EXECUTABLE} ${_flags} "prefix=${_prefix}" install-libs
+        BUILD_BYPRODUCTS "${_prefix}/lib/libmupdf.a" "${_prefix}/lib/libmupdf-third.a")
+    file(MAKE_DIRECTORY "${_prefix}/include")
+    add_dependencies(MuPDF::MuPDF mupdf_ext)
+    target_include_directories(MuPDF::MuPDF INTERFACE "${_prefix}/include")
+    target_link_libraries(MuPDF::MuPDF INTERFACE "${_prefix}/lib/libmupdf.a" "${_prefix}/lib/libmupdf-third.a")
+    message(STATUS "freePen: MuPDF ${FREEPEN_MUPDF_VERSION} will be built from source")
+else()
+    message(FATAL_ERROR "MuPDF not found. Set -DMUPDF_ROOT=<prefix> (see README).")
+endif()
+
+if(NOT WIN32)
+    target_link_libraries(MuPDF::MuPDF INTERFACE m Threads::Threads)
+endif()
