@@ -140,6 +140,9 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
 
     reloadAnnotations();
     reloadNotes();
+    // the paper's notes at hand: the top one is open next to the PDF
+    if (!notesList_->currentItem() && notesList_->count() > 0)
+        notesList_->setCurrentRow(0);
     // Where the document was left: the local state has the exact position; the synced
     // page wins when the document was read further on another computer (as in Zotero).
     auto state = lib.readerState(ss(key_));

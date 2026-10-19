@@ -91,6 +91,37 @@ void drag(QWidget* w, QPointF from, QPointF to)
 
 } // namespace
 
+TEST_CASE("reader: the paper's top note opens with the PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    {
+        ReaderTab tab(env.lib, qs(key));  // no notes: nothing open
+        REQUIRE(tab.findChild<NoteEditor*>());
+        CHECK(tab.findChild<NoteEditor*>()->key().isEmpty());
+    }
+    env.library.createNote(env.lib, "<p>First thoughts</p>", jstr(parent, "key"));
+    env.library.createNote(env.lib, "<p>Second thoughts</p>", jstr(parent, "key"));
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 800);
+    tab.show();
+    QApplication::processEvents();
+    QListWidget* notes = nullptr;
+    for (auto* l : tab.findChildren<QListWidget*>())
+        if (l->count() == 2)
+            notes = l;
+    REQUIRE(notes);
+    auto* editor = tab.findChild<NoteEditor*>();
+    CHECK(notes->currentRow() == 0);
+    CHECK(editor->key() == notes->item(0)->data(Qt::UserRole).toString());
+    CHECK(!tab.findChild<NoteTextEdit*>()->hasFocus());  // the PDF keeps the keyboard
+}
+
 TEST_CASE("reader: page thumbnails stay in a grid while their pictures arrive")
 {
     app();
