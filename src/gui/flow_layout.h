@@ -19,7 +19,7 @@ public:
     bool hasHeightForWidth() const override { return true; }
     int heightForWidth(int width) const override { return doLayout(QRect(0, 0, width, 0), true); }
     QSize minimumSize() const override;
-    QSize sizeHint() const override { return minimumSize(); }
+    QSize sizeHint() const override;
     void setGeometry(const QRect& rect) override;
     void clear();
 

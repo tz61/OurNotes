@@ -292,6 +292,16 @@ void MainWindow::buildActions()
         if (auto* r = qobject_cast<ReaderTab*>(tabs_->currentWidget()))
             r->view()->fitWidth();
     });
+    view->addSeparator();
+    // Control-Command-F on macOS, F11 elsewhere; a maximized window comes back maximized
+    auto* fullScreen = view->addAction(tr("Enter Full Screen"), QKeySequence::FullScreen, this,
+                                       [this] { setWindowState(windowState() ^ Qt::WindowFullScreen); });
+#ifdef Q_OS_MACOS
+    fullScreen->setShortcut(QKeySequence(Qt::CTRL | Qt::META | Qt::Key_F));  // Command-Control-F, whatever the theme
+#endif
+    connect(view, &QMenu::aboutToShow, this, [this, fullScreen] {
+        fullScreen->setText(isFullScreen() ? tr("Exit Full Screen") : tr("Enter Full Screen"));
+    });
 
     auto* tools = menuBar()->addMenu(tr("&Tools"));
     tools->addAction(icon("sync"), tr("Sync Now"), QKeySequence("Ctrl+Shift+S"), this, [this] {

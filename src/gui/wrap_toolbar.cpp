@@ -12,7 +12,8 @@ WrapToolBar::WrapToolBar(QWidget* parent) : QWidget(parent)
 {
     flow_ = new FlowLayout(this, 2);
     flow_->setContentsMargins(4, 2, 4, 2);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    // at least one row, and as many as the buttons need at the width it gets
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 }
 
 void WrapToolBar::addWidget(QWidget* widget)

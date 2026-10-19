@@ -1370,6 +1370,80 @@ TEST_CASE("main window: many tabs wrap onto more rows")
     CHECK(tabs->tabText(2) == moved);
 }
 
+TEST_CASE("main window: tabs wrapping onto more rows never resize the window, which fits the screen")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QApplication::processEvents();
+    QSize size = window.size();
+    QSize minimum;  // with reader tabs open
+    auto* strip = window.findChild<QWidget*>("tabStrip");
+    REQUIRE(strip);
+    int oneRow = strip->height();
+    for (int i = 0; i < 14; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(
+            env.lib, Json{{"itemType", "journalArticle"}, {"title", "A rather long paper title number " + std::to_string(i)}});
+        window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+        QApplication::processEvents();
+        QApplication::processEvents();
+        // a wrapping layout asked for its size at no width puts every tab on a row of its
+        // own: the window's minimum grew with each tab, and the window with it
+        CHECK(window.size() == size);
+        if (i == 0)
+            minimum = window.minimumSize();
+        CHECK(window.minimumSize() == minimum);
+    }
+    CHECK(strip->height() > 2 * oneRow);  // the tabs did wrap, below them got smaller
+
+    // so the window still fits the screen: maximized, and full screen (which macOS refuses
+    // to a window whose minimum size is larger than the screen)
+    QRect available = window.screen()->availableGeometry();
+    CHECK(window.minimumWidth() <= available.width());
+    CHECK(window.minimumHeight() <= available.height());
+    window.showMaximized();
+    CHECK(QTest::qWaitFor([&] { return window.isMaximized(); }, 3000));
+    QApplication::processEvents();
+    CHECK(window.frameGeometry().width() <= available.width());
+    CHECK(window.frameGeometry().height() <= available.height());
+    window.showFullScreen();
+    // (on a MacBook with a notch, full screen leaves out the strip beside the camera)
+    CHECK(QTest::qWaitFor(
+        [&] {
+            return window.isFullScreen() && window.width() == window.screen()->geometry().width() &&
+                   window.height() >= available.height();
+        },
+        5000));
+    window.showNormal();
+    QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000);
+}
+
+TEST_CASE("main window: Control-Command-F (F11 elsewhere) enters and leaves full screen")
+{
+    app();
+    Env env;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+#ifdef Q_OS_MACOS
+    QKeySequence key(Qt::CTRL | Qt::META | Qt::Key_F);  // Qt's Ctrl is Command, its Meta is Control
+#else
+    QKeySequence key = QKeySequence::keyBindings(QKeySequence::FullScreen).value(0);
+    REQUIRE(!key.isEmpty());
+#endif
+    QTest::keySequence(&window, key);
+    CHECK(QTest::qWaitFor([&] { return window.isFullScreen(); }, 5000));
+    QTest::keySequence(&window, key);
+    CHECK(QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000));
+}
+
 TEST_CASE("library: columns fill the list, the title column gives way, the item pane can be hidden")
 {
     app();

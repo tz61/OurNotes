@@ -40,6 +40,22 @@ QSize FlowLayout::minimumSize() const
     return QSize(m.left() + m.right(), h + m.top() + m.bottom());
 }
 
+QSize FlowLayout::sizeHint() const
+{
+    // All items on one row. Qt asks heightForWidth() of this width for the preferred
+    // height; a width of nothing would put every item on a row of its own, and for a
+    // fixed-height bar (the tab strip, the note toolbar) that height becomes the
+    // minimum: the window grew with every tab, beyond the screen.
+    int w = 0, n = 0;
+    for (auto* item : items_)
+        if (!item->isEmpty()) {
+            w += item->sizeHint().width();
+            ++n;
+        }
+    auto m = contentsMargins();
+    return QSize(w + std::max(0, n - 1) * spacing_ + m.left() + m.right(), minimumSize().height());
+}
+
 void FlowLayout::setGeometry(const QRect& rect)
 {
     QLayout::setGeometry(rect);

@@ -173,7 +173,9 @@ public:
         corner_ = new QHBoxLayout;
         row->addLayout(corner_);
         row->setAlignment(corner_, Qt::AlignTop);
-        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        // at least one row, and as many as the tabs need at the width the strip gets (a
+        // fixed height would be capped at one row)
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     }
 
     void addCornerWidget(QWidget* w)
@@ -242,6 +244,11 @@ TabWidget::TabWidget(QWidget* parent) : QTabWidget(parent)
 {
     strip_ = new TabStrip(this, parent);
     tabBar()->hide();
+    // Hidden, QTabWidget still asks for the bar's minimum width, and macOS's bar (no scroll
+    // buttons) is as wide as all its tabs: the window grew wider than the screen with each
+    // tab and could not go full screen. With scroll buttons and elided titles it is narrow.
+    tabBar()->setUsesScrollButtons(true);
+    tabBar()->setElideMode(Qt::ElideRight);
     connect(this, &QTabWidget::currentChanged, strip_, &TabStrip::scheduleRefresh);
     connect(tabBar(), &QTabBar::tabMoved, strip_, &TabStrip::refresh);
 }
