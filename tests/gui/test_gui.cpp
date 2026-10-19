@@ -1185,6 +1185,43 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     CHECK(!bubble->isEditing());
 }
 
+TEST_CASE("notes: Ctrl+B, Ctrl+I and Ctrl+U format the text")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    QApplication::processEvents();
+    QTest::keyClicks(edit, "plain ");
+    QTest::keyClick(edit, Qt::Key_B, Qt::ControlModifier);
+    QTest::keyClicks(edit, "bold");
+    QTest::keyClick(edit, Qt::Key_B, Qt::ControlModifier);
+    QTest::keyClick(edit, Qt::Key_I, Qt::ControlModifier);
+    QTest::keyClicks(edit, " slanted");
+    auto block = edit->document()->begin();
+    auto formatOf = [&](const QString& word) {
+        QTextCursor c(edit->document());
+        c.setPosition(block.position() + block.text().indexOf(word) + 1);
+        return c.charFormat();
+    };
+    CHECK(block.text() == "plain bold slanted");
+    CHECK(formatOf("plain").fontWeight() != QFont::Bold);
+    CHECK(formatOf("bold").fontWeight() == QFont::Bold);
+    CHECK(!formatOf("bold").fontItalic());
+    CHECK(formatOf("slanted").fontItalic());
+    CHECK(formatOf("slanted").fontWeight() != QFont::Bold);
+    // on a selection
+    QTest::keyClick(edit, Qt::Key_A, Qt::ControlModifier);
+    QTest::keyClick(edit, Qt::Key_U, Qt::ControlModifier);
+    CHECK(formatOf("plain").fontUnderline());
+    CHECK(formatOf("slanted").fontUnderline());
+}
+
 TEST_CASE("notes: Markdown typed or pasted becomes formatting")
 {
     app();

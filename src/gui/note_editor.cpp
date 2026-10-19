@@ -977,10 +977,11 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
 
     auto fmtAction = [this](const QString& text, const QString& tip, QKeySequence key, auto apply) {
         auto* a = toolbar_->addAction(text);
-        a->setToolTip(tip);
+        a->setToolTip(key.isEmpty() ? tip : tip + " (" + key.toString(QKeySequence::NativeText) + ")");
         a->setCheckable(true);
         a->setShortcut(key);
         a->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        addAction(a);  // its shortcut works in the text too, not just on the toolbar
         connect(a, &QAction::triggered, this, [this, apply](bool on) {
             QTextCharFormat f;
             apply(f, on);
