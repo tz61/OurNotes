@@ -225,6 +225,10 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     header->resizeSection(ItemsModel::Title, 420);
     header->resizeSection(ItemsModel::Creator, 160);
     header->resizeSection(ItemsModel::Year, 55);
+    // a date and time whole ("2026-04-27 18:03"), not "2026-04-27 1..."
+    int dateWidth = items_->fontMetrics().horizontalAdvance(QStringLiteral("0000-00-00 00:00")) + 24;
+    header->resizeSection(ItemsModel::DateAdded, dateWidth);
+    header->resizeSection(ItemsModel::DateModified, dateWidth);
     header->resizeSection(ItemsModel::Attachments, 34);
     header->resizeSection(ItemsModel::Notes, 34);
     for (int c : {ItemsModel::ItemType, ItemsModel::Date, ItemsModel::Publication, ItemsModel::DateModified,

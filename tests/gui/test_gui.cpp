@@ -1625,6 +1625,29 @@ bool confirmationVisible()
 
 } // namespace
 
+TEST_CASE("item pane: a long field shows its start")
+{
+    app();
+    Env env;
+    auto venue = std::string("Advances in Neural Information Processing Systems");
+    auto item = env.library.createItem(
+        env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}, {"publicationTitle", venue},
+                      {"creators", Json::array({Json{{"creatorType", "author"}, {"firstName", "Ashish"},
+                                                     {"lastName", "Vaswani-Shazeer-Parmar-Uszkoreit"}}})}});
+    ItemPane pane;
+    pane.resize(260, 700);
+    pane.show();
+    pane.showItems(env.lib, {qs(jstr(item, "key"))});
+    QApplication::processEvents();
+    int checked = 0;
+    for (auto* e : pane.findChildren<QLineEdit*>())
+        if (e->text() == qs(venue) || e->text().startsWith("Vaswani")) {
+            CHECK(e->cursorPosition() == 0);
+            ++checked;
+        }
+    CHECK(checked == 2);
+}
+
 TEST_CASE("item pane: tags are shown as visible chips")
 {
     const std::string kLongTag = "Computer Science - Computer Vision and Pattern Recognition and Robotics";

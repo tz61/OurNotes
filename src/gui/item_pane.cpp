@@ -213,6 +213,7 @@ void InfoEditor::rebuild()
             editor = e;
         } else {
             auto* e = new QLineEdit(value, this);
+            e->setCursorPosition(0);  // a long value shows its start, not its end
             e->setReadOnly(!editable_);
             e->setFrame(false);
             connect(e, &QLineEdit::editingFinished, this, [this, e, field] {
@@ -320,6 +321,7 @@ void InfoEditor::addCreatorRow(int index, const std::string& itemType, const std
     cr.last->setMinimumWidth(30);
     cr.last->setPlaceholderText(single ? tr("name") : tr("last"));
     cr.last->setFrame(false);
+    cr.last->setCursorPosition(0);
     cr.last->setReadOnly(!editable_);
     h->addWidget(cr.last, 3);
     if (!single) {
@@ -327,6 +329,7 @@ void InfoEditor::addCreatorRow(int index, const std::string& itemType, const std
         cr.first->setMinimumWidth(30);
         cr.first->setPlaceholderText(tr("first"));
         cr.first->setFrame(false);
+        cr.first->setCursorPosition(0);
         cr.first->setReadOnly(!editable_);
         h->addWidget(cr.first, 2);
     }
