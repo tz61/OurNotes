@@ -10,7 +10,7 @@ function(fp_add_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
-foreach(dir core sync formats pdf)
+foreach(dir core sync formats pdf gui)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
         add_subdirectory(${dir})
     endif()

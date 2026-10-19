@@ -1,0 +1,5 @@
+if(TARGET freepen_gui)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    fp_add_test(test_gui test_gui.cpp LIBS freepen_gui Qt6::Test)
+    set_tests_properties(test_gui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

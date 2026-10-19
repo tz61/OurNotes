@@ -62,6 +62,9 @@ public:
     void clearTextSelection();
     void copySelection();
 
+    // Viewport position of a point in page space (points).
+    QPointF pageToViewport(int page, QPointF pagePoint) const { return toView(page, pagePoint); }
+
     void find(const QString& text, bool backwards);
     void clearFind();
     void requestThumbnails(double scale);
