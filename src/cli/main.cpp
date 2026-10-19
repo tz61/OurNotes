@@ -13,6 +13,14 @@
 
 #include "cli/commands.h"
 
+#ifdef _WIN32
+#include <io.h>
+#define FP_ISATTY(fd) _isatty(fd)
+#else
+#include <unistd.h>
+#define FP_ISATTY(fd) isatty(fd)
+#endif
+
 using namespace fp;
 
 namespace {
@@ -153,7 +161,13 @@ int cmdImportZotero(Library& lib, Args& args)
     opt.includeTrash = !args.flag("--no-trash");
     opt.log = [](const std::string& m) { std::cout << m << "\n"; };
     std::string lastStage;
+    bool tty = FP_ISATTY(1);
     opt.progress = [&](const std::string& stage, int done, int total) {
+        if (!tty) {  // one line per stage when writing to a file or pipe
+            if (done >= total)
+                std::cout << stage << ": " << done << "/" << total << "\n";
+            return;
+        }
         if (stage != lastStage) {
             if (!lastStage.empty())
                 std::cout << "\n";
