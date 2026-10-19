@@ -2632,7 +2632,7 @@ TEST_CASE("reader: in select mode a drag from beside the text selects it")
     CHECK(!view.hasTextSelection());
 }
 
-TEST_CASE("main window: Ctrl+Shift+W reopens closed tabs, last closed first, where they were")
+TEST_CASE("main window: Ctrl+Shift+T reopens closed tabs, last closed first, where they were")
 {
     app();
     Env env;
@@ -2662,14 +2662,14 @@ TEST_CASE("main window: Ctrl+Shift+W reopens closed tabs, last closed first, whe
     emit tabs->tabCloseRequested(2);  // then the last
     QApplication::processEvents();
     REQUIRE(tabs->count() == 2);
-    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     QApplication::processEvents();
     CHECK(tabs->count() == 3);
     CHECK(tabs->tabText(tabs->currentIndex()) == before[2]);  // the last closed comes back first
-    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     QApplication::processEvents();
     CHECK(titles() == before);  // each in its place
-    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);  // nothing left
+    QTest::keyClick(&window, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);  // nothing left
     CHECK(tabs->count() == 4);
 
     // another window starts with nothing to reopen
@@ -2677,7 +2677,7 @@ TEST_CASE("main window: Ctrl+Shift+W reopens closed tabs, last closed first, whe
     second.show();
     auto* secondTabs = second.findChild<QTabWidget*>("mainTabs");
     int count = secondTabs->count();
-    QTest::keyClick(&second, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&second, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     CHECK(secondTabs->count() == count);
 }
 

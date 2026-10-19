@@ -301,7 +301,7 @@ void MainWindow::buildActions()
         if (i > 0)
             emit tabs_->tabCloseRequested(i);
     });
-    file->addAction(tr("Reopen Closed Tab"), QKeySequence("Ctrl+Shift+W"), this, &MainWindow::reopenClosedTab);
+    file->addAction(tr("Reopen Closed Tab"), QKeySequence("Ctrl+Shift+T"), this, &MainWindow::reopenClosedTab);
     file->addAction(tr("Quit"), QKeySequence::Quit, this, &QWidget::close);
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
