@@ -131,18 +131,36 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
             std::unique_ptr<tex::TeXRender> r(
                 tex::LaTeX::parse(tex, 100000, float(pixelSize), float(pixelSize) / 3.f, color.rgba()));
             int w = std::max(1, r->getWidth()), h = std::max(1, r->getHeight()), d = r->getDepth();
-            m.width = w;
-            m.descent = d;
-            m.ascent = h - d;
-            m.image = QImage(QSize(int(std::ceil(w * dpr)), int(std::ceil(h * dpr))),
-                             QImage::Format_ARGB32_Premultiplied);
+            // Ink reaches outside the TeX box (radicals, fraction parts, smoothing) and
+            // MicroTeX rounds the box down to whole pixels: cut to the box, formulas lost
+            // e.g. a subscript's tail. Draw with room around it and keep all the ink.
+            int room = int(std::ceil(pixelSize * 0.5)) + 2;
+            QImage canvas(QSize(int(std::ceil((w + 2 * room) * dpr)), int(std::ceil((h + 2 * room) * dpr))),
+                          QImage::Format_ARGB32_Premultiplied);
+            canvas.setDevicePixelRatio(dpr);
+            canvas.fill(Qt::transparent);
+            {
+                QPainter p(&canvas);
+                p.setRenderHint(QPainter::Antialiasing);
+                p.setRenderHint(QPainter::TextAntialiasing);
+                tex::Graphics2D_qt g2(&p);
+                r->draw(g2, room, room);
+            }
+            QRect keep(QPoint(int(std::floor(room * dpr)), int(std::floor(room * dpr))),
+                       QPoint(int(std::ceil((room + w) * dpr)) - 1, int(std::ceil((room + h) * dpr)) - 1));
+            for (int y = 0; y < canvas.height(); ++y) {
+                auto* line = reinterpret_cast<const QRgb*>(canvas.constScanLine(y));
+                for (int x = 0; x < canvas.width(); ++x)
+                    if (qAlpha(line[x]))
+                        keep |= QRect(x - 1, y - 1, 3, 3);  // and a pixel around the ink
+            }
+            keep &= canvas.rect();
+            m.image = canvas.copy(keep);
             m.image.setDevicePixelRatio(dpr);
-            m.image.fill(Qt::transparent);
-            QPainter p(&m.image);
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setRenderHint(QPainter::TextAntialiasing);
-            tex::Graphics2D_qt g2(&p);
-            r->draw(g2, 0, 0);
+            qreal baseline = (room + h - d) * dpr;  // in canvas pixels
+            m.width = keep.width() / dpr;
+            m.ascent = (baseline - keep.top()) / dpr;
+            m.descent = (keep.bottom() + 1 - baseline) / dpr;
         } catch (const std::exception& e) {
             m = sourceImage(latex, display, pixelSize, dpr, QString::fromLocal8Bit(e.what()));
         }

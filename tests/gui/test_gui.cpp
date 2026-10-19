@@ -28,6 +28,7 @@
 #include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
+#include <QPainter>
 
 #include "../core/test_helpers.h"
 #include "../pdf/sample_pdf.h"
@@ -45,6 +46,7 @@
 #include "gui/math_render.h"
 #include "gui/note_editor.h"
 #include "gui/note_html.h"
+#include "gui/rich_text_images.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
 #include "gui/theme.h"
@@ -1430,6 +1432,74 @@ TEST_CASE("notes: a note can be moved to the trash from the list, after asking")
     REQUIRE(QTest::qWaitFor([&] { return !question.isEmpty(); }));
     CHECK(trashed());
     CHECK(QTest::qWaitFor([&] { return list->count() == 0; }));
+}
+
+TEST_CASE("notes: formulas are neither clipped nor blurred")
+{
+    app();
+    // no ink touches the image's edges (the TeX box leaves out ink outside it)
+    for (const char* tex : {"x_y", "g_j", "\\int_0^1 f(x)\\,dx", "\\sqrt{y}", "f^2", "\\frac{a}{b}"}) {
+        auto m = renderMath(tex, false, 19, Qt::black, 1);
+        REQUIRE(m.ok);
+        const QImage& img = m.image;
+        QString edges;
+        for (int x = 0; x < img.width(); ++x) {
+            if (qAlpha(img.pixel(x, 0)))
+                edges += "top ";
+            if (qAlpha(img.pixel(x, img.height() - 1)))
+                edges += "bottom ";
+        }
+        for (int y = 0; y < img.height(); ++y) {
+            if (qAlpha(img.pixel(0, y)))
+                edges += "left ";
+            if (qAlpha(img.pixel(img.width() - 1, y)))
+                edges += "right ";
+        }
+        INFO(std::string(tex));
+        CHECK(edges.toStdString() == "");
+    }
+
+    // drawn pixel for pixel, at 150 % and with the text between pixels
+    const qreal dpr = 1.5;
+    QTextDocument doc;
+    QFont font;
+    font.setPixelSize(16);
+    doc.setDefaultFont(font);
+    FittedImageHandler::install(&doc, &doc)->setColorSource([] { return QColor(Qt::black); });
+    QTextCursor c(&doc);
+    c.insertText("a ");
+    QTextImageFormat f;
+    f.setName(mathResourceName("x_y", false));
+    c.insertImage(f);
+    c.insertText(" b");
+    QImage canvas(450, 120, QImage::Format_ARGB32_Premultiplied);
+    canvas.setDevicePixelRatio(dpr);
+    canvas.fill(Qt::white);
+    {
+        QPainter p(&canvas);
+        p.translate(10.5, 7.25);
+        doc.drawContents(&p);
+    }
+    QImage formula = renderMath("x_y", false, QFontInfo(font).pixelSize() * 1.2, Qt::black, dpr).image;
+    formula.setDevicePixelRatio(1);  // compared in device pixels
+    QImage expected(formula.size(), QImage::Format_ARGB32_Premultiplied);
+    expected.fill(Qt::white);
+    {
+        QPainter p(&expected);
+        p.drawImage(0, 0, formula);
+    }
+    auto matchesAt = [&](int x0, int y0) {
+        for (int y = 0; y < expected.height(); ++y)
+            for (int x = 0; x < expected.width(); ++x)
+                if (canvas.pixel(x0 + x, y0 + y) != expected.pixel(x, y))
+                    return false;
+        return true;
+    };
+    bool found = false;
+    for (int y = 0; y + expected.height() <= canvas.height() && !found; ++y)
+        for (int x = 0; x + expected.width() <= canvas.width() && !found; ++x)
+            found = matchesAt(x, y);
+    CHECK(found);
 }
 
 TEST_CASE("notes: autosaving keeps the whole undo history")
