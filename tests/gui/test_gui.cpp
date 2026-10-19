@@ -2949,6 +2949,56 @@ TEST_CASE("main window: the pane beside the PDFs and the library is one width")
     CHECK(paneWidth(tabs->currentWidget()) == width);
 }
 
+TEST_CASE("notes: the list over the note is as high everywhere, and stays so")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>One</p>", jstr(paper, "key"));
+    env.library.createNote(env.lib, "<p>Two</p>", jstr(paper, "key"));  // two: the list shows
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(paper, "key")), "key"));
+    auto splitOf = [](QWidget& w) {
+        for (auto* s : w.findChildren<QSplitter*>())
+            if (s->orientation() == Qt::Vertical && s->findChild<NoteEditor*>() && s->findChild<QListWidget*>())
+                return s;
+        return static_cast<QSplitter*>(nullptr);
+    };
+    ReaderTab a(env.lib, key), b(env.lib, key);
+    ItemNotesPanel library;
+    for (QWidget* w : {static_cast<QWidget*>(&a), static_cast<QWidget*>(&b), static_cast<QWidget*>(&library)}) {
+        w->resize(1100, 800);
+        w->show();
+    }
+    library.setItem(env.lib, qs(jstr(paper, "key")));
+    QApplication::processEvents();
+    auto *sa = splitOf(a), *sb = splitOf(b), *sl = splitOf(library);
+    REQUIRE(sa);
+    REQUIRE(sb);
+    REQUIRE(sl);
+    int before = sa->sizes()[0];
+    // drag a's handle down
+    auto* handle = sa->handle(1);
+    QPoint mid(handle->width() / 2, handle->height() / 2);
+    QTest::mousePress(handle, Qt::LeftButton, {}, mid);
+    QTest::mouseMove(handle, mid + QPoint(0, 40));
+    QTest::mouseMove(handle, mid + QPoint(0, 80));
+    QTest::mouseRelease(handle, Qt::LeftButton, {}, mid + QPoint(0, 80));
+    QApplication::processEvents();
+    int after = sa->sizes()[0];
+    REQUIRE(after > before);
+    CHECK(sb->sizes()[0] == after);  // the other PDF's
+    CHECK(sl->sizes()[0] == after);  // and the library's
+    CHECK(env.config.get("/ui/notesListHeight", 0).get<int>() == after);
+    ReaderTab c(env.lib, key);  // opened later: the same
+    c.resize(1100, 800);
+    c.show();
+    QApplication::processEvents();
+    CHECK(splitOf(c)->sizes()[0] == after);
+}
+
 TEST_CASE("main window: Ctrl+Shift+Tab goes to the previous tab, also from a note")
 {
     app();

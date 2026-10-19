@@ -349,7 +349,7 @@ void ReaderTab::buildContextPane()
     auto* split = new QSplitter(Qt::Vertical, notesPage);
     notesList_ = new QListWidget(split);
     noteEditor_ = new NoteEditor(split);
-    split->setSizes({120, 400});
+    shareNotesSplit(split);
     v->addWidget(split, 1);
     connect(notesList_, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* item) {
         if (item)
