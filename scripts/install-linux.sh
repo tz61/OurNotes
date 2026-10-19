@@ -89,6 +89,8 @@ if [ "$BUILD" = 1 ]; then
     # reuse dependencies prepared for development builds, if present
     [ -f "$SRC_DIR/.deps/mupdf/lib/libmupdf.a" ] && args+=(-DMUPDF_ROOT="$SRC_DIR/.deps/mupdf")
     [ -f "$SRC_DIR/.deps/sqlite-src/sqlite3.c" ] && args+=(-DFETCHCONTENT_SOURCE_DIR_SQLITE="$SRC_DIR/.deps/sqlite-src")
+    [ -d "$SRC_DIR/.deps/microtex-src/src" ] && args+=(-DFETCHCONTENT_SOURCE_DIR_MICROTEX="$SRC_DIR/.deps/microtex-src")
+    [ -f "$SRC_DIR/.deps/tinyxml2-src/tinyxml2.cpp" ] && args+=(-DFETCHCONTENT_SOURCE_DIR_TINYXML2="$SRC_DIR/.deps/tinyxml2-src")
     info "Configuring"
     cmake -S "$SRC_DIR" -B "$BUILD_DIR" "${args[@]}" >/dev/null
     info "Building (this takes a few minutes the first time)"
