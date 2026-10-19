@@ -26,6 +26,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include "core/hash.h"
 #include "core/schema.h"
@@ -542,8 +543,39 @@ void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool di
     setTextCursor(selection);
 }
 
+int NoteTextEdit::zoomKey(const QKeyEvent* e) const
+{
+    if (!zoomBy || !(e->modifiers() & Qt::ControlModifier) || (e->modifiers() & Qt::AltModifier))
+        return -2;
+    if (e->matches(QKeySequence::ZoomIn) || e->key() == Qt::Key_Equal || e->key() == Qt::Key_Plus)
+        return 1;
+    if (e->matches(QKeySequence::ZoomOut) || e->key() == Qt::Key_Minus)
+        return -1;
+    if (e->key() == Qt::Key_0 && !(e->modifiers() & Qt::ShiftModifier))
+        return 0;
+    return -2;
+}
+
+void NoteTextEdit::wheelEvent(QWheelEvent* e)
+{
+    if (!zoomBy || !(e->modifiers() & Qt::ControlModifier)) {
+        QTextEdit::wheelEvent(e);  // (its own Ctrl+wheel zoom would bypass zoomBy)
+        return;
+    }
+    wheelZoom_ += e->angleDelta().y();
+    for (; wheelZoom_ >= 120; wheelZoom_ -= 120)
+        zoomBy(1);
+    for (; wheelZoom_ <= -120; wheelZoom_ += 120)
+        zoomBy(-1);
+    e->accept();
+}
+
 void NoteTextEdit::keyPressEvent(QKeyEvent* e)
 {
+    if (int zoom = zoomKey(e); zoom != -2) {
+        zoomBy(zoom);
+        return;
+    }
     if (e->key() == Qt::Key_Y && e->modifiers() == Qt::ControlModifier) {
         commitMathEdits(true);
         redo();
@@ -609,7 +641,8 @@ bool NoteTextEdit::event(QEvent* e)
 {
     if (e->type() == QEvent::ShortcutOverride) {
         auto* k = static_cast<QKeyEvent*>(e);
-        if (k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) {
+        // the note's, not the window's (zoom applies to the PDF there)
+        if ((k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) || zoomKey(k) != -2) {
             e->accept();
             return true;
         }
@@ -691,16 +724,25 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         }
         return;
     }
-    // keep pasted rich text but not foreign fonts/sizes
+    // keep pasted rich text but not foreign fonts and sizes; relative sizes (headings)
+    // follow the note's text size
     if (source->hasHtml()) {
         QTextDocument tmp;
         tmp.setHtml(source->html());
-        QTextCursor all(&tmp);
-        all.select(QTextCursor::Document);
-        QTextCharFormat reset;
-        reset.setFontFamilies(QStringList{});
-        reset.setFontPointSize(document()->defaultFont().pointSizeF());
-        all.mergeCharFormat(reset);
+        std::vector<QTextFragment> fragments;
+        for (auto block = tmp.begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                fragments.push_back(it.fragment());
+        for (auto& fragment : fragments) {
+            auto f = fragment.charFormat();
+            f.setFontFamilies(QStringList{});
+            f.clearProperty(QTextFormat::FontPointSize);
+            f.clearProperty(QTextFormat::FontPixelSize);
+            QTextCursor c(&tmp);
+            c.setPosition(fragment.position());
+            c.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
+            c.setCharFormat(f);
+        }
         textCursor().insertFragment(QTextDocumentFragment(&tmp));
         return;
     }
@@ -839,6 +881,34 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     colorBtn->setMenu(colorMenu);
     toolbar_->addWidget(colorBtn);
 
+    // text size of this view of the note
+    toolbar_->addSeparator();
+    auto zoomButton = [this](const QString& text, const QString& tip) {
+        auto* b = new QToolButton(this);
+        b->setText(text);
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        toolbar_->addWidget(b);
+        return b;
+    };
+    connect(zoomButton(QString::fromUtf8("\u2212"), tr("Smaller text (Ctrl+-)")), &QToolButton::clicked, this,
+            [this] { zoomBy(-1); });
+    zoomButton_ = zoomButton({}, tr("Text size; click for the default from the preferences (Ctrl+0)"));
+    zoomButton_->setObjectName("noteZoom");
+    connect(zoomButton_, &QToolButton::clicked, this, [this] { zoomBy(0); });
+    connect(zoomButton("+", tr("Larger text (Ctrl+=)")), &QToolButton::clicked, this, [this] { zoomBy(1); });
+    edit_->zoomBy = [this](int steps) { zoomBy(steps); };
+    baseFont_ = edit_->font();
+    defaultZoom_ = defaultZoom();
+    setZoom(defaultZoom_);
+    connect(&AppContext::get(), &AppContext::appearanceChanged, this, [this] {
+        if (int d = defaultZoom(); d != defaultZoom_) {  // the default was changed: every note follows
+            defaultZoom_ = d;
+            setZoom(d);
+        }
+    });
+
     saveTimer_.setSingleShot(true);
     saveTimer_.setInterval(700);
     connect(&saveTimer_, &QTimer::timeout, this, &NoteEditor::save);
@@ -950,6 +1020,50 @@ void NoteEditor::appendHtml(const QString& html)
 
 void NoteEditor::focusEditor() { edit_->setFocus(); }
 
+namespace {
+constexpr int kZoomSteps[] = {50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300};
+}
+
+int NoteEditor::defaultZoom()
+{
+    auto v = AppContext::get().config().get("/notes/zoom", 100);
+    return std::clamp(v.is_number() ? v.get<int>() : 100, kZoomSteps[0], std::end(kZoomSteps)[-1]);
+}
+
+void NoteEditor::setZoom(int percent)
+{
+    zoom_ = std::clamp(percent, kZoomSteps[0], std::end(kZoomSteps)[-1]);
+    // the document's default font: every size in a note is relative to it
+    QFont f = baseFont_;
+    if (f.pointSizeF() > 0)
+        f.setPointSizeF(baseFont_.pointSizeF() * zoom_ / 100.0);
+    else
+        f.setPixelSize(std::max(1, int(std::lround(baseFont_.pixelSize() * zoom_ / 100.0))));
+    edit_->setFont(f);
+    zoomButton_->setText(QString("%1%").arg(zoom_));
+}
+
+void NoteEditor::zoomBy(int steps)
+{
+    if (steps == 0) {
+        setZoom(defaultZoom_);
+        return;
+    }
+    int next = zoom_;
+    if (steps > 0) {
+        for (int s : kZoomSteps)
+            if (s > zoom_) {
+                next = s;
+                break;
+            }
+    } else {
+        for (int s : kZoomSteps)
+            if (s < zoom_)
+                next = s;
+    }
+    setZoom(next);
+}
+
 void NoteEditor::setHeading(int level)
 {
     auto cursor = edit_->textCursor();
@@ -957,15 +1071,31 @@ void NoteEditor::setHeading(int level)
     QTextBlockFormat bf = cursor.blockFormat();
     bf.setHeadingLevel(level);
     cursor.setBlockFormat(bf);
-    cursor.select(QTextCursor::BlockUnderCursor);
-    QTextCharFormat cf;
-    static const qreal sizes[] = {0, 1.6, 1.35, 1.17};
-    qreal base = edit_->document()->defaultFont().pointSizeF();
-    cf.setFontWeight(level ? QFont::Bold : QFont::Normal);
-    cf.setFontPointSize(level ? base * sizes[level] : base);
-    cursor.mergeCharFormat(cf);
-    cursor.mergeBlockCharFormat(cf);
+    // sizes relative to the note's font, as loading <h1>… gives them (so they look the
+    // same after a reload and follow the note's text size)
+    auto restyle = [level](QTextCharFormat f) {
+        f.clearProperty(QTextFormat::FontPointSize);
+        f.clearProperty(QTextFormat::FontPixelSize);
+        if (level > 0)
+            f.setProperty(QTextFormat::FontSizeAdjustment, 4 - level);
+        else
+            f.clearProperty(QTextFormat::FontSizeAdjustment);
+        f.setFontWeight(level ? QFont::Bold : QFont::Normal);
+        return f;
+    };
+    auto block = cursor.block();
+    std::vector<QTextFragment> fragments;
+    for (auto it = block.begin(); !it.atEnd(); ++it)
+        fragments.push_back(it.fragment());
+    for (auto& fragment : fragments) {
+        QTextCursor c(edit_->document());
+        c.setPosition(fragment.position());
+        c.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
+        c.setCharFormat(restyle(fragment.charFormat()));
+    }
+    cursor.setBlockCharFormat(restyle(block.charFormat()));
     cursor.endEditBlock();
+    edit_->setCurrentCharFormat(restyle(edit_->currentCharFormat()));
 }
 
 void NoteEditor::toggleList(bool ordered)

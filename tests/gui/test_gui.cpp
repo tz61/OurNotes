@@ -29,6 +29,7 @@
 #include <QTest>
 #include <QTextDocument>
 #include <QPainter>
+#include <QWheelEvent>
 
 #include "../core/test_helpers.h"
 #include "../pdf/sample_pdf.h"
@@ -1500,6 +1501,67 @@ TEST_CASE("notes: formulas are neither clipped nor blurred")
         for (int x = 0; x + expected.width() <= canvas.width() && !found; ++x)
             found = matchesAt(x, y);
     CHECK(found);
+}
+
+TEST_CASE("notes: text size from the preferences and per view, without touching the note")
+{
+    app();
+    Env env;
+    env.config.set("/notes/zoom", 125);
+    auto note = env.library.createNote(env.lib, "<h1>Title</h1><p>Text <span class=\"math\">$x_y$</span> here</p>");
+    auto stored = [&] { return jstr(*env.library.item(env.lib, jstr(note, "key")), "note"); };
+    auto before = stored();
+    NoteEditor editor;
+    editor.resize(500, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    auto* button = editor.findChild<QToolButton*>("noteZoom");
+    REQUIRE(button);
+    CHECK(editor.zoom() == 125);
+    CHECK(button->text() == "125%");
+    auto height = [&] { return edit->document()->documentLayout()->documentSize().height(); };
+    double size125 = edit->font().pointSizeF(), height125 = height();
+
+    edit->setFocus();
+    QTest::keyClick(edit, Qt::Key_Equal, Qt::ControlModifier);
+    CHECK(editor.zoom() == 150);
+    CHECK(button->text() == "150%");
+    CHECK(edit->font().pointSizeF() == doctest::Approx(size125 * 150 / 125));
+    CHECK(height() > height125 * 1.12);  // the heading and the formula grow as well
+    QWheelEvent wheel(QPointF(50, 50), edit->viewport()->mapToGlobal(QPointF(50, 50)), {}, QPoint(0, -120),
+                      Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(edit->viewport(), &wheel);
+    CHECK(editor.zoom() == 125);
+    QTest::keyClick(edit, Qt::Key_Minus, Qt::ControlModifier);
+    CHECK(editor.zoom() == 110);
+    QTest::keyClick(edit, Qt::Key_0, Qt::ControlModifier);
+    CHECK(editor.zoom() == 125);
+    button->click();
+    CHECK(editor.zoom() == 125);
+    // a new default applies to open notes
+    env.config.set("/notes/zoom", 100);
+    emit AppContext::get().appearanceChanged();
+    CHECK(editor.zoom() == 100);
+    editor.flush();
+    CHECK(stored() == before);  // only the view changed
+
+    // the undo history survives, and a heading made here follows the size
+    edit->moveCursor(QTextCursor::End);
+    QTest::keyClicks(edit, "!");
+    editor.setZoom(150);
+    CHECK(edit->document()->isUndoAvailable());
+    emit editor.findChild<QComboBox*>()->activated(2);
+    auto block = edit->textCursor().block();
+    CHECK(block.blockFormat().headingLevel() == 2);
+    auto cf = block.begin().fragment().charFormat();
+    CHECK(!cf.hasProperty(QTextFormat::FontPointSize));
+    CHECK(cf.property(QTextFormat::FontSizeAdjustment).toInt() == 2);
+    double h150 = height();
+    editor.setZoom(100);
+    CHECK(height() < h150 * 0.8);
 }
 
 TEST_CASE("notes: autosaving keeps the whole undo history")

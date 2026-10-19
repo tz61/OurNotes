@@ -26,6 +26,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
+#include "gui/note_editor.h"
 #include "gui/sync_controller.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
@@ -151,6 +152,24 @@ QWidget* PreferencesDialog::generalPage()
         emit ctx.appearanceChanged();
     });
     form->addRow(tr("Formula colour:"), formulaColorRow(page));
+    // the size notes start at; each note view also has its own −/+ (Ctrl+wheel)
+    auto* noteZoom = new QComboBox(page);
+    noteZoom->setObjectName("noteZoomDefault");
+    int zoom = NoteEditor::defaultZoom();
+    for (int percent : {80, 90, 100, 110, 125, 150, 175, 200})
+        noteZoom->addItem(QString("%1%").arg(percent), percent);
+    if (noteZoom->findData(zoom) < 0)
+        noteZoom->addItem(QString("%1%").arg(zoom), zoom);
+    noteZoom->setCurrentIndex(noteZoom->findData(zoom));
+    noteZoom->setToolTip(tr("The text size of notes; each note view can be made larger or smaller with its "
+                            "\u2212 and + buttons or Ctrl+wheel."));
+    form->addRow(tr("Note text size:"), noteZoom);
+    connect(noteZoom, &QComboBox::currentIndexChanged, this, [noteZoom] {
+        auto& ctx = AppContext::get();
+        ctx.config().set("/notes/zoom", noteZoom->currentData().toInt());
+        ctx.config().save();
+        emit ctx.appearanceChanged();
+    });
 
     openPdf_ = new QComboBox(page);
     openPdf_->addItem(tr("in OurNotes"), "tab");

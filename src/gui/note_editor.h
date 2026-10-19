@@ -12,6 +12,7 @@ class QComboBox;
 class QListWidget;
 class QLabel;
 class QToolBar;
+class QToolButton;
 
 namespace on::gui {
 
@@ -26,6 +27,8 @@ class NoteTextEdit : public QTextEdit {
 public:
     explicit NoteTextEdit(QWidget* parent = nullptr);
     std::function<QString(const QImage&)> storeImage;  // returns a resource name
+    // Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0: +1 larger text, -1 smaller, 0 the default
+    std::function<void(int)> zoomBy;
 
     // Starts an empty formula (or one made of the selected text) at the cursor, in place.
     void insertMath(bool display);
@@ -48,8 +51,11 @@ protected:
     void focusOutEvent(QFocusEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
+    void wheelEvent(QWheelEvent* e) override;
 
 private:
+    int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
+    int wheelZoom_ = 0;  // Ctrl+wheel turned less than a notch
     struct MathRun {
         int start = 0, end = 0;
         bool display = false;
@@ -101,6 +107,11 @@ public:
     void flush();
     void appendHtml(const QString& html);
     void focusEditor();
+    // Text size, in percent of the interface's (the stored note is not changed); it
+    // starts at the default from the preferences.
+    int zoom() const { return zoom_; }
+    void setZoom(int percent);
+    static int defaultZoom();  // /notes/zoom
 
 signals:
     void saved(const QString& key);
@@ -116,6 +127,7 @@ private:
     void insertLink();
     void setTextColor(const QColor& c, bool background);
     void updateToolbar();
+    void zoomBy(int steps);
     QString storeImage(const QImage& image);
 
     NoteTextEdit* edit_;
@@ -125,6 +137,10 @@ private:
     QAction* italicAct_;
     QAction* underlineAct_;
     QAction* strikeAct_;
+    QToolButton* zoomButton_;  // shows the text size, resets it
+    QFont baseFont_;
+    int zoom_ = 100;
+    int defaultZoom_ = 100;
     QTimer saveTimer_;
     int64_t libraryId_ = 0;
     QString key_;
