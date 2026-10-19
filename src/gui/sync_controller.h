@@ -9,6 +9,8 @@
 
 namespace on::gui {
 
+class SyncHistory;
+
 // Runs synchronisation with the active sync target on a background thread
 // (with its own database connection) and schedules automatic syncs.
 class SyncController : public QObject {
@@ -20,6 +22,7 @@ public:
     bool isRunning() const { return running_; }
     bool hasTarget() const;
     void reloadSettings();
+    const SyncHistory& history() const { return *history_; }
 
 public slots:
     void syncNow();
@@ -36,6 +39,7 @@ signals:
     void finished(bool ok, const QString& summary);
     void fileDownloaded(qint64 libraryId, const QString& key, bool ok, const QString& error);
     void remoteLibraryDeleted(qint64 libraryId, bool ok, const QString& error);
+    void historyChanged();
 
 private:
     void join();
@@ -46,6 +50,7 @@ private:
     QTimer autoTimer_;
     QTimer intervalTimer_;
     bool pendingAfterRun_ = false;
+    std::unique_ptr<SyncHistory> history_;
 };
 
 } // namespace on::gui

@@ -2,10 +2,13 @@
 
 #include <QMetaObject>
 
+#include <optional>
+
 #include "core/sync/engine.h"
 #include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
+#include "gui/sync_history.h"
 #include "sync/http_transport.h"
 #include "sync/local_transport.h"
 
@@ -22,7 +25,8 @@ std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& t)
 
 } // namespace
 
-SyncController::SyncController(QObject* parent) : QObject(parent)
+SyncController::SyncController(QObject* parent)
+    : QObject(parent), history_(std::make_unique<SyncHistory>(AppContext::get().library().dataDir() / "sync-history.json"))
 {
     autoTimer_.setSingleShot(true);
     autoTimer_.setInterval(20000);
@@ -85,6 +89,7 @@ void SyncController::syncNow()
     thread_ = std::thread([this, dataDir, t = *target, downloadFiles] {
         bool ok = true;
         QString summary;
+        std::optional<sync::SyncReport> report;
         try {
             Library lib(dataDir);
             auto transport = makeTransport(t);
@@ -99,11 +104,11 @@ void SyncController::syncNow()
                 QMetaObject::invokeMethod(this, [this, msg] { emit progress(msg); }, Qt::QueuedConnection);
             };
             sync::SyncEngine engine(lib, *transport, t.id, opts);
-            auto report = engine.syncAll();
-            summary = qs(report.summary());
-            ok = report.errors.empty();
+            report = engine.syncAll();
+            summary = qs(report->summary());
+            ok = report->errors.empty();
             if (!ok)
-                summary += "\n" + qs(on::join(report.errors, "\n"));
+                summary += "\n" + qs(on::join(report->errors, "\n"));
         } catch (const sync::SyncError& e) {
             ok = false;
             summary = e.status == 401 ? tr("Authentication failed. Sign in again in Preferences → Sync.") : qs(e.what());
@@ -113,7 +118,12 @@ void SyncController::syncNow()
         }
         QMetaObject::invokeMethod(
             this,
-            [this, ok, summary] {
+            [this, ok, summary, report = std::move(report), target = t.name] {
+                if (report)
+                    history_->add(target, *report, ok, ss(summary.section('\n', 0, 0)));
+                else
+                    history_->addFailure(target, ss(summary));
+                emit historyChanged();
                 running_ = false;
                 AppContext::get().library().notifyRefresh();
                 emit AppContext::get().syncFinished();

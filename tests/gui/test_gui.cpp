@@ -51,6 +51,7 @@
 #include "gui/shift_wheel.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
+#include "gui/sync_history.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 #include "gui/wrap_toolbar.h"
@@ -1670,6 +1671,102 @@ TEST_CASE("notes: autosaving keeps the whole undo history")
         QTest::keyClick(edit, Qt::Key_Y, Qt::ControlModifier);
     CHECK(edit->toPlainText() == full);
     CHECK(countMath(edit->document()) == 1);
+}
+
+TEST_CASE("sync history: the last syncs, each object once under the last that changed it")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sync-history.json";
+    auto change = [](const std::string& key, const std::string& title, const std::string& action, bool incoming) {
+        sync::SyncChange c;
+        c.libraryId = 1;
+        c.library = "Main";
+        c.type = "item";
+        c.key = key;
+        c.kind = "note";
+        c.title = title;
+        c.action = action;
+        c.incoming = incoming;
+        return c;
+    };
+    auto report = [](std::vector<sync::SyncChange> changes) {
+        sync::SyncReport r;
+        r.changes = std::move(changes);
+        return r;
+    };
+    {
+        SyncHistory h(file);
+        h.add("server", report({change("NOTE0001", "a", "added", false), change("BOOK0001", "Book", "added", false)}),
+              true, "pushed 2");
+        h.add("server", report({change("NOTE0001", "abc", "changed", false)}), true, "pushed 1");
+        REQUIRE(h.runs().size() == 2);
+        CHECK(h.runs()[0]["changes"].size() == 1);
+        CHECK(h.runs()[0]["changes"][0]["title"] == "abc");
+        REQUIRE(h.runs()[1]["changes"].size() == 1);  // the note moved up to the last sync
+        CHECK(h.runs()[1]["changes"][0]["key"] == "BOOK0001");
+
+        // deleted from here: the title comes from before
+        sync::SyncChange gone = change("BOOK0001", "", "deleted", false);
+        h.add("server", report({gone}), true, "pushed 1");
+        CHECK(h.runs()[0]["changes"][0]["title"] == "Book");
+        CHECK(h.runs().size() == 2);  // the first sync has nothing left
+
+        // syncs without changes: only the last is kept; failures stay
+        h.add("server", report({}), true, "pulled 0, pushed 0");
+        h.addFailure("server", "cannot reach the server");
+        h.add("server", report({}), true, "pulled 0, pushed 0");
+        REQUIRE(h.runs().size() == 4);
+        CHECK(h.runs()[0]["changes"].empty());
+        CHECK(h.runs()[1]["ok"] == false);
+        CHECK(h.runs()[2]["changes"][0]["action"] == "deleted");
+    }
+    SyncHistory again(file);  // kept in the file
+    REQUIRE(again.runs().size() == 4);
+    for (int i = 0; i < 40; ++i)
+        again.add("server", report({change("N" + std::to_string(i), "x", "added", true)}), true, "pulled 1");
+    CHECK(again.runs().size() == SyncHistory::kMaxRuns);
+
+    SyncHistoryWindow window;
+    window.reload(again);
+    auto* tree = window.findChild<QTreeWidget*>("syncHistory");
+    REQUIRE(tree);
+    CHECK(tree->topLevelItemCount() == SyncHistory::kMaxRuns);
+    auto* first = tree->topLevelItem(0);
+    CHECK(first->text(0).contains("1 received"));
+    REQUIRE(first->childCount() == 1);
+    CHECK(first->child(0)->text(0).contains("Note"));
+    CHECK(first->child(0)->text(1) == "Added");
+}
+
+TEST_CASE("sync history: filled by the syncs the app runs")
+{
+    app();
+    Env env;
+    TempDir folder;
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "USB stick";
+    target.kind = "local";
+    target.path = pathString(folder.path);
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    env.config.set("/sync/auto", false);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Synced Book"}});
+    SyncController sync;
+    bool done = false;
+    QObject::connect(&sync, &SyncController::finished, [&] { done = true; });
+    sync.syncNow();
+    REQUIRE(QTest::qWaitFor([&] { return done; }, 10000));
+    auto& runs = sync.history().runs();
+    REQUIRE(runs.size() == 1);
+    CHECK(runs[0]["target"] == "USB stick");
+    CHECK(runs[0]["ok"] == true);
+    bool listed = false;
+    for (auto& c : runs[0]["changes"])
+        listed |= c["key"] == jstr(paper, "key") && c["title"] == "Synced Book" && c["incoming"] == false;
+    CHECK(listed);
+    CHECK(fs::exists(env.library.dataDir() / "sync-history.json"));
 }
 
 TEST_CASE("main window: only an empty library is deleted, after asking")

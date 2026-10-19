@@ -17,6 +17,19 @@ struct SyncOptions {
     std::function<bool()> cancelled;
 };
 
+// An object a sync brought in or sent out: its last change in that sync.
+struct SyncChange {
+    int64_t libraryId = 0;
+    std::string library;    // the library's name
+    std::string type;       // "item", "collection", "search", "setting", or "file" (an attachment's file)
+    std::string key;
+    std::string kind;       // the item type ("note", "annotation", "book", ...); else the type
+    std::string title;      // a note's first line, an annotation's text, a name; may be empty
+    std::string parentKey;  // the item a note, attachment or annotation belongs to
+    std::string action;     // "added", "changed" or "deleted"
+    bool incoming = false;  // from the target (else sent to it)
+};
+
 struct SyncReport {
     int libraries = 0;
     int pulled = 0;
@@ -27,6 +40,7 @@ struct SyncReport {
     int uploaded = 0;
     int downloaded = 0;
     std::vector<std::string> errors;
+    std::vector<SyncChange> changes;  // one per object, in the order of their last change
     bool cancelled = false;
 
     std::string summary() const;
@@ -57,6 +71,8 @@ private:
     void syncFiles(LibraryInfo& lib, SyncReport& report);
     void applyRemote(int64_t lib, const RemoteObject& o, SyncReport& report);
     void syncName(const LibraryInfo& local, RemoteLibrary& remote);
+    void record(SyncReport& report, int64_t lib, const std::string& type, const std::string& key, const Json& data,
+                const std::string& action, bool incoming);
     bool cancelled() const { return options_.cancelled && options_.cancelled(); }
     void log(const std::string& msg) const;
     void progress(const std::string& stage, int done, int total) const;

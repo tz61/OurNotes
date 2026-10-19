@@ -324,6 +324,59 @@ TEST_CASE("a fresh install's empty default library is not uploaded next to the u
     CHECK(empty.libs.size() == 1);
 }
 
+TEST_CASE("a sync reports what it brought in and sent out, once per object")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    auto paper = jstr(a.createItem(la, Json{{"itemType", "book"}, {"title", "A Book"}}), "key");
+    auto note = jstr(a.createNote(la, "<p>Draft</p>", paper), "key");
+    for (const char* text : {"<p>a</p>", "<p>ab</p>", "<p>abc</p>"})  // typed in three goes
+        a.updateItem(la, note, [&](Json& d) { d["note"] = text; });
+    auto ra = syncWith(a, server);
+    auto find = [](const SyncReport& r, const std::string& key) {
+        int n = 0;
+        const SyncChange* found = nullptr;
+        for (auto& c : r.changes)
+            if (c.key == key) {
+                ++n;
+                found = &c;
+            }
+        REQUIRE(n == 1);
+        return *found;
+    };
+    auto sent = find(ra, note);
+    CHECK(sent.action == "added");
+    CHECK(!sent.incoming);
+    CHECK(sent.kind == "note");
+    CHECK(sent.title == "abc");
+    CHECK(sent.parentKey == paper);
+    CHECK(sent.library == Library::kDefaultName);
+    CHECK(find(ra, paper).title == "A Book");
+
+    auto rb = syncWith(b, server);
+    auto got = find(rb, note);
+    CHECK(got.incoming);
+    CHECK(got.action == "added");
+    CHECK(got.title == "abc");
+
+    a.updateItem(la, note, [](Json& d) { d["note"] = "<p>abcd</p>"; });
+    syncWith(a, server);
+    auto changed = find(syncWith(b, server), note);
+    CHECK(changed.action == "changed");
+    CHECK(changed.title == "abcd");
+
+    a.eraseItems(la, {note});
+    CHECK(find(syncWith(a, server), note).action == "deleted");
+    auto gone = find(syncWith(b, server), note);
+    CHECK(gone.action == "deleted");
+    CHECK(gone.incoming);
+    CHECK(gone.title == "abcd");  // from the copy that was removed
+    CHECK(syncWith(b, server).changes.empty());
+}
+
 TEST_CASE("concurrent edits: last writer wins and the loser is kept as a conflict")
 {
     TempDir tmp;

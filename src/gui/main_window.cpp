@@ -43,6 +43,7 @@
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
 #include "gui/sync_controller.h"
+#include "gui/sync_history.h"
 #include "gui/tab_widget.h"
 
 namespace on::gui {
@@ -244,6 +245,14 @@ void MainWindow::buildActions()
         else
             sync_->syncNow();
     });
+    syncButton_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(syncButton_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        QMenu menu(syncButton_);
+        menu.addAction(tr("Sync History…"), this, &MainWindow::showSyncHistory);
+        menu.addAction(tr("Sync Conflicts…"), this, &MainWindow::showConflicts);
+        menu.addAction(tr("Sync Settings…"), this, [this] { showPreferences(1); });
+        menu.exec(syncButton_->mapToGlobal(pos));
+    });
     static_cast<TabWidget*>(tabs_)->addStripCornerWidget(syncButton_);
 
     // --- menus ----------------------------------------------------------------------------
@@ -335,6 +344,7 @@ void MainWindow::buildActions()
         else
             sync_->syncNow();
     });
+    tools->addAction(tr("Sync History…"), this, &MainWindow::showSyncHistory);
     tools->addAction(tr("Sync Settings…"), this, [this] { showPreferences(1); });
     tools->addAction(tr("Sync Conflicts…"), this, &MainWindow::showConflicts);
     tools->addSeparator();
@@ -620,6 +630,32 @@ void MainWindow::deleteLibrary(int64_t libraryId)
     }
     setStatus(tr("Deleting \"%1\" on the sync target…").arg(name));
     sync_->deleteRemoteLibrary(libraryId);
+}
+
+void MainWindow::showSyncHistory()
+{
+    if (!syncHistory_) {
+        syncHistory_ = new SyncHistoryWindow(this);
+        syncHistory_->setObjectName("syncHistoryWindow");
+        connect(sync_, &SyncController::historyChanged, syncHistory_,
+                [this] { syncHistory_->reload(sync_->history()); });
+        connect(syncHistory_, &SyncHistoryWindow::syncRequested, this, [this] {
+            if (!sync_->hasTarget())
+                showPreferences(1);
+            else
+                sync_->syncNow();
+        });
+        connect(syncHistory_, &SyncHistoryWindow::itemRequested, this,
+                [this](qint64, const QString& key) { selectItem(key); });
+        connect(syncHistory_, &SyncHistoryWindow::annotationRequested, this,
+                [this](qint64 lib, const QString& attachment, const QString& annotation) {
+                    openAttachment(lib, attachment, -1, annotation);
+                });
+    }
+    syncHistory_->reload(sync_->history());
+    syncHistory_->show();
+    syncHistory_->raise();
+    syncHistory_->activateWindow();
 }
 
 void MainWindow::showConflicts()

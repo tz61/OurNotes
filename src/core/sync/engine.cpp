@@ -4,6 +4,7 @@
 #include <map>
 
 #include "core/schema.h"
+#include "core/util.h"
 
 namespace on::sync {
 
@@ -23,6 +24,20 @@ Json withoutVolatile(Json d)
 }
 
 std::string modifiedOf(const Json& d) { return d.is_object() ? jstr(d, "dateModified") : std::string(); }
+
+std::string shortened(std::string s)
+{
+    for (auto& c : s)
+        if (c == '\n' || c == '\r' || c == '\t')
+            c = ' ';
+    if (s.size() > 120) {
+        size_t cut = 117;
+        while (cut > 0 && (s[cut] & 0xC0) == 0x80)  // not inside a UTF-8 sequence
+            --cut;
+        s = s.substr(0, cut) + "...";
+    }
+    return s;
+}
 
 } // namespace
 
@@ -244,6 +259,51 @@ void SyncEngine::pull(LibraryInfo& lib, SyncReport& report)
     }
 }
 
+void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type, const std::string& key,
+                        const Json& data, const std::string& action, bool incoming)
+{
+    SyncChange c;
+    c.libraryId = lib;
+    c.type = type;
+    c.key = key;
+    c.action = action;
+    c.incoming = incoming;
+    c.kind = type;
+    if (data.is_object()) {
+        if (type == "item" || type == "file") {
+            auto itemType = jstr(data, "itemType");
+            if (type == "item")
+                c.kind = itemType;
+            if (itemType == "note")
+                c.title = noteTitle(jstr(data, "note"));
+            else if (itemType == "annotation")
+                c.title = jstr(data, "annotationText").empty() ? jstr(data, "annotationComment")
+                                                               : jstr(data, "annotationText");
+            else
+                c.title = jstr(data, "title").empty() ? jstr(data, "filename") : jstr(data, "title");
+            c.parentKey = jstr(data, "parentItem");
+        } else {
+            c.title = jstr(data, "name");
+        }
+    }
+    if (type == "setting")
+        c.title = key;
+    c.title = shortened(c.title);
+    auto it = std::find_if(report.changes.begin(), report.changes.end(),
+                           [&](const SyncChange& o) { return o.libraryId == lib && o.type == type && o.key == key; });
+    if (it != report.changes.end()) {
+        // the last change wins, but an object that came or went in this sync stays added
+        if (it->action == "added" && action == "changed")
+            c.action = "added";
+        if (c.title.empty())
+            c.title = it->title;
+        report.changes.erase(it);
+    }
+    if (auto info = library_.library(lib))
+        c.library = info->name;
+    report.changes.push_back(std::move(c));
+}
+
 void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& report)
 {
     if (!isObjectType(o.type) || !isValidKey(o.key))
@@ -258,6 +318,7 @@ void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& rep
         if (local->synced || local->version >= o.version) {
             library_.deleteRemoteObject(lib, o.type, o.key);
             ++report.deletedLocally;
+            record(report, lib, o.type, o.key, local->data, "deleted", true);
             return;
         }
         // Edited here but deleted remotely: keep the edit (it will be re-created remotely).
@@ -277,6 +338,7 @@ void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& rep
         }
         library_.putRemoteObject(lib, o.type, o.key, o.data, o.version);
         ++report.pulled;
+        record(report, lib, o.type, o.key, o.data, "added", true);
         return;
     }
 
@@ -285,6 +347,7 @@ void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& rep
             return;  // already have it (typically our own push coming back)
         library_.putRemoteObject(lib, o.type, o.key, o.data, o.version);
         ++report.pulled;
+        record(report, lib, o.type, o.key, o.data, "changed", true);
         return;
     }
 
@@ -298,6 +361,7 @@ void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& rep
     if (modifiedOf(o.data) > modifiedOf(local->data)) {
         library_.recordConflict(lib, o.type, o.key, local->data, o.data, "remote");
         library_.putRemoteObject(lib, o.type, o.key, o.data, o.version);
+        record(report, lib, o.type, o.key, o.data, "changed", true);
     } else {
         library_.recordConflict(lib, o.type, o.key, local->data, o.data, "local");
         library_.setObjectVersion(lib, o.type, o.key, o.version);
@@ -349,6 +413,8 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
                     else
                         library_.markPushed(lib.id, p.obj.type, p.obj.key, e.version, p.rev);
                     ++report.pushed;
+                    record(report, lib.id, p.obj.type, p.obj.key, p.obj.data,
+                           p.obj.deleted ? "deleted" : p.obj.baseVersion == 0 ? "added" : "changed", false);
                 } else if (e.status == "conflict") {
                     batchConflict = true;
                     if (e.current)
@@ -414,6 +480,7 @@ void SyncEngine::syncFiles(LibraryInfo& lib, SyncReport& report)
             transport_.upload(lib.uid, key, path, meta);
             library_.setSyncedMd5(lib.id, key, md5);
             ++report.uploaded;
+            record(report, lib.id, "file", key, att, it == remote.end() ? "added" : "changed", false);
         };
         auto download = [&](const FileInfo& info) {
             if (!options_.downloadFiles)
@@ -423,6 +490,7 @@ void SyncEngine::syncFiles(LibraryInfo& lib, SyncReport& report)
             library_.fileMd5(lib.id, key, path);
             library_.setSyncedMd5(lib.id, key, got.md5.empty() ? info.md5 : got.md5);
             ++report.downloaded;
+            record(report, lib.id, "file", key, att, exists ? "changed" : "added", true);
         };
 
         try {

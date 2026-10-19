@@ -22,6 +22,7 @@ set(OURNOTES_GUI_SOURCES
     preferences.cpp
     shift_wheel.cpp
     sync_controller.cpp
+    sync_history.cpp
     tab_widget.cpp
     tag_selector.cpp
     theme.cpp

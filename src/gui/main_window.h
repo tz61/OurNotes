@@ -11,6 +11,7 @@ namespace on::gui {
 class LibraryView;
 class ReaderTab;
 class SyncController;
+class SyncHistoryWindow;
 class FulltextIndexer;
 struct Scope;
 
@@ -54,11 +55,13 @@ private:
     // Only an empty library: on the sync target first, when it is synced there.
     void deleteLibrary(int64_t libraryId);
     void showConflicts();
+    void showSyncHistory();
     void setStatus(const QString& text, int timeoutMs = 0);
 
     QTabWidget* tabs_;
     LibraryView* library_;
     QToolButton* syncButton_ = nullptr;
+    SyncHistoryWindow* syncHistory_ = nullptr;
     QLabel* status_;
     SyncController* sync_ = nullptr;
     FulltextIndexer* indexer_ = nullptr;
