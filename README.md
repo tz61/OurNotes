@@ -147,6 +147,13 @@ Zotero's data directory; change it in *Preferences → General* or with
 `OURNOTES_DATA_DIR`. Settings and sync tokens are in `~/.config/ournotes/config.json`
 (macOS: `~/Library/Application Support/OurNotes`, Windows: `%APPDATA%\OurNotes`).
 
+Behind the item list OurNotes shows one of the twelve BanG Dream! bands, a different
+one every two hours (Poppin'Party from midnight, Afterglow from 2:00, … Ikka Dumb Rock!
+from 22:00), faint enough to read the columns over it; *Preferences → General* turns it
+off. The pictures are not part of OurNotes: `scripts/fetch-band-backgrounds.sh` downloads
+them from the [BanG Dream! wiki](https://bandori.miraheze.org/) into the data directory
+(`backgrounds/bands/`, shown in name order); without them the list stays plain.
+
 OurNotes was called freePen before. On its first start it takes over freePen's settings
 (copied from `~/.config/freepen`) and moves the library from `~/freePen` to `~/OurNotes`;
 a data directory chosen in the settings stays where it is. An `ournotesd` server finds the

@@ -3,6 +3,9 @@
 #include <QAction>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QPainter>
+#include <QDir>
+#include <QDateTime>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -27,19 +30,68 @@
 #include "gui/item_pane.h"
 #include "gui/note_editor.h"
 #include "gui/tag_selector.h"
+#include "gui/theme.h"
 
 namespace on::gui {
 
 namespace {
 
-// Item list with Zotero-like keyboard handling.
+// Item list with Zotero-like keyboard handling, and optionally a picture behind its rows.
 class ItemsTreeView : public QTreeView {
 public:
     using QTreeView::QTreeView;
     std::function<void()> onDelete;
     std::function<void()> onOpen;
 
+    // Drawn faintly behind the rows, whole and centred; a null image shows none.
+    void setBackgroundImage(const QImage& image)
+    {
+        background_ = image;
+        scaled_ = QPixmap();
+        viewport()->update();
+    }
+
 protected:
+    void paintEvent(QPaintEvent* e) override
+    {
+        if (!background_.isNull()) {
+            QPainter p(viewport());
+            QSize area = viewport()->size();
+            qreal dpr = viewport()->devicePixelRatioF();
+            if (scaled_.isNull() || scaledFor_ != area) {  // scaled once per size
+                QSize s = background_.size().scaled(area, Qt::KeepAspectRatio);
+                scaled_ = QPixmap::fromImage(background_.scaled(s * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                scaled_.setDevicePixelRatio(dpr);
+                scaledFor_ = area;
+            }
+            QSizeF s = scaled_.deviceIndependentSize();
+            // faint enough to read the columns over it
+            p.setOpacity(isDarkTheme() ? 0.18 : 0.14);
+            p.drawPixmap(QPointF((area.width() - s.width()) / 2, (area.height() - s.height()) / 2), scaled_);
+        }
+        QTreeView::paintEvent(e);
+    }
+    // the picture stays put: scrolling moves the rows over it, so everything is redrawn
+    void scrollContentsBy(int dx, int dy) override
+    {
+        QTreeView::scrollContentsBy(dx, dy);
+        if (!background_.isNull())
+            viewport()->update();
+    }
+    // alternate rows let the picture through too
+    void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        if (background_.isNull()) {
+            QTreeView::drawRow(painter, option, index);
+            return;
+        }
+        QStyleOptionViewItem o(option);
+        QColor alternate = o.palette.color(QPalette::AlternateBase);
+        alternate.setAlphaF(0.5);
+        o.palette.setColor(QPalette::AlternateBase, alternate);
+        QTreeView::drawRow(painter, o, index);
+    }
+
     void keyPressEvent(QKeyEvent* e) override
     {
         if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && onDelete) {
@@ -60,6 +112,11 @@ protected:
         }
         QTreeView::keyPressEvent(e);
     }
+
+private:
+    QImage background_;
+    QPixmap scaled_;  // background_ at the size it was last drawn
+    QSize scaledFor_;
 };
 
 } // namespace
@@ -257,6 +314,11 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             });
 
     tree_->reload();
+
+    bandTimer_.setSingleShot(true);
+    connect(&bandTimer_, &QTimer::timeout, this, &LibraryView::updateBandBackground);
+    connect(&AppContext::get(), &AppContext::appearanceChanged, this, &LibraryView::updateBandBackground);
+    updateBandBackground();
 }
 
 Scope LibraryView::scope() const { return model_->scope(); }
@@ -424,6 +486,29 @@ void LibraryView::addTool(QWidget* tool)
     searchRow_->insertWidget(tools_++, tool);
     if (tools_ == 1)
         searchRow_->insertSpacing(tools_, 0);
+}
+
+// One of the twelve BanG Dream! bands behind the item list, a different one every two
+// hours (Poppin'Party from midnight to Ikka Dumb Rock! from 22:00): the pictures in
+// <data dir>/backgrounds/bands, in name order (scripts/fetch-band-backgrounds.sh).
+void LibraryView::updateBandBackground()
+{
+    auto* view = static_cast<ItemsTreeView*>(items_);
+    bandTimer_.stop();
+    QStringList files;
+    QDir dir(qpath(AppContext::get().library().dataDir() / "backgrounds" / "bands"));
+    if (AppContext::get().config().get("/ui/bandBackground", true).get<bool>())
+        files = dir.entryList({"*.png", "*.jpg", "*.jpeg", "*.webp"}, QDir::Files, QDir::Name);
+    if (files.isEmpty()) {
+        view->setBackgroundImage({});
+        return;
+    }
+    auto now = QDateTime::currentDateTime();
+    int slot = now.time().hour() / 2;
+    view->setBackgroundImage(QImage(dir.filePath(files[slot % files.size()])));
+    // the next band at the next even hour
+    QDateTime next(now.date().addDays(slot == 11 ? 1 : 0), QTime((slot + 1) % 12 * 2, 0));
+    bandTimer_.start(int(std::clamp<qint64>(now.msecsTo(next) + 500, 1000, 2 * 3600 * 1000)));
 }
 
 void LibraryView::focusSearch()

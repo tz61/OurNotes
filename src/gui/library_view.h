@@ -77,6 +77,7 @@ private:
     void showItemMenu(const QPoint& pos);
     void selectKeys(const QStringList& keys, const QString& current);
     void fitColumns();
+    void updateBandBackground();
 
     CollectionTree* tree_;
     TagSelector* tags_;
@@ -96,6 +97,7 @@ private:
     QSplitter* leftSplitter_;
     QTimer reloadTimer_;
     QTimer searchTimer_;
+    QTimer bandTimer_;  // the next band, at the next even hour
     QString pendingSelect_;
 };
 

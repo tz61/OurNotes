@@ -137,6 +137,19 @@ QWidget* PreferencesDialog::generalPage()
         ctx.config().save();
         emit ctx.appearanceChanged();
     });
+    auto* bands = new QCheckBox(tr("Show a BanG Dream! band behind the item list, a different one every two hours"),
+                                page);
+    bands->setObjectName("bandBackground");
+    bands->setToolTip(tr("Poppin'Party from midnight to Ikka Dumb Rock! from 22:00. The pictures are in the data "
+                         "directory under backgrounds/bands; scripts/fetch-band-backgrounds.sh downloads them."));
+    bands->setChecked(cfg.get("/ui/bandBackground", true).get<bool>());
+    form->addRow(QString(), bands);
+    connect(bands, &QCheckBox::toggled, this, [](bool on) {
+        auto& ctx = AppContext::get();
+        ctx.config().set("/ui/bandBackground", on);
+        ctx.config().save();
+        emit ctx.appearanceChanged();
+    });
     form->addRow(tr("Formula colour:"), formulaColorRow(page));
 
     openPdf_ = new QComboBox(page);
