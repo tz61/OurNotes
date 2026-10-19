@@ -14,6 +14,8 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTreeView>
+#include <QToolButton>
+#include <QStyle>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -77,7 +79,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     leftSplitter_->setStretchFactor(1, 1);
 
     // middle: search + items
-    auto* middle = new QWidget(splitter_);
+    auto* middle = middle_ = new QWidget(splitter_);
     auto* mv = new QVBoxLayout(middle);
     mv->setContentsMargins(0, 0, 0, 0);
     mv->setSpacing(4);
@@ -96,6 +98,15 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     search_->addAction(icon("search"), QLineEdit::LeadingPosition);
     searchRow->addWidget(search_, 1);
     searchRow->addWidget(searchMode_);
+    // shows and hides the item pane, like the notes pane of a reader tab
+    paneToggle_ = new QToolButton(middle);
+    paneToggle_->setObjectName("itemPaneToggle");
+    paneToggle_->setIcon(icon("context-pane"));
+    paneToggle_->setIconSize(QSize(18, 18));
+    paneToggle_->setAutoRaise(true);
+    paneToggle_->setCheckable(true);
+    paneToggle_->setToolTip(tr("Show or hide the item pane"));
+    searchRow->addWidget(paneToggle_);
     mv->addLayout(searchRow);
 
     model_ = new ItemsModel(this);
@@ -116,6 +127,9 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     items_->setAlternatingRowColors(true);
     items_->setIconSize(QSize(16, 16));
     items_->setExpandsOnDoubleClick(false);
+    // the columns always fill the list exactly (see fitColumns), so no sideways scrolling
+    items_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    items_->viewport()->installEventFilter(this);
     auto* header = items_->header();
     header->setStretchLastSection(false);
     header->setSectionResizeMode(QHeaderView::Interactive);
@@ -137,6 +151,30 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     splitter_->setStretchFactor(1, 1);
     splitter_->setStretchFactor(2, 0);
     splitter_->setSizes({240, 760, 380});
+    connect(paneToggle_, &QToolButton::toggled, this, [this](bool on) {
+        setItemPaneVisible(on);
+        AppContext::get().config().set("/ui/itemPaneVisible", on);
+    });
+    paneToggle_->setChecked(AppContext::get().config().get("/ui/itemPaneVisible", true).get<bool>());
+    setItemPaneVisible(paneToggle_->isChecked());
+
+    connect(header, &QHeaderView::sectionResized, this, [this, header](int section, int oldSize, int newSize) {
+        if (fitting_)
+            return;
+        if (section == ItemsModel::Title && newSize > 0 && oldSize > 0) {
+            // dragging the title's edge trades width with the column next to it
+            for (int v = header->visualIndex(section) + 1; v < header->count(); ++v) {
+                int next = header->logicalIndex(v);
+                if (header->isSectionHidden(next))
+                    continue;
+                fitting_ = true;
+                header->resizeSection(next, std::max(header->minimumSectionSize(), header->sectionSize(next) - (newSize - oldSize)));
+                fitting_ = false;
+                break;
+            }
+        }
+        fitColumns();
+    });
 
     view->onDelete = [this] {
         auto s = scope();
@@ -183,7 +221,10 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             auto* a = menu.addAction(ItemsModel::columnName(c));
             a->setCheckable(true);
             a->setChecked(!header->isSectionHidden(c));
-            connect(a, &QAction::toggled, this, [header, c](bool on) { header->setSectionHidden(c, !on); });
+            connect(a, &QAction::toggled, this, [this, header, c](bool on) {
+                header->setSectionHidden(c, !on);
+                fitColumns();
+            });
         }
         menu.exec(header->mapToGlobal(pos));
     });
@@ -396,6 +437,48 @@ void LibraryView::restoreState(const QByteArray& state)
         leftSplitter_->restoreState(b);
     if (!c.isEmpty())
         items_->header()->restoreState(c);
+    items_->header()->setStretchLastSection(false);
+    setItemPaneVisible(paneToggle_->isChecked());  // not part of the splitter's state
+    fitColumns();
+}
+
+void LibraryView::setItemPaneVisible(bool visible)
+{
+    if (paneToggle_->isChecked() != visible) {
+        paneToggle_->setChecked(visible);  // comes back here through toggled()
+        return;
+    }
+    pane_->setVisible(visible);
+}
+
+bool LibraryView::isItemPaneVisible() const { return pane_->isVisible(); }
+
+bool LibraryView::eventFilter(QObject* watched, QEvent* e)
+{
+    if (watched == items_->viewport() && e->type() == QEvent::Resize)
+        fitColumns();
+    return QWidget::eventFilter(watched, e);
+}
+
+// The title column takes whatever width the other columns leave, down to a minimum;
+// the list cannot be made narrower than that, so the last column always ends where the
+// list does.
+void LibraryView::fitColumns()
+{
+    if (fitting_)
+        return;
+    auto* header = items_->header();
+    constexpr int kMinTitle = 180;
+    int others = 0;
+    for (int c = 0; c < header->count(); ++c)
+        if (c != ItemsModel::Title && !header->isSectionHidden(c))
+            others += header->sectionSize(c);
+    fitting_ = true;
+    header->resizeSection(ItemsModel::Title, std::max(kMinTitle, items_->viewport()->width() - others));
+    fitting_ = false;
+    items_->horizontalScrollBar()->setValue(0);
+    int chrome = items_->frameWidth() * 2 + items_->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
+    middle_->setMinimumWidth(std::max(kMinTitle + others + chrome, middle_->layout()->minimumSize().width()));
 }
 
 void LibraryView::openIndex(const QModelIndex& index)

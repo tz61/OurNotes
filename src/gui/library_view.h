@@ -9,6 +9,7 @@ class QComboBox;
 class QHBoxLayout;
 class QLineEdit;
 class QSplitter;
+class QToolButton;
 class QTreeView;
 
 namespace on::gui {
@@ -38,6 +39,9 @@ public:
     // What is shown: collection, selected items, expanded rows and scroll position.
     Json viewState() const;
     void restoreViewState(const Json& state);
+    // The item pane on the right (Info / Notes) can be hidden; the list then takes the room.
+    void setItemPaneVisible(bool visible);
+    bool isItemPaneVisible() const;
 
     // actions
     void newItem(const QString& itemType);
@@ -61,6 +65,9 @@ signals:
     void newLibraryRequested();
     void selectionChanged();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* e) override;
+
 private:
     void onScopeChanged(const Scope& scope);
     void onSelectionChanged();
@@ -68,12 +75,16 @@ private:
     void openIndex(const QModelIndex& index);
     void showItemMenu(const QPoint& pos);
     void selectKeys(const QStringList& keys, const QString& current);
+    void fitColumns();
 
     CollectionTree* tree_;
     TagSelector* tags_;
     QLineEdit* search_;
     QComboBox* searchMode_;
     QHBoxLayout* searchRow_;
+    QWidget* middle_;
+    QToolButton* paneToggle_;
+    bool fitting_ = false;
     int tools_ = 0;
     QTreeView* items_;
     ItemsModel* model_;

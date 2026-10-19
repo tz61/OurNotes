@@ -13,6 +13,8 @@
 #include <QAbstractTextDocumentLayout>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QHeaderView>
+#include <QSplitter>
 #include <QTabWidget>
 #include <QTabBar>
 #include <QToolBar>
@@ -1336,6 +1338,83 @@ TEST_CASE("main window: many tabs wrap onto more rows")
     QTest::mouseRelease(from, Qt::LeftButton, {}, from->mapFromGlobal(to->mapToGlobal(QPoint(20, 10))));
     QApplication::processEvents();
     CHECK(tabs->tabText(2) == moved);
+}
+
+TEST_CASE("library: columns fill the list, the title column gives way, the item pane can be hidden")
+{
+    app();
+    Env env;
+    for (int i = 0; i < 5; ++i)
+        env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper " + std::to_string(i)}});
+    LibraryView view;
+    view.resize(1500, 800);
+    view.show();
+    QApplication::processEvents();
+    auto* items = view.itemsView();
+    auto* header = items->header();
+    CHECK(items->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff);
+    auto total = [&] {
+        int sum = 0;
+        for (int c = 0; c < header->count(); ++c)
+            if (!header->isSectionHidden(c))
+                sum += header->sectionSize(c);
+        return sum;
+    };
+    auto otherWidths = [&] {
+        std::vector<int> w;
+        for (int c = 1; c < header->count(); ++c)
+            w.push_back(header->isSectionHidden(c) ? 0 : header->sectionSize(c));
+        return w;
+    };
+    // the last column ends where the list ends
+    CHECK(total() == items->viewport()->width());
+
+    QSplitter* splitter = nullptr;
+    for (auto* sp : view.findChildren<QSplitter*>())
+        if (sp->orientation() == Qt::Horizontal && sp->count() == 3)
+            splitter = sp;
+    REQUIRE(splitter);
+    auto before = otherWidths();
+    int title = header->sectionSize(ItemsModel::Title);
+    // a wider item pane squeezes only the title column
+    splitter->setSizes({240, 700, 560});
+    QApplication::processEvents();
+    CHECK(total() == items->viewport()->width());
+    CHECK(otherWidths() == before);
+    CHECK(header->sectionSize(ItemsModel::Title) < title);
+    // down to a minimum: the list does not get narrower than that
+    splitter->setSizes({240, 10, 1250});
+    QApplication::processEvents();
+    CHECK(header->sectionSize(ItemsModel::Title) >= 180);
+    CHECK(total() == items->viewport()->width());
+    splitter->setSizes({240, 760, 500});
+    QApplication::processEvents();
+
+    // dragging the title's edge trades width with the next column
+    int creator = header->sectionSize(ItemsModel::Creator);
+    header->resizeSection(ItemsModel::Title, header->sectionSize(ItemsModel::Title) + 40);
+    QApplication::processEvents();
+    CHECK(header->sectionSize(ItemsModel::Creator) == creator - 40);
+    CHECK(total() == items->viewport()->width());
+
+    // hidden item pane: the list reaches the right edge
+    auto* toggle = view.findChild<QToolButton*>("itemPaneToggle");
+    REQUIRE(toggle);
+    CHECK(toggle->isChecked());
+    toggle->click();
+    QApplication::processEvents();
+    CHECK(!view.isItemPaneVisible());
+    CHECK(items->mapTo(&view, QPoint(items->width(), 0)).x() == view.width());
+    CHECK(total() == items->viewport()->width());
+    CHECK(env.config.get("/ui/itemPaneVisible").get<bool>() == false);
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view.grab().save(dir + "/library-pane-hidden.png");
+    toggle->click();
+    QApplication::processEvents();
+    CHECK(view.isItemPaneVisible());
+    CHECK(total() == items->viewport()->width());
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view.grab().save(dir + "/library-pane-shown.png");
 }
 
 int main(int argc, char** argv)
