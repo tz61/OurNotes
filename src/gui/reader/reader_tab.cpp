@@ -211,9 +211,21 @@ void ReaderTab::buildSidebar()
     thumbnails_->setMovement(QListView::Static);
     thumbnails_->setIconSize(QSize(120, 160));
     thumbnails_->setSpacing(6);
+    // Cells of one size, each with a blank page until its picture arrives: laid out
+    // while they were only page numbers, the cells piled up as the pictures came,
+    // until the list was resized.
+    thumbnails_->setUniformItemSizes(true);
+    thumbnails_->setGridSize(QSize(120 + 12, 160 + thumbnails_->fontMetrics().height() + 12));
     auto* doc = view_->document();
+    auto first = doc->pageCount() > 0 ? doc->pageSize(0) : pdf::Size{};
+    QSize blankSize = QSizeF(std::max(1.0f, first.width), std::max(1.0f, first.height))
+                          .scaled(120, 160, Qt::KeepAspectRatio)
+                          .toSize();
+    QPixmap blank(blankSize);
+    blank.fill(darkPdfPages() ? darkPageColor() : QColor(Qt::white));
+    QIcon blankIcon(blank);
     for (int i = 0; i < doc->pageCount(); ++i)
-        new QListWidgetItem(qs(doc->pageLabel(i)), thumbnails_);
+        new QListWidgetItem(blankIcon, qs(doc->pageLabel(i)), thumbnails_);
     connect(thumbnails_, &QListWidget::currentRowChanged, this, [this](int row) { view_->goToPage(row); });
     outline_ = new QTreeWidget(sidebar_);
     outline_->setHeaderHidden(true);

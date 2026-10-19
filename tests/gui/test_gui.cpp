@@ -89,6 +89,46 @@ void drag(QWidget* w, QPointF from, QPointF to)
 
 } // namespace
 
+TEST_CASE("reader: page thumbnails stay in a grid while their pictures arrive")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "pages.pdf";
+    writeManyPagesPdf(file, 12);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    int rendered = 0;
+    QObject::connect(tab.view(), &PdfView::thumbnailRendered, [&] { ++rendered; });
+    QToolButton* show = nullptr;
+    for (auto* b : tab.findChildren<QToolButton*>())
+        if (b->defaultAction() && b->defaultAction()->text() == "Thumbnails")
+            show = b;
+    REQUIRE(show);
+    show->click();
+    QListWidget* list = nullptr;
+    for (auto* l : tab.findChildren<QListWidget*>())
+        if (l->viewMode() == QListView::IconMode)
+            list = l;
+    REQUIRE(list);
+    REQUIRE(list->count() == 12);
+    REQUIRE(QTest::qWaitFor([&] { return rendered == 12; }, 5000));
+    QApplication::processEvents();
+
+    // without a resize, no two cells overlap and each has room for a picture
+    for (int i = 0; i < list->count(); ++i) {
+        QRect a = list->visualRect(list->model()->index(i, 0));
+        CHECK(a.width() >= 120);
+        CHECK(a.height() >= 160);
+        for (int j = i + 1; j < list->count(); ++j)
+            CHECK_FALSE(a.intersects(list->visualRect(list->model()->index(j, 0))));
+    }
+}
+
 TEST_CASE("pdf view: pages are drawn pixel for pixel, not resampled")
 {
     app();
