@@ -21,7 +21,8 @@ public:
         setObjectName("tabButton");
         setAttribute(Qt::WA_Hover);
         setMouseTracking(true);
-        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        // wider than its hint when its row is shared out (the strip's rows are justified)
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     }
 
     QWidget* page() const { return page_; }
@@ -169,6 +170,7 @@ public:
         row->setSpacing(4);
         area_ = new QWidget(this);
         flow_ = new FlowLayout(area_, 0);
+        flow_->setJustified(true);  // rows of tabs reach the edge; only the last is short
         row->addWidget(area_, 1);
         corner_ = new QHBoxLayout;
         row->addLayout(corner_);

@@ -1424,6 +1424,17 @@ TEST_CASE("main window: many tabs wrap onto more rows")
         CHECK(b->geometry().right() < strip->width());
     }
     CHECK(rows.size() >= 2);  // wrapped, not squeezed into one row
+    // rows reach the edge (their tabs share the space; the last one is nearly full here)
+    {
+        auto* area = buttons.first()->parentWidget();
+        for (int row : rows) {
+            int right = 0;
+            for (auto* b : buttons)
+                if (b->y() == row)
+                    right = std::max(right, b->geometry().right());
+            CHECK(right == area->width() - 1);
+        }
+    }
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         window.grab().save(dir + "/tabs-wrapped.png");
 

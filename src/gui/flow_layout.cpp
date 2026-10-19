@@ -68,10 +68,32 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
     QRect area = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
     int x = area.x(), y = area.y(), lineHeight = 0;
     std::vector<std::pair<QLayoutItem*, QRect>> line;  // items of the current row
-    auto finishLine = [&] {
-        if (!testOnly)  // centre the items of a row vertically
-            for (auto& [item, r] : line)
-                item->setGeometry(r.translated(0, (lineHeight - r.height()) / 2));
+    auto finishLine = [&](bool last) {
+        if (testOnly) {
+            line.clear();
+            return;
+        }
+        int widths = 0;
+        for (auto& [item, r] : line)
+            widths += r.width();
+        int n = (int)line.size();
+        int extra = std::max(0, area.width() - widths - (n - 1) * spacing_);
+        // the last row too when it is mostly full; a few items would stretch too far
+        if (justified_ && n > 0 && (!last || extra * 10 <= area.width() * 3)) {
+            // share what is left of the row among its items, in proportion to their
+            // widths (a short tab stays short), then place them again
+            int given = 0, at = area.x();
+            for (int i = 0; i < n; ++i) {
+                auto& r = line[i].second;
+                int add = i == n - 1 ? extra - given : int(qint64(extra) * r.width() / std::max(1, widths));
+                given += add;
+                r.setWidth(r.width() + add);
+                r.moveLeft(at);
+                at += r.width() + spacing_;
+            }
+        }
+        for (auto& [item, r] : line)  // centre the items of a row vertically
+            item->setGeometry(r.translated(0, (lineHeight - r.height()) / 2));
         line.clear();
     };
     for (auto* item : items_) {
@@ -81,7 +103,7 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
         hint.setWidth(std::min(hint.width(), std::max(1, area.width())));
         int nextX = x + hint.width() + spacing_;
         if (nextX - spacing_ > area.right() + 1 && lineHeight > 0) {
-            finishLine();
+            finishLine(false);
             x = area.x();
             y += lineHeight + spacing_;
             nextX = x + hint.width() + spacing_;
@@ -91,7 +113,7 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
         x = nextX;
         lineHeight = std::max(lineHeight, hint.height());
     }
-    finishLine();
+    finishLine(true);
     return y + lineHeight - rect.y() + m.bottom();
 }
 

@@ -22,11 +22,15 @@ public:
     QSize sizeHint() const override;
     void setGeometry(const QRect& rect) override;
     void clear();
+    // Rows that wrap are filled to the edge: their items share the space left over, like
+    // justified text (the last row only when it is at least 70 % full). Off by default.
+    void setJustified(bool justified) { justified_ = justified; }
 
 private:
     int doLayout(const QRect& rect, bool testOnly) const;
     QList<QLayoutItem*> items_;
     int spacing_;
+    bool justified_ = false;
 };
 
 } // namespace on::gui
