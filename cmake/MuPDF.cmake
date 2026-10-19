@@ -4,12 +4,13 @@
 #   1. -DMUPDF_ROOT=<prefix>   prefix containing include/mupdf and lib/libmupdf(.a|.lib)
 #                              (+ libmupdf-third / libthirdparty when built from source)
 #   2. a system installation (Homebrew, distro packages)
-#   3. OURNOTES_BUNDLE_MUPDF=ON (default on Unix): download and build MuPDF with make.
+#   3. OURNOTES_BUNDLE_MUPDF=ON (default): download and build MuPDF, with make on Unix
+#      and with MSBuild (MuPDF's Visual Studio projects) on Windows.
 
 set(MUPDF_ROOT "" CACHE PATH "Prefix of a MuPDF installation")
 set(OURNOTES_MUPDF_VERSION "1.28.5")
 set(OURNOTES_MUPDF_SHA256 "98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934")
-if(UNIX)
+if(UNIX OR MSVC)
     option(OURNOTES_BUNDLE_MUPDF "Download and build MuPDF if it is not found" ON)
 else()
     option(OURNOTES_BUNDLE_MUPDF "Download and build MuPDF if it is not found" OFF)
@@ -49,7 +50,50 @@ elseif(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
             endif()
         endif()
     endif()
-elseif(OURNOTES_BUNDLE_MUPDF)
+elseif(OURNOTES_BUNDLE_MUPDF AND MSVC)
+    # libmupdf.vcxproj builds the third-party libraries too and merges them into
+    # libmupdf.lib. Its Debug and Release configurations use the same C runtimes (/MDd,
+    # /MD) as CMake's, so the one matching the build configuration is built.
+    include(ExternalProject)
+    if(CMAKE_VS_MSBUILD_COMMAND)
+        set(_msbuild "${CMAKE_VS_MSBUILD_COMMAND}")
+    else()
+        find_program(_msbuild NAMES msbuild REQUIRED)
+    endif()
+    if(CMAKE_VS_PLATFORM_NAME)
+        set(_platform "${CMAKE_VS_PLATFORM_NAME}")
+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(_platform Win32)
+    elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
+        set(_platform ARM64)
+    else()
+        set(_platform x64)
+    endif()
+    set(_prefix "${CMAKE_BINARY_DIR}/mupdf")
+    set(_config "$<IF:$<CONFIG:Debug>,Debug,Release>")
+    ExternalProject_Add(mupdf_ext
+        URL "https://mupdf.com/downloads/archive/mupdf-${OURNOTES_MUPDF_VERSION}-source.tar.gz"
+        URL_HASH SHA256=${OURNOTES_MUPDF_SHA256}
+        ${OURNOTES_EXTRACT_TIMESTAMP}
+        PREFIX "${_prefix}"
+        BUILD_IN_SOURCE TRUE
+        CONFIGURE_COMMAND ""
+        # the projects ask for Visual Studio 2019's toolset (use the one CMake found) and
+        # link-time code generation (which every program linking libmupdf.lib would redo)
+        BUILD_COMMAND "${_msbuild}" platform/win32/libmupdf.vcxproj -m -nologo -verbosity:minimal
+            "-p:Configuration=${_config}" "-p:Platform=${_platform}"
+            "-p:PlatformToolset=v${MSVC_TOOLSET_VERSION}" -p:WindowsTargetPlatformVersion=10.0
+            -p:WholeProgramOptimization=false
+        INSTALL_COMMAND "${CMAKE_COMMAND}" -E copy_directory include "${_prefix}/include"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${_prefix}/lib"
+            COMMAND "${CMAKE_COMMAND}" -E copy "platform/win32/${_platform}/${_config}/libmupdf.lib" "${_prefix}/lib/libmupdf.lib"
+        BUILD_BYPRODUCTS "${_prefix}/lib/libmupdf.lib")
+    file(MAKE_DIRECTORY "${_prefix}/include")
+    add_dependencies(MuPDF::MuPDF mupdf_ext)
+    target_include_directories(MuPDF::MuPDF INTERFACE "${_prefix}/include")
+    target_link_libraries(MuPDF::MuPDF INTERFACE "${_prefix}/lib/libmupdf.lib")
+    message(STATUS "OurNotes: MuPDF ${OURNOTES_MUPDF_VERSION} will be built from source with MSBuild")
+elseif(OURNOTES_BUNDLE_MUPDF AND UNIX)
     include(ExternalProject)
     find_program(MAKE_EXECUTABLE NAMES gmake make REQUIRED)
     set(_prefix "${CMAKE_BINARY_DIR}/mupdf")

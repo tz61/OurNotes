@@ -98,7 +98,7 @@ ad hoc unless `CODESIGN_IDENTITY` (and `NOTARY_PROFILE` for notarization) is set
 ### Windows (Visual Studio 2022)
 
 ```powershell
-vcpkg install mupdf openssl            # MuPDF cannot be built with make on Windows
+vcpkg install openssl                  # MuPDF is downloaded and built with MSBuild
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake ^
       -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64
 cmake --build build --config Release

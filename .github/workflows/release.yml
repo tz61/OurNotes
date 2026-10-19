@@ -97,8 +97,8 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
-      - name: MuPDF and OpenSSL from vcpkg
-        run: vcpkg install mupdf openssl
+      - name: OpenSSL from vcpkg (MuPDF is built from source)
+        run: vcpkg install openssl
       - name: Build the zip
         run: ./scripts/package-windows.ps1
       - uses: actions/upload-artifact@v7

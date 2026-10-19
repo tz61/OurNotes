@@ -1,6 +1,6 @@
 # Build OurNotes for Windows and package it:
 #   dist\OurNotes-<version>-windows-x64.zip
-# holding OurNotes\bin\ournotes.exe with the Qt, MuPDF, OpenSSL and Visual C++ runtime
+# holding OurNotes\bin\ournotes.exe with the Qt, OpenSSL and Visual C++ runtime
 # DLLs it needs, and ournotes-cli.exe and ournotesd.exe next to it.
 #
 # Usage: scripts\package-windows.ps1 [-QtDir DIR] [-BuildDir DIR] [-OutDir DIR] [-NoBuild]
@@ -9,8 +9,9 @@
 #   -OutDir    where the zip is written (default: dist\)
 #   -NoBuild   package what was built before
 #
-# Needs Visual Studio 2022, CMake, and vcpkg (VCPKG_ROOT) with MuPDF and OpenSSL:
-#   vcpkg install mupdf openssl --triplet x64-windows
+# Needs Visual Studio 2022, CMake, and vcpkg (VCPKG_ROOT) with OpenSSL (MuPDF is
+# downloaded and built with MSBuild):
+#   vcpkg install openssl --triplet x64-windows
 param(
     [string]$QtDir = $env:QT_ROOT_DIR,
     [string]$BuildDir = "",
