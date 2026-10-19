@@ -3,6 +3,7 @@
 #include <QEvent>
 #include <QPointer>
 #include <QSplitter>
+#include <QTabWidget>
 
 #include <algorithm>
 #include <vector>
@@ -14,6 +15,7 @@ namespace on::gui {
 namespace {
 
 constexpr const char* kWidthKey = "/ui/sidePaneWidth";
+constexpr const char* kTabKey = "/ui/itemPaneTab";  // "info" | "notes"
 
 std::vector<QPointer<QSplitter>>& sharing()
 {
@@ -37,6 +39,17 @@ void setPaneWidth(QSplitter* split, int width)
     sizes[n - 2] = std::max(1, sizes[n - 2] - diff);
     QSignalBlocker block(split);
     split->setSizes(sizes);
+}
+
+std::vector<QPointer<QTabWidget>>& tabSharing()
+{
+    static std::vector<QPointer<QTabWidget>> tabs;
+    return tabs;
+}
+
+void showTab(QTabWidget* tabs, int index)
+{
+    tabs->setCurrentIndex(tabs->isTabEnabled(index) ? index : 1 - index);
 }
 
 // Laid out (a tab shown, the window resized): the shared width.
@@ -75,5 +88,23 @@ void shareSidePaneWidth(QSplitter* split)
 }
 
 void applySidePaneWidth(QSplitter* split) { setPaneWidth(split, sharedWidth()); }
+
+void shareInfoNotesTab(QTabWidget* tabs)
+{
+    auto& all = tabSharing();
+    all.erase(std::remove_if(all.begin(), all.end(), [](auto& t) { return t.isNull(); }), all.end());
+    all.push_back(tabs);
+    auto chosen = AppContext::get().config().get(kTabKey, "info").get<std::string>();
+    showTab(tabs, chosen == "notes" ? 1 : 0);
+    // a click, not any change: the pages deleted with a closed tab change it, too
+    QObject::connect(tabs, &QTabWidget::tabBarClicked, tabs, [tabs](int index) {
+        if (index < 0 || index > 1 || !tabs->isTabEnabled(index))
+            return;
+        AppContext::get().config().set(kTabKey, index == 1 ? "notes" : "info");
+        for (auto& other : tabSharing())
+            if (other && other != tabs)
+                showTab(other, index);
+    });
+}
 
 } // namespace on::gui

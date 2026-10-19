@@ -173,23 +173,90 @@ TEST_CASE("reader: the paper's info is beside the PDF, next to its notes")
     }
     env.library.createNote(env.lib, "<p>Thoughts</p>", jstr(paper, "key"));
     {
-        ReaderTab tab(env.lib, key);  // with a note: Notes, until Info is chosen
+        ReaderTab tab(env.lib, key);  // with a note, too: Info, until Notes is chosen
         auto* tabs = tabsOf(tab);
-        CHECK(tabs->currentIndex() == 1);
+        CHECK(tabs->currentIndex() == 0);
         tab.show();
         QApplication::processEvents();
-        QTest::mouseClick(tabs->tabBar(), Qt::LeftButton, {}, tabs->tabBar()->tabRect(0).center());
-        CHECK(tabs->currentIndex() == 0);
+        QTest::mouseClick(tabs->tabBar(), Qt::LeftButton, {}, tabs->tabBar()->tabRect(1).center());
+        CHECK(tabs->currentIndex() == 1);
     }
     {
         ReaderTab tab(env.lib, key);
-        CHECK(tabsOf(tab)->currentIndex() == 0);
+        CHECK(tabsOf(tab)->currentIndex() == 1);
     }
     // a PDF of its own has no paper to show
+    env.config.set("/ui/itemPaneTab", "info");
     auto alone = qs(jstr(env.library.importAttachment(env.lib, file, ""), "key"));
     ReaderTab tab(env.lib, alone);
     CHECK(!tabsOf(tab)->isTabEnabled(0));
     CHECK(tabsOf(tab)->currentIndex() == 1);
+}
+
+TEST_CASE("main window: Info or Notes is one choice, for every item and every PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto noted = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "With a note"}});
+    env.library.createNote(env.lib, "<p>Thoughts</p>", jstr(noted, "key"));
+    auto plain = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Without"}});
+    auto notedPdf = qs(jstr(env.library.importAttachment(env.lib, file, jstr(noted, "key")), "key"));
+    auto plainPdf = qs(jstr(env.library.importAttachment(env.lib, file, jstr(plain, "key")), "key"));
+    MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    window.openAttachment(env.lib, notedPdf);
+    window.openAttachment(env.lib, plainPdf);
+    QApplication::processEvents();
+    auto* mainTabs = window.findChild<QTabWidget*>("mainTabs");
+    std::vector<QTabWidget*> readers;
+    for (int i = 1; i < mainTabs->count(); ++i)
+        readers.push_back(mainTabs->widget(i)->findChild<QTabWidget*>("readerContextTabs"));
+    REQUIRE(readers.size() == 2);
+    auto* pane = window.findChild<ItemPane*>();
+    auto* library = pane->findChild<QTabWidget*>();
+    auto click = [&](QTabWidget* tabs, int index) {  // on the tab bar, in its tab of the window
+        for (int i = 0; i < mainTabs->count(); ++i)
+            if (mainTabs->widget(i)->isAncestorOf(tabs))
+                mainTabs->setCurrentIndex(i);
+        QApplication::processEvents();
+        QTest::mouseClick(tabs->tabBar(), Qt::LeftButton, {}, tabs->tabBar()->tabRect(index).center());
+        QApplication::processEvents();
+    };
+    auto shown = [&] {
+        std::set<int> s{library->currentIndex()};
+        for (auto* r : readers)
+            s.insert(r->currentIndex());
+        return s;
+    };
+    pane->showItems(env.lib, {qs(jstr(plain, "key"))});
+    CHECK(shown() == std::set<int>{0});
+    // Notes in one PDF: Notes everywhere, also for the item without notes
+    click(readers[0], 1);
+    CHECK(shown() == std::set<int>{1});
+    for (auto& item : {noted, plain, noted}) {
+        pane->showItems(env.lib, {qs(jstr(item, "key"))});
+        CHECK(library->currentIndex() == 1);
+    }
+    // Info in the library: Info everywhere, and for a PDF opened later
+    click(library, 0);
+    CHECK(shown() == std::set<int>{0});
+    CHECK(env.config.get("/ui/itemPaneTab", "").get<std::string>() == "info");
+    window.openAttachment(env.lib, notedPdf);  // already open: its tab
+    QApplication::processEvents();
+    CHECK(readers[0]->currentIndex() == 0);
+    // closing a tab leaves the choice as it was
+    click(readers[1], 1);
+    mainTabs->setCurrentIndex(2);
+    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier);
+    QApplication::processEvents();
+    CHECK(mainTabs->count() == 2);
+    CHECK(env.config.get("/ui/itemPaneTab", "").get<std::string>() == "notes");
+    CHECK(readers[0]->currentIndex() == 1);
+    CHECK(library->currentIndex() == 1);
 }
 
 TEST_CASE("reader: page thumbnails stay in a grid while their pictures arrive")
@@ -1497,15 +1564,18 @@ TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
     pane.showItems(env.lib, {qs(key)});
     auto* tabs = pane.findChild<QTabWidget*>();
     REQUIRE(tabs);
-    CHECK(tabs->currentIndex() == 1);  // notes shown directly
+    CHECK(tabs->currentIndex() == 0);  // Info, until Notes is chosen
     CHECK(tabs->tabText(1) == "Notes (2)");
+    QApplication::processEvents();
+    QTest::mouseClick(tabs->tabBar(), Qt::LeftButton, {}, tabs->tabBar()->tabRect(1).center());
+    CHECK(tabs->currentIndex() == 1);
     auto* panel = pane.findChild<ItemNotesPanel*>();
     REQUIRE(panel);
     CHECK(panel->count() == 2);
     CHECK(!panel->editor()->key().isEmpty());
 
     pane.showItems(env.lib, {qs(jstr(bare, "key"))});
-    CHECK(tabs->currentIndex() == 0);  // nothing to show: Info
+    CHECK(tabs->currentIndex() == 1);  // Notes still, with none to show
     CHECK(tabs->tabText(1) == "Notes");
     auto snapshots = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR");
     pane.showItems(env.lib, {qs(key)});
@@ -2967,6 +3037,7 @@ TEST_CASE("notes: the list over the note is as high everywhere, and stays so")
     env.library.createNote(env.lib, "<p>One</p>", jstr(paper, "key"));
     env.library.createNote(env.lib, "<p>Two</p>", jstr(paper, "key"));  // two: the list shows
     auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(paper, "key")), "key"));
+    env.config.set("/ui/itemPaneTab", "notes");  // in view beside the PDFs
     auto splitOf = [](QWidget& w) {
         for (auto* s : w.findChildren<QSplitter*>())
             if (s->orientation() == Qt::Vertical && s->findChild<NoteEditor*>() && s->findChild<QListWidget*>())

@@ -34,6 +34,7 @@
 #include "gui/flow_layout.h"
 #include "gui/icons.h"
 #include "gui/note_editor.h"
+#include "gui/side_pane.h"
 
 namespace on::gui {
 
@@ -1241,11 +1242,7 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     connect(itemNotes_, &ItemNotesPanel::countChanged, this, [this](int n) {
         itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
     });
-    connect(itemPage_, &QTabWidget::tabBarClicked, this, [](int index) {
-        if (index >= 0) {
-            AppContext::get().config().set("/ui/itemPaneTab", index == 1 ? "notes" : "info");
-        }
-    });
+    shareInfoNotesTab(itemPage_);
 
     // note
     notePage_ = new QWidget(this);
@@ -1324,8 +1321,6 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
         itemNotes_->setItem(libraryId, keys[0]);
         int n = itemNotes_->count();
         itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
-        bool preferNotes = AppContext::get().config().get("/ui/itemPaneTab", "notes").get<std::string>() == "notes";
-        itemPage_->setCurrentIndex(preferNotes && n > 0 ? 1 : 0);
         setCurrentWidget(itemContainer_);
     }
     // The page laid out around its new contents before it is drawn: the location's lines

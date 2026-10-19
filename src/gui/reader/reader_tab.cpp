@@ -148,10 +148,6 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     // the paper's notes at hand: the top one is open next to the PDF
     if (!notesList_->currentItem() && notesList_->count() > 0)
         notesList_->setCurrentRow(0);
-    // the side pane on the tab chosen last; at first the notes if there are any, else Info
-    auto tab = AppContext::get().config().get("/reader/contextTab", "").get<std::string>();
-    bool infoTab = !parentKey_.isEmpty() && (tab == "info" || (tab.empty() && notesList_->count() == 0));
-    contextTabs_->setCurrentIndex(infoTab ? 0 : 1);
     // Where the document was left: the local state has the exact position; the synced
     // page wins when the document was read further on another computer (as in Zotero).
     auto state = lib.readerState(ss(key_));
@@ -359,10 +355,7 @@ void ReaderTab::buildContextPane()
     });
     enableNoteTrash(notesList_, [this] { return libraryId_; });
     contextTabs_->addTab(notesPage, icon("type-note"), tr("Notes"));
-    connect(contextTabs_, &QTabWidget::tabBarClicked, this, [](int index) {
-        if (index >= 0)  // the tab chosen last is the one a PDF opens with
-            AppContext::get().config().set("/reader/contextTab", index == 0 ? "info" : "notes");
-    });
+    shareInfoNotesTab(contextTabs_);  // Info or Notes, as in the other tabs and the library
     splitter_->addWidget(contextPane_);
     shareSidePaneWidth(splitter_);  // as wide as in the other tabs and the library
 }
