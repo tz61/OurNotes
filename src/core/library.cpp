@@ -282,10 +282,10 @@ void Library::endBatch()
     for (auto& ev : queued)
         merged[{ev.libraryId, ev.type, ev.action}].insert(ev.keys.begin(), ev.keys.end());
     for (auto& [k, keys] : merged)
-        emit({std::get<0>(k), std::get<1>(k), std::get<2>(k), {keys.begin(), keys.end()}});
+        notify({std::get<0>(k), std::get<1>(k), std::get<2>(k), {keys.begin(), keys.end()}});
 }
 
-void Library::emit(ChangeEvent ev)
+void Library::notify(ChangeEvent ev)
 {
     if (batchDepth_ > 0) {
         queued_.push_back(std::move(ev));
@@ -296,7 +296,7 @@ void Library::emit(ChangeEvent ev)
         l(ev);
 }
 
-void Library::notifyRefresh(int64_t lib) { emit({lib, "*", "refresh", {}}); }
+void Library::notifyRefresh(int64_t lib) { notify({lib, "*", "refresh", {}}); }
 
 // --- libraries ------------------------------------------------------------------------
 
@@ -345,14 +345,14 @@ int64_t Library::createLibrary(const std::string& name, const std::string& type,
     std::string id = uid.empty() ? randomToken(8) : uid;
     db_.run("INSERT INTO libraries(uid, name, type, created) VALUES(?,?,?,?)", id, name, type, nowIso());
     int64_t rowid = db_.lastInsertId();
-    emit({rowid, "library", "add", {}});
+    notify({rowid, "library", "add", {}});
     return rowid;
 }
 
 void Library::renameLibrary(int64_t id, const std::string& name)
 {
     db_.run("UPDATE libraries SET name=? WHERE id=?", name, id);
-    emit({id, "library", "modify", {}});
+    notify({id, "library", "modify", {}});
 }
 
 void Library::deleteLibrary(int64_t id)
@@ -372,7 +372,7 @@ void Library::deleteLibrary(int64_t id)
     for (auto& key : stored)
         removeStorage(key);
     fulltext().removeLibrary(id);
-    emit({id, "library", "delete", {}});
+    notify({id, "library", "delete", {}});
 }
 
 int64_t Library::defaultLibrary()
@@ -547,7 +547,7 @@ Json Library::createItem(int64_t lib, Json data)
         data["dateModified"] = now;
     writeItem(lib, data, 0, false, true);
     ensureArrays(data);
-    emit({lib, "item", "add", {jstr(data, "key")}});
+    notify({lib, "item", "add", {jstr(data, "key")}});
     return data;
 }
 
@@ -556,7 +556,7 @@ void Library::importObject(int64_t lib, const std::string& type, Json data)
     auto key = jstr(data, "key");
     auto existing = getObject(lib, type, key);
     writeObject(lib, type, key, std::move(data), existing ? existing->version : 0, false, true);
-    emit({lib, type, existing ? "modify" : "add", {key}});
+    notify({lib, type, existing ? "modify" : "add", {key}});
 }
 
 void Library::saveItem(int64_t lib, Json data)
@@ -567,7 +567,7 @@ void Library::saveItem(int64_t lib, Json data)
     if (jstr(data, "dateAdded").empty())
         data["dateAdded"] = existing ? jstr(existing->data, "dateAdded", nowIso()) : nowIso();
     writeItem(lib, data, existing ? existing->version : 0, false, true);
-    emit({lib, "item", existing ? "modify" : "add", {key}});
+    notify({lib, "item", existing ? "modify" : "add", {key}});
 }
 
 bool Library::updateItem(int64_t lib, const std::string& key, const std::function<void(Json&)>& edit)
@@ -642,7 +642,7 @@ void Library::eraseItems(int64_t lib, const std::vector<std::string>& keys)
         removeStorage(k);
         fulltext().remove(lib, k);
     }
-    emit({lib, "item", "delete", all});
+    notify({lib, "item", "delete", all});
 }
 
 void Library::emptyTrash(int64_t lib)
@@ -1063,7 +1063,7 @@ Json Library::createCollection(int64_t lib, const std::string& name, const std::
     d["relations"] = Json::object();
     d["dateModified"] = nowIso();
     writeObject(lib, "collection", jstr(d, "key"), d, 0, false, true);
-    emit({lib, "collection", "add", {jstr(d, "key")}});
+    notify({lib, "collection", "add", {jstr(d, "key")}});
     return d;
 }
 
@@ -1073,7 +1073,7 @@ void Library::saveCollection(int64_t lib, Json data)
     auto existing = getObject(lib, "collection", key);
     data["dateModified"] = nowIso();
     writeObject(lib, "collection", key, data, existing ? existing->version : 0, false, true);
-    emit({lib, "collection", existing ? "modify" : "add", {key}});
+    notify({lib, "collection", existing ? "modify" : "add", {key}});
 }
 
 std::vector<std::string> Library::descendantCollections(int64_t lib, const std::string& key)
@@ -1117,7 +1117,7 @@ void Library::deleteCollection(int64_t lib, const std::string& key, bool trashIt
     for (auto& c : all)
         removeObject(lib, "collection", c, true);
     tx.commit();
-    emit({lib, "collection", "delete", all});
+    notify({lib, "collection", "delete", all});
 }
 
 void Library::addToCollection(int64_t lib, const std::string& collectionKey, const std::vector<std::string>& itemKeys)
@@ -1378,7 +1378,7 @@ void Library::setSetting(int64_t lib, const std::string& name, const Json& value
     if (value.is_null()) {
         if (getObject(lib, "setting", name)) {
             removeObject(lib, "setting", name, true);
-            emit({lib, "setting", "delete", {name}});
+            notify({lib, "setting", "delete", {name}});
         }
         return;
     }
@@ -1387,7 +1387,7 @@ void Library::setSetting(int64_t lib, const std::string& name, const Json& value
         return;
     Json d{{"value", value}, {"dateModified", nowIso()}};
     writeObject(lib, "setting", name, d, existing ? existing->version : 0, false, true);
-    emit({lib, "setting", existing ? "modify" : "add", {name}});
+    notify({lib, "setting", existing ? "modify" : "add", {name}});
 }
 
 // --- search -----------------------------------------------------------------------------------
@@ -1438,7 +1438,7 @@ void Library::putRemoteObject(int64_t lib, const std::string& type, const std::s
     writeObject(lib, type, key, data, version, true, false);
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);
     tx.commit();
-    emit({lib, type, existed ? "modify" : "add", {key}});
+    notify({lib, type, existed ? "modify" : "add", {key}});
 }
 
 void Library::deleteRemoteObject(int64_t lib, const std::string& type, const std::string& key)
@@ -1452,7 +1452,7 @@ void Library::deleteRemoteObject(int64_t lib, const std::string& type, const std
     }
     removeObject(lib, type, key, false);
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);
-    emit({lib, type, "delete", {key}});
+    notify({lib, type, "delete", {key}});
 }
 
 void Library::markPushed(int64_t lib, const std::string& type, const std::string& key, int64_t version, int64_t rev)

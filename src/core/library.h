@@ -243,7 +243,7 @@ public:
 
 private:
     void migrate();
-    void emit(ChangeEvent ev);
+    void notify(ChangeEvent ev);
     std::string tableFor(const std::string& type) const;
     void writeItem(int64_t lib, Json data, int64_t version, bool synced, bool bumpRev);
     void writeObject(int64_t lib, const std::string& type, const std::string& key, Json data, int64_t version,

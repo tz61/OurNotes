@@ -344,11 +344,22 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
         return it == items.end() ? nullptr : &it->second.data;
     };
     {
+        // Zotero stores date fields as "YYYY-MM-DD original text" (a sortable form plus
+        // what the user typed) and accessDate as "YYYY-MM-DD HH:MM:SS" in UTC.
+        static const std::regex multipart(R"(^\d{4}-\d{2}-\d{2} (.+)$)");
         auto st = z.query("SELECT d.itemID, d.fieldID, v.value FROM itemData d JOIN itemDataValues v USING(valueID)");
         while (st.step())
             if (auto* d = findItem(st.i64(0)))
-                if (fields.count(st.i64(1)))
-                    (*d)[fields[st.i64(1)]] = st.str(2);
+                if (fields.count(st.i64(1))) {
+                    const auto& field = fields[st.i64(1)];
+                    std::string value = st.str(2);
+                    std::smatch m;
+                    if (field == "accessDate")
+                        value = sqlToIso(value);
+                    else if (std::regex_match(value, m, multipart) && m[1].str().find(':') == std::string::npos)
+                        value = m[1].str();
+                    (*d)[field] = value;
+                }
     }
     {
         auto st = z.query("SELECT ic.itemID, ic.creatorTypeID, c.firstName, c.lastName, c.fieldMode "

@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="freepen.svg">../../resources/icons/freepen.svg</file>
+    </qresource>
+</RCC>
