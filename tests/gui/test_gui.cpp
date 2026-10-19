@@ -3708,6 +3708,161 @@ TEST_CASE("main window: the tab strip never shows a stray or misplaced tab")
     }
 }
 
+// The README's screenshot, of a library of well-known papers (nobody's own). Run again
+// after changing the look:
+//   OURNOTES_SCREENSHOT=docs/images/screenshot.png QT_SCALE_FACTOR=1.25 \
+//       ./build/tests/gui/test_gui -tc="docs: *"
+TEST_CASE("docs: the README's screenshot" * doctest::skip(!std::getenv("OURNOTES_SCREENSHOT")))
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    applyAppearance(Appearance::Light);
+    QApplication::setFont(QFont("Noto Sans", 10));
+    env.config.set("/ui/bandBackground", false);
+    env.config.set("/ui/itemPaneTab", "notes");
+    auto& lib = env.library;
+    auto collection = [&](const std::string& name, const std::string& parent = {}) {
+        return jstr(lib.createCollection(env.lib, name, parent), "key");
+    };
+    auto ml = collection("Machine Learning");
+    auto transformers = collection("Transformers", ml);
+    auto generative = collection("Generative Models", ml);
+    auto rl = collection("Reinforcement Learning");
+    auto vision = collection("Computer Vision");
+    auto group = collection("Reading Group");
+    // type, title, authors, date, venue, added; filed in `in`, with a PDF or not
+    auto paper = [&](const std::string& type, const std::string& title, std::vector<std::string> authors,
+                     const std::string& date, const std::string& venue, const std::string& added,
+                     std::vector<std::string> in, bool pdf, Json more = Json::object()) {
+        Json creators = Json::array();
+        for (auto& a : authors) {
+            auto space = a.rfind(' ');
+            creators.push_back(Json{{"creatorType", "author"}, {"firstName", a.substr(0, space)}, {"lastName", a.substr(space + 1)}});
+        }
+        Json data{{"itemType", type}, {"title", title}, {"creators", creators}, {"date", date}, {"dateAdded", added}};
+        data[type == "conferencePaper" ? "proceedingsTitle"
+             : type == "preprint"      ? "repository"
+             : type == "book"          ? "publisher"
+                                       : "publicationTitle"] = venue;
+        for (auto& [k, v] : more.items())
+            data[k] = v;
+        auto key = jstr(lib.createItem(env.lib, data), "key");
+        for (auto& c : in)
+            lib.addToCollection(env.lib, c, {key});
+        if (pdf)
+            lib.importAttachment(env.lib, file, key);
+        return key;
+    };
+    auto attention = paper(
+        "conferencePaper", "Attention Is All You Need",
+        {"Ashish Vaswani", "Noam Shazeer", "Niki Parmar", "Jakob Uszkoreit", "Llion Jones", "Aidan N. Gomez",
+         "Łukasz Kaiser", "Illia Polosukhin"},
+        "2017", "Advances in Neural Information Processing Systems", "2026-09-14T09:12:00Z", {transformers, group}, true,
+        Json{{"conferenceName", "NeurIPS 2017"},
+             {"volume", "30"},
+             {"pages", "5998–6008"},
+             {"url", "https://arxiv.org/abs/1706.03762"},
+             {"abstractNote", "A sequence transduction model built on attention alone, with no recurrence and no "
+                              "convolutions: faster to train, and better at translation."}});
+    paper("conferencePaper", "Deep Residual Learning for Image Recognition",
+          {"Kaiming He", "Xiangyu Zhang", "Shaoqing Ren", "Jian Sun"}, "2016",
+          "IEEE Conference on Computer Vision and Pattern Recognition", "2026-08-02T16:40:00Z", {vision}, true);
+    paper("preprint", "Auto-Encoding Variational Bayes", {"Diederik P. Kingma", "Max Welling"}, "2013-12-20", "arXiv",
+          "2026-07-21T10:05:00Z", {generative}, true);
+    auto ddpm = paper("conferencePaper", "Denoising Diffusion Probabilistic Models",
+                      {"Jonathan Ho", "Ajay Jain", "Pieter Abbeel"}, "2020",
+                      "Advances in Neural Information Processing Systems", "2026-09-30T20:18:00Z", {generative, group}, true);
+    paper("conferencePaper", "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          {"Jacob Devlin", "Ming-Wei Chang", "Kenton Lee", "Kristina Toutanova"}, "2019", "Proceedings of NAACL-HLT",
+          "2026-09-15T11:30:00Z", {transformers}, true);
+    paper("conferencePaper", "Adam: A Method for Stochastic Optimization", {"Diederik P. Kingma", "Jimmy Ba"}, "2015",
+          "International Conference on Learning Representations", "2026-06-11T08:47:00Z", {ml}, true);
+    paper("conferencePaper", "Generative Adversarial Nets",
+          {"Ian Goodfellow", "Jean Pouget-Abadie", "Mehdi Mirza", "Bing Xu", "David Warde-Farley", "Sherjil Ozair",
+           "Aaron Courville", "Yoshua Bengio"},
+          "2014", "Advances in Neural Information Processing Systems", "2026-07-21T10:12:00Z", {generative}, true);
+    paper("conferencePaper", "ImageNet Classification with Deep Convolutional Neural Networks",
+          {"Alex Krizhevsky", "Ilya Sutskever", "Geoffrey E. Hinton"}, "2012",
+          "Advances in Neural Information Processing Systems", "2026-08-02T16:31:00Z", {vision}, true);
+    paper("preprint", "Playing Atari with Deep Reinforcement Learning",
+          {"Volodymyr Mnih", "Koray Kavukcuoglu", "David Silver", "Alex Graves", "Ioannis Antonoglou", "Daan Wierstra",
+           "Martin Riedmiller"},
+          "2013-12-19", "arXiv", "2026-05-03T14:22:00Z", {rl}, true);
+    auto ppo = paper("preprint", "Proximal Policy Optimization Algorithms",
+                     {"John Schulman", "Filip Wolski", "Prafulla Dhariwal", "Alec Radford", "Oleg Klimov"}, "2017-07-20",
+                     "arXiv", "2026-05-03T14:30:00Z", {rl}, true);
+    paper("conferencePaper", "Learning Transferable Visual Models From Natural Language Supervision",
+          {"Alec Radford", "Jong Wook Kim", "Chris Hallacy", "Aditya Ramesh", "Gabriel Goh", "Sandhini Agarwal"}, "2021",
+          "International Conference on Machine Learning", "2026-10-06T19:02:00Z", {vision, transformers}, true);
+    paper("conferencePaper", "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+          {"Alexey Dosovitskiy", "Lucas Beyer", "Alexander Kolesnikov", "Dirk Weissenborn"}, "2021",
+          "International Conference on Learning Representations", "2026-10-06T19:10:00Z", {vision, transformers}, true);
+    paper("journalArticle", "Dropout: A Simple Way to Prevent Neural Networks from Overfitting",
+          {"Nitish Srivastava", "Geoffrey Hinton", "Alex Krizhevsky", "Ilya Sutskever", "Ruslan Salakhutdinov"}, "2014",
+          "Journal of Machine Learning Research", "2026-06-11T08:55:00Z", {ml}, false);
+    paper("conferencePaper", "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+          {"Sergey Ioffe", "Christian Szegedy"}, "2015", "International Conference on Machine Learning",
+          "2026-06-11T09:01:00Z", {ml}, true);
+    paper("conferencePaper", "Neural Machine Translation by Jointly Learning to Align and Translate",
+          {"Dzmitry Bahdanau", "Kyunghyun Cho", "Yoshua Bengio"}, "2015",
+          "International Conference on Learning Representations", "2026-09-14T09:20:00Z", {transformers, group}, true);
+    paper("journalArticle", "Mastering the game of Go with deep neural networks and tree search",
+          {"David Silver", "Aja Huang", "Chris J. Maddison", "Arthur Guez"}, "2016", "Nature", "2026-05-04T21:45:00Z", {rl},
+          true);
+    paper("conferencePaper", "U-Net: Convolutional Networks for Biomedical Image Segmentation",
+          {"Olaf Ronneberger", "Philipp Fischer", "Thomas Brox"}, "2015", "Medical Image Computing and Computer-Assisted Intervention",
+          "2026-08-02T16:52:00Z", {vision}, true);
+    auto gpt3 = paper("conferencePaper", "Language Models are Few-Shot Learners",
+                      {"Tom B. Brown", "Benjamin Mann", "Nick Ryder", "Melanie Subbiah"}, "2020",
+                      "Advances in Neural Information Processing Systems", "2026-09-16T13:37:00Z", {transformers}, true);
+    paper("journalArticle", "Long Short-Term Memory", {"Sepp Hochreiter", "Jürgen Schmidhuber"}, "1997",
+          "Neural Computation", "2026-06-12T10:15:00Z", {ml}, true);
+    paper("journalArticle", "A Mathematical Theory of Communication", {"Claude E. Shannon"}, "1948",
+          "Bell System Technical Journal", "2026-04-27T18:03:00Z", {group}, true);
+    paper("book", "Deep Learning", {"Ian Goodfellow", "Yoshua Bengio", "Aaron Courville"}, "2016", "MIT Press",
+          "2026-04-20T12:00:00Z", {ml}, false);
+    paper("journalArticle", "Human-level control through deep reinforcement learning",
+          {"Volodymyr Mnih", "Koray Kavukcuoglu", "David Silver"}, "2015", "Nature", "2026-05-04T21:50:00Z", {rl}, true);
+    lib.createNote(env.lib, "<p>Compare with additive attention (Bahdanau et al.)</p>", attention);
+    lib.createNote(env.lib, "<p>Noise schedule: linear, 1000 steps</p>", ddpm);
+    lib.createNote(env.lib, "<p>Clipped objective, ε = 0.2</p>", ppo);
+    lib.createNote(env.lib, "<p>In-context learning, no gradient updates</p>", gpt3);
+    lib.createNote(env.lib,
+                   "<h2>Scaled dot-product attention</h2>"
+                   "<pre class=\"math\">$$\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$$</pre>"
+                   "<p>Scaling by <span class=\"math\">$1/\\sqrt{d_k}$</span> keeps the softmax out of its flat "
+                   "regions for large <span class=\"math\">$d_k$</span>.</p>"
+                   "<ul><li>8 heads, <span class=\"math\">$d_k=d_v=64$</span></li><li>Positional encodings: sines and "
+                   "cosines</li></ul>",
+                   attention);
+    for (auto& [tag, keys] : std::vector<std::pair<std::string, std::vector<std::string>>>{
+             {"transformer", {attention, gpt3}}, {"attention", {attention}}, {"nlp", {attention, gpt3}},
+             {"diffusion", {ddpm}}, {"to read", {gpt3, ppo}}, {"classic", {attention}}})
+        lib.addTag(env.lib, keys, tag);
+
+    MainWindow window;
+    window.resize(1600, 940);
+    window.show();
+    for (auto& key : {attention, ddpm})
+        for (auto& a : lib.children(env.lib, key))
+            if (jstr(a, "itemType") == "attachment")
+                window.openAttachment(env.lib, qs(jstr(a, "key")));
+    window.findChild<QTabWidget*>("mainTabs")->setCurrentIndex(0);
+    auto* view = window.findChild<LibraryView*>();
+    auto* tree = view->findChild<CollectionTree*>();
+    tree->selectScope({env.lib, ScopeKind::Library, {}});
+    tree->expandAll();
+    view->selectItem(qs(attention), env.lib);
+    for (int i = 0; i < 10; ++i) {
+        QApplication::processEvents();
+        QTest::qWait(50);
+    }
+    window.grab().save(QString::fromLocal8Bit(std::getenv("OURNOTES_SCREENSHOT")));
+}
+
 int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");

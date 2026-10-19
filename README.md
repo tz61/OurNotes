@@ -6,6 +6,10 @@ read and annotate PDFs, write notes, cite, and keep everything in sync — throu
 
 It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows.
 
+<!-- drawn by the test "docs: the README's screenshot" in tests/gui/test_gui.cpp, from a
+     made-up library of well-known papers -->
+![OurNotes: the library, with a paper's note and its formula beside the list](docs/images/screenshot.png)
+
 ## Features
 
 - **Library** — personal and group libraries, nested collections, tags with colours,
@@ -27,7 +31,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
   like Zotero), and the open tabs and the library's selection come back after a
   restart; restored tabs load when first shown. Beside the PDF the paper's Info (authors,
-  year and the other fields, tags, related items) and its notes, the top note open. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
+  year and the other fields, tags, related items) and its notes, the top note open;
+  Info or Notes, whichever was chosen last, there and in the library alike. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
   width (twice: the page) and H goes back to the library; Ctrl+Shift+T reopens a closed
   tab. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
