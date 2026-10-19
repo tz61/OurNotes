@@ -24,6 +24,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   Annotations* writes yours into a copy of the file.
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
+  LaTeX math: type `$…$` or `$$…$$` (or press Ctrl+M / Ctrl+Shift+M), double-click a
+  formula to edit it; rendered with MicroTeX and stored like Zotero's math. Images are
+  scaled to fit the note width. Selecting a paper shows its notes in a tab next to Info.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
   dropping PDFs (metadata is found from the identifiers or title in the file, with a
   progress window), or by importing BibTeX / RIS / CSL JSON. PDF text is read locally;
@@ -185,4 +188,4 @@ pushes local changes with optimistic concurrency.
 freePen is free software under the GNU Affero General Public License v3 (see `LICENSE`),
 the same license as Zotero and MuPDF. The item type schema is derived from Zotero.
 Third-party code: MuPDF (AGPL-3.0), Qt (LGPL-3.0), SQLite (public domain),
-nlohmann/json, cpp-httplib and doctest (MIT).
+nlohmann/json, cpp-httplib, doctest and MicroTeX (MIT), tinyxml2 (zlib).

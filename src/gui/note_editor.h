@@ -11,18 +11,38 @@ class QToolBar;
 
 namespace fp::gui {
 
-// QTextEdit that stores pasted/dropped images as embedded note attachments.
+class FittedImageHandler;
+
+// QTextEdit for notes: stores pasted/dropped images as embedded note attachments,
+// fits images to the width, and edits LaTeX formulas ($…$ and $$…$$).
 class NoteTextEdit : public QTextEdit {
     Q_OBJECT
 public:
-    using QTextEdit::QTextEdit;
+    explicit NoteTextEdit(QWidget* parent = nullptr);
     std::function<QString(const QImage&)> storeImage;  // returns a resource name
+
+    // Opens the formula editor and inserts the result at the cursor.
+    void insertMath(bool display);
+    // After loading HTML: make formulas sit on the text baseline.
+    void prepareMath();
 
 protected:
     bool canInsertFromMimeData(const QMimeData* source) const override;
     void insertFromMimeData(const QMimeData* source) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent* e) override;
+    void keyPressEvent(QKeyEvent* e) override;
+    void contextMenuEvent(QContextMenuEvent* e) override;
+    void changeEvent(QEvent* e) override;
+
+private:
+    bool convertTypedMath();
+    QTextCursor mathAt(const QPoint& viewportPos);  // selects the formula under the point
+    bool editMath(QTextCursor selection);
+    void placeMath(QTextCursor cursor, const QString& latex, bool display);
+
+    FittedImageHandler* images_ = nullptr;
 };
 
 // Rich-text editor for a note item. Changes are saved automatically shortly

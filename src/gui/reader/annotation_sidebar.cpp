@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QToolButton>
@@ -40,6 +41,45 @@ QString typeName(const QString& type)
 
 } // namespace
 
+// --- FitImageView ----------------------------------------------------------------------------
+
+void FitImageView::setImage(const QImage& image)
+{
+    image_ = image;
+    QSizePolicy sp(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    sp.setHeightForWidth(true);
+    setSizePolicy(sp);
+    updateGeometry();
+    update();
+}
+
+int FitImageView::heightForWidth(int width) const
+{
+    if (image_.isNull() || image_.width() == 0)
+        return 0;
+    qreal w = std::min<qreal>(width, image_.width() / image_.devicePixelRatio());
+    return qRound(w * image_.height() / image_.width());
+}
+
+QSize FitImageView::sizeHint() const
+{
+    if (image_.isNull())
+        return {0, 0};
+    int w = qRound(image_.width() / image_.devicePixelRatio());
+    return {w, heightForWidth(w)};
+}
+
+void FitImageView::paintEvent(QPaintEvent*)
+{
+    if (image_.isNull())
+        return;
+    QPainter p(this);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    qreal w = std::min<qreal>(width(), image_.width() / image_.devicePixelRatio());
+    qreal h = w * image_.height() / image_.width();
+    p.drawImage(QRectF((width() - w) / 2, 0, w, h), image_);
+}
+
 // --- AnnotationCard ----------------------------------------------------------------------
 
 AnnotationCard::AnnotationCard(const Json& data, bool editable, QWidget* parent)
@@ -62,8 +102,7 @@ AnnotationCard::AnnotationCard(const Json& data, bool editable, QWidget* parent)
     text_->setWordWrap(true);
     text_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     v->addWidget(text_);
-    image_ = new QLabel(this);
-    image_->setAlignment(Qt::AlignCenter);
+    image_ = new FitImageView(this);
     v->addWidget(image_);
     comment_ = new AutoTextEdit(false, this);
     comment_->setPlaceholderText(tr("Add comment"));
@@ -110,7 +149,7 @@ void AnnotationCard::update(const Json& data, bool editable)
     data_ = data;
     editable_ = editable;
     if (imageChanged)
-        image_->clear();
+        image_->setImage({});
     refresh();
 }
 
@@ -140,10 +179,12 @@ void AnnotationCard::refresh()
     auto text = jqs(data_, "annotationText");
     text_->setVisible(!text.isEmpty());
     text_->setText("<i>" + text.toHtmlEscaped() + "</i>");
-    if (type == "image" && image_->pixmap().isNull() && imageProvider) {
+    if (type == "image" && !image_->hasImage() && imageProvider) {
         auto img = imageProvider(data_);
-        if (!img.isNull())
-            image_->setPixmap(QPixmap::fromImage(img.scaledToWidth(std::min(260, img.width()), Qt::SmoothTransformation)));
+        if (!img.isNull()) {
+            img.setDevicePixelRatio(devicePixelRatioF());
+            image_->setImage(img);
+        }
     }
     image_->setVisible(type == "image");
     if (!comment_->hasFocus())
@@ -207,6 +248,7 @@ AnnotationSidebar::AnnotationSidebar(QWidget* parent) : QWidget(parent)
     scroll_ = new QScrollArea(this);
     scroll_->setWidgetResizable(true);
     scroll_->setFrameShape(QFrame::NoFrame);
+    scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     container_ = new QWidget;
     list_ = new QVBoxLayout(container_);
     list_->setContentsMargins(0, 0, 0, 0);

@@ -1,9 +1,13 @@
 // Widget-level tests, run with the offscreen Qt platform.
 
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
 
 #include <QApplication>
 #include <QComboBox>
+#include <QAbstractTextDocumentLayout>
+#include <QScrollBar>
+#include <QTextBlock>
 #include <QTreeWidget>
 
 #include <atomic>
@@ -17,8 +21,11 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/fancy_progress.h"
+#include "gui/item_pane.h"
 #include "gui/items_model.h"
 #include "gui/metadata_progress.h"
+#include "gui/math_render.h"
+#include "gui/note_editor.h"
 #include "gui/note_html.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
@@ -31,15 +38,8 @@ using namespace fp::gui;
 
 namespace {
 
-QApplication& app()
-{
-    static int argc = 1;
-    static char name[] = "test_gui";
-    static char* argv[] = {name, nullptr};
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    static QApplication instance(argc, argv);
-    return instance;
-}
+// The QApplication lives in main() below, so it is destroyed before static teardown.
+QApplication& app() { return *qApp; }
 
 // Library + configuration in a temporary directory, registered as the app context.
 struct Env {
@@ -282,4 +282,132 @@ TEST_CASE("retrieve metadata window: progress, results and parent items")
             CHECK(jstr(att, "title") == "PDF");
         }
     }
+}
+
+namespace {
+
+int countMath(QTextDocument* doc, QStringList* latex = nullptr)
+{
+    int n = 0;
+    for (auto b = doc->begin(); b.isValid(); b = b.next())
+        for (auto it = b.begin(); !it.atEnd(); ++it) {
+            auto f = it.fragment().charFormat();
+            QString tex;
+            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &tex, nullptr)) {
+                ++n;
+                if (latex)
+                    *latex << tex;
+            }
+        }
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("notes: Zotero math markup survives load and save")
+{
+    app();
+    Env env;
+    QTextDocument doc;
+    QString note = "<div data-schema-version=\"9\"><p>Energy <span class=\"math\">$E=mc^2$</span> and "
+                   "<span class=\"math\">$a &lt; b$</span> hold.</p>"
+                   "<pre class=\"math\">$$\\int_0^1 x\\,dx = \\frac{1}{2}$$</pre><p>After.</p></div>";
+    doc.setHtml(noteHtmlForEditor(note, env.lib, &doc));
+    QStringList latex;
+    CHECK(countMath(&doc, &latex) == 3);
+    CHECK(latex.contains("a < b"));
+    auto out = documentToNoteHtml(&doc);
+    CHECK(out.contains("<span class=\"math\">$E=mc^2$</span>"));
+    CHECK(out.contains("<span class=\"math\">$a &lt; b$</span>"));
+    CHECK(out.contains("<pre class=\"math\">$$\\int_0^1 x\\,dx = \\frac{1}{2}$$</pre>"));
+    CHECK(out.contains("<p>After.</p>"));
+
+    auto m = renderMath("\\frac{a}{b}", false, 16, Qt::black, 1);
+    CHECK(m.ok);
+    CHECK(m.descent > 0);  // fractions reach below the baseline
+    auto bad = renderMath("\\frac{a}{", false, 16, Qt::black, 1);
+    CHECK(!bad.ok);
+}
+
+TEST_CASE("notes: typing $...$ makes a formula, prices stay text")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    QTest::keyClicks(&edit, "Let $x^2$ be");
+    QStringList latex;
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x^2"});
+    CHECK(edit.toPlainText().startsWith("Let "));
+    CHECK(edit.toPlainText().endsWith(" be"));
+
+    edit.clear();
+    QTest::keyClicks(&edit, "It costs $5 and $10 today");
+    CHECK(countMath(edit.document()) == 0);
+
+    edit.clear();
+    QTest::keyClicks(&edit, "$$\\sum_i x_i$$");
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK((edit.document()->begin().blockFormat().alignment() & Qt::AlignHCenter) != 0);
+}
+
+TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(320, 400);
+    edit.show();
+    QImage big(1000, 400, QImage::Format_RGB32);
+    big.fill(Qt::darkCyan);
+    edit.document()->addResource(QTextDocument::ImageResource, QUrl("test:big"), big);
+    edit.setHtml("<p>Figure:</p><p><img src=\"test:big\" width=\"1000\" height=\"400\"></p>");
+    QApplication::processEvents();
+    CHECK(edit.horizontalScrollBar()->maximum() == 0);
+    CHECK(edit.document()->documentLayout()->documentSize().width() <= edit.viewport()->width() + 1);
+    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    if (!snapshots.isEmpty())
+        edit.grab().save(snapshots + "/note-image-fit.png");
+}
+
+TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
+{
+    app();
+    Env env;
+    auto& lib = env.library;
+    auto paper = lib.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(paper, "key");
+    lib.createNote(env.lib, "<p>First thoughts</p>", key);
+    lib.createNote(env.lib, "<p>Second: <span class=\"math\">$x^2$</span></p>", key);
+    auto bare = lib.createItem(env.lib, Json{{"itemType", "book"}, {"title", "No notes"}});
+
+    ItemPane pane;
+    pane.resize(420, 700);
+    pane.show();
+    pane.showItems(env.lib, {qs(key)});
+    auto* tabs = pane.findChild<QTabWidget*>();
+    REQUIRE(tabs);
+    CHECK(tabs->currentIndex() == 1);  // notes shown directly
+    CHECK(tabs->tabText(1) == "Notes (2)");
+    auto* panel = pane.findChild<ItemNotesPanel*>();
+    REQUIRE(panel);
+    CHECK(panel->count() == 2);
+    CHECK(!panel->editor()->key().isEmpty());
+
+    pane.showItems(env.lib, {qs(jstr(bare, "key"))});
+    CHECK(tabs->currentIndex() == 0);  // nothing to show: Info
+    CHECK(tabs->tabText(1) == "Notes");
+    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    pane.showItems(env.lib, {qs(key)});
+    QApplication::processEvents();
+    if (!snapshots.isEmpty())
+        pane.grab().save(snapshots + "/item-pane-notes.png");
+}
+
+int main(int argc, char** argv)
+{
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QApplication application(argc, argv);
+    doctest::Context context(argc, argv);
+    return context.run();
 }

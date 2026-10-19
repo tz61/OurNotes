@@ -76,3 +76,12 @@ endif()
 if(NOT WIN32)
     target_link_libraries(MuPDF::MuPDF INTERFACE m Threads::Threads)
 endif()
+
+# MuPDF's static libraries contain their own FreeType. On ELF platforms the linker
+# would export those FT_* symbols from our executables, and Qt/fontconfig (which load
+# the system FreeType) would then call MuPDF's differently configured copy. Keep them
+# private. (macOS two-level namespaces and Windows DLL imports are not affected.)
+if(UNIX AND NOT APPLE)
+    target_link_options(MuPDF::MuPDF INTERFACE
+        "LINKER:--exclude-libs,libmupdf.a" "LINKER:--exclude-libs,libmupdf-third.a")
+endif()

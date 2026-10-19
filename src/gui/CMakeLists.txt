@@ -1,5 +1,5 @@
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Svg)
-set(FREEPEN_QT_VERSION ${Qt6_VERSION} PARENT_SCOPE)
+include(MicroTeX)
 
 set(FREEPEN_GUI_SOURCES
     app_context.cpp
@@ -13,6 +13,8 @@ set(FREEPEN_GUI_SOURCES
     items_model.cpp
     library_view.cpp
     main_window.cpp
+    math_dialog.cpp
+    math_render.cpp
     metadata_progress.cpp
     note_editor.cpp
     note_html.cpp
@@ -24,12 +26,15 @@ set(FREEPEN_GUI_SOURCES
     reader/pdf_view.cpp
     reader/reader_tab.cpp
     reader/render_worker.cpp
+    rich_text_images.cpp
 )
 
 # Everything but main() is a library so tests can drive the widgets.
 add_library(freepen_gui STATIC ${FREEPEN_GUI_SOURCES})
 set_target_properties(freepen_gui PROPERTIES AUTOMOC ON AUTORCC ON)
-target_link_libraries(freepen_gui PUBLIC freepen_core freepen_sync freepen_pdf freepen_formats Qt6::Widgets Qt6::Svg)
+target_link_libraries(freepen_gui PUBLIC freepen_core freepen_sync freepen_pdf freepen_formats Qt6::Widgets Qt6::Svg
+    PRIVATE fp_microtex)
+target_compile_definitions(freepen_gui PRIVATE FREEPEN_MICROTEX_BUILD_RES="${FREEPEN_MICROTEX_RES}")
 
 set(FREEPEN_ICON_DIR "${PROJECT_SOURCE_DIR}/resources/icons")
 set(FREEPEN_PLATFORM_SOURCES)

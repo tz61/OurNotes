@@ -11,6 +11,9 @@ class QComboBox;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
+class QListWidget;
+class QTabWidget;
+class QToolButton;
 class QVBoxLayout;
 
 namespace fp::gui {
@@ -125,6 +128,33 @@ private:
     QString key_;
 };
 
+// The notes of one item, shown next to its Info: a list (when there are several)
+// and an editor for the selected note.
+class ItemNotesPanel : public QWidget {
+    Q_OBJECT
+public:
+    explicit ItemNotesPanel(QWidget* parent = nullptr);
+    void setItem(int64_t libraryId, const QString& key);
+    int count() const { return count_; }
+    NoteEditor* editor() const { return editor_; }
+
+signals:
+    void countChanged(int count);
+
+private:
+    void reload();
+    void addNote();
+
+    int64_t libraryId_ = 0;
+    QString key_;
+    int count_ = 0;
+    QLabel* header_;
+    QToolButton* add_;
+    QListWidget* list_;
+    QLabel* empty_;
+    NoteEditor* editor_;
+};
+
 // Right pane of the library tab.
 class ItemPane : public QStackedWidget {
     Q_OBJECT
@@ -139,7 +169,8 @@ signals:
 
 private:
     QLabel* message_;
-    QWidget* itemPage_;
+    QTabWidget* itemPage_;
+    ItemNotesPanel* itemNotes_;
     InfoEditor* info_;
     TagsBox* tags_;
     RelatedBox* related_;

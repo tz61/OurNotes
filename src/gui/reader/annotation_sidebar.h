@@ -19,6 +19,24 @@ namespace fp::gui {
 
 class AutoTextEdit;
 
+// Shows an image scaled down to the available width (keeps its aspect ratio).
+class FitImageView : public QWidget {
+public:
+    using QWidget::QWidget;
+    void setImage(const QImage& image);
+    bool hasImage() const { return !image_.isNull(); }
+    bool hasHeightForWidth() const override { return !image_.isNull(); }
+    int heightForWidth(int width) const override;
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override { return {40, image_.isNull() ? 0 : 20}; }
+
+protected:
+    void paintEvent(QPaintEvent* e) override;
+
+private:
+    QImage image_;
+};
+
 class AnnotationCard : public QFrame {
     Q_OBJECT
 public:
@@ -47,7 +65,7 @@ private:
     QLabel* header_;
     QToolButton* menu_;
     QLabel* text_;
-    QLabel* image_;
+    FitImageView* image_;
     AutoTextEdit* comment_;
     QLabel* tags_;
 };

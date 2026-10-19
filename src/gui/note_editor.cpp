@@ -1,6 +1,7 @@
 #include "gui/note_editor.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QFileInfo>
@@ -10,6 +11,7 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextDocumentFragment>
 #include <QTextList>
@@ -22,11 +24,210 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
+#include "gui/math_dialog.h"
+#include "gui/math_render.h"
 #include "gui/note_html.h"
+#include "gui/rich_text_images.h"
 
 namespace fp::gui {
 
 // --- NoteTextEdit -----------------------------------------------------------------------
+
+NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
+{
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setLineWrapMode(QTextEdit::WidgetWidth);
+    images_ = FittedImageHandler::install(document(), this);
+    images_->setTextColor(palette().color(QPalette::Text));
+}
+
+void NoteTextEdit::changeEvent(QEvent* e)
+{
+    QTextEdit::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange && images_) {
+        images_->setTextColor(palette().color(QPalette::Text));
+        viewport()->update();
+    }
+}
+
+static QTextImageFormat mathFormat(const QString& latex, bool display)
+{
+    QTextImageFormat f;
+    f.setName(mathResourceName(latex, display));
+    f.setVerticalAlignment(QTextCharFormat::AlignMiddle);
+    f.setToolTip(latex);
+    return f;
+}
+
+void NoteTextEdit::placeMath(QTextCursor cursor, const QString& latex, bool display)
+{
+    QTextCharFormat textFormat = cursor.charFormat();
+    if (textFormat.isImageFormat())
+        textFormat = QTextCharFormat();
+    cursor.beginEditBlock();
+    cursor.removeSelectedText();
+    if (display) {
+        // a display formula gets its own centred paragraph
+        if (cursor.positionInBlock() > 0)
+            cursor.insertBlock();
+        QTextBlockFormat centred = cursor.blockFormat();
+        centred.setAlignment(Qt::AlignHCenter);
+        cursor.setBlockFormat(centred);
+        cursor.insertImage(mathFormat(latex, true));
+        cursor.insertBlock();
+        QTextBlockFormat normal = cursor.blockFormat();
+        normal.setAlignment(Qt::AlignLeft);
+        cursor.setBlockFormat(normal);
+    } else {
+        cursor.insertImage(mathFormat(latex, false));
+    }
+    cursor.setCharFormat(textFormat);
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+}
+
+void NoteTextEdit::insertMath(bool display)
+{
+    if (isReadOnly())
+        return;
+    auto cursor = textCursor();
+    MathDialog dlg(cursor.selectedText().replace(QChar::ParagraphSeparator, ' '), display, this);
+    if (dlg.exec() != QDialog::Accepted || dlg.latex().isEmpty())
+        return;
+    placeMath(cursor, dlg.latex(), dlg.isDisplay());
+}
+
+QTextCursor NoteTextEdit::mathAt(const QPoint& pos)
+{
+    auto hit = cursorForPosition(pos);
+    for (int p : {hit.position(), hit.position() - 1}) {
+        if (p < 0)
+            continue;
+        QTextCursor c(document());
+        c.setPosition(p);
+        c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        if (c.selectedText() != QString(QChar::ObjectReplacementCharacter))
+            continue;
+        auto f = c.charFormat();
+        if (!f.isImageFormat() || !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr))
+            continue;
+        QTextCursor before(document()), after(document());
+        before.setPosition(p);
+        after.setPosition(p + 1);
+        qreal left = cursorRect(before).left(), right = cursorRect(after).left();
+        if (pos.x() >= std::min(left, right) - 2 && pos.x() <= std::max(left, right) + 2)
+            return c;
+    }
+    return {};
+}
+
+bool NoteTextEdit::editMath(QTextCursor selection)
+{
+    QString latex;
+    bool display = false;
+    if (selection.isNull() || !parseMathResourceName(selection.charFormat().toImageFormat().name(), &latex, &display))
+        return false;
+    if (isReadOnly())
+        return true;
+    MathDialog dlg(latex, display, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return true;
+    if (dlg.latex().isEmpty()) {
+        selection.removeSelectedText();
+    } else if (dlg.isDisplay() == display) {
+        selection.insertImage(mathFormat(dlg.latex(), display));
+    } else {
+        placeMath(selection, dlg.latex(), dlg.isDisplay());
+    }
+    return true;
+}
+
+void NoteTextEdit::prepareMath()
+{
+    for (auto block = document()->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            QString latex;
+            if (!f.isImageFormat() || !parseMathResourceName(f.toImageFormat().name(), &latex, nullptr))
+                continue;
+            if (f.verticalAlignment() == QTextCharFormat::AlignMiddle)
+                continue;
+            QTextCursor c(document());
+            c.setPosition(frag.position());
+            c.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            auto img = f.toImageFormat();
+            img.setVerticalAlignment(QTextCharFormat::AlignMiddle);
+            img.setToolTip(latex);
+            c.setCharFormat(img);
+        }
+}
+
+// Typing the closing $ of $…$ (or $$…$$ on its own line) turns it into a formula.
+// Like Zotero, inline math must not start or end with a space, so "$5 and $10" stays text.
+bool NoteTextEdit::convertTypedMath()
+{
+    auto cursor = textCursor();
+    if (cursor.hasSelection())
+        return false;
+    auto block = cursor.block();
+    QString before = block.text().left(cursor.positionInBlock());
+    static const QRegularExpression displayRe(R"(^\$\$([^$]*\S[^$]*)\$\$$)");
+    static const QRegularExpression inlineRe(R"((?:^|[^\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$$)");
+    if (auto m = displayRe.match(before); m.hasMatch()) {
+        QTextCursor sel(document());
+        sel.setPosition(block.position());
+        sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
+        placeMath(sel, m.captured(1).trimmed(), true);
+        return true;
+    }
+    if (auto m = inlineRe.match(before); m.hasMatch()) {
+        QTextCursor sel(document());
+        sel.setPosition(block.position() + m.capturedStart(1) - 1);
+        sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
+        placeMath(sel, m.captured(1), false);
+        return true;
+    }
+    return false;
+}
+
+void NoteTextEdit::keyPressEvent(QKeyEvent* e)
+{
+    QTextEdit::keyPressEvent(e);
+    if (e->text() == "$" && !isReadOnly())
+        convertTypedMath();
+}
+
+void NoteTextEdit::mouseDoubleClickEvent(QMouseEvent* e)
+{
+    if (editMath(mathAt(e->position().toPoint())))
+        return;
+    QTextEdit::mouseDoubleClickEvent(e);
+}
+
+void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
+{
+    std::unique_ptr<QMenu> menu(createStandardContextMenu(e->pos()));
+    auto math = mathAt(e->pos());
+    auto* first = menu->actions().isEmpty() ? nullptr : menu->actions().first();
+    if (!math.isNull()) {
+        QString latex;
+        parseMathResourceName(math.charFormat().toImageFormat().name(), &latex, nullptr);
+        auto* editAct = new QAction(tr("Edit Formula…"), menu.get());
+        connect(editAct, &QAction::triggered, this, [this, math] { editMath(math); });
+        auto* copyAct = new QAction(tr("Copy LaTeX"), menu.get());
+        connect(copyAct, &QAction::triggered, this, [latex] { QApplication::clipboard()->setText(latex); });
+        menu->insertAction(first, editAct);
+        menu->insertAction(first, copyAct);
+        menu->insertSeparator(first);
+    }
+    if (!isReadOnly()) {
+        menu->addSeparator();
+        menu->addAction(tr("Insert Inline Formula"), this, [this] { insertMath(false); });
+        menu->addAction(tr("Insert Display Formula"), this, [this] { insertMath(true); });
+    }
+    menu->exec(e->globalPos());
+}
 
 bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 {
@@ -157,6 +358,22 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     toolbar_->addAction("1.", this, [this] { toggleList(true); })->setToolTip(tr("Numbered list"));
     toolbar_->addAction("❝", this, [this] { toggleQuote(); })->setToolTip(tr("Block quote"));
     toolbar_->addAction(tr("Link"), this, [this] { insertLink(); })->setToolTip(tr("Insert link (Ctrl+K)"));
+    auto* mathBtn = new QToolButton(this);
+    mathBtn->setText(QString::fromUtf8("\u2211"));
+    mathBtn->setToolTip(tr("Insert formula: Ctrl+M inline, Ctrl+Shift+M display; or type $…$ / $$…$$"));
+    mathBtn->setPopupMode(QToolButton::InstantPopup);
+    auto* mathMenu = new QMenu(mathBtn);
+    mathMenu->addAction(tr("Inline Formula ($…$)"), this, [this] { edit_->insertMath(false); });
+    mathMenu->addAction(tr("Display Formula ($$…$$)"), this, [this] { edit_->insertMath(true); });
+    mathBtn->setMenu(mathMenu);
+    toolbar_->addWidget(mathBtn);
+    for (auto [key, display] : {std::pair{"Ctrl+M", false}, std::pair{"Ctrl+Shift+M", true}}) {
+        auto* a = new QAction(this);
+        a->setShortcut(QKeySequence(key));
+        a->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        connect(a, &QAction::triggered, this, [this, display = display] { edit_->insertMath(display); });
+        addAction(a);
+    }
     auto* link = new QAction(this);
     link->setShortcut(QKeySequence("Ctrl+K"));
     link->setShortcutContext(Qt::WidgetWithChildrenShortcut);
@@ -250,6 +467,8 @@ void NoteEditor::load()
     int pos = edit_->textCursor().position();
     edit_->document()->clear();
     edit_->setHtml(noteHtmlForEditor(html, libraryId_, edit_->document()));
+    edit_->prepareMath();
+    edit_->document()->clearUndoRedoStacks();
     edit_->document()->setModified(false);
     auto cursor = edit_->textCursor();
     cursor.setPosition(std::min(pos, edit_->document()->characterCount() - 1));

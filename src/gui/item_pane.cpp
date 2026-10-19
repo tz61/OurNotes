@@ -12,6 +12,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QSplitter>
+#include <QTabWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -736,6 +739,126 @@ void AttachmentBox::renameFromParent()
     });
 }
 
+// --- ItemNotesPanel ------------------------------------------------------------------------------
+
+ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
+{
+    auto* v = new QVBoxLayout(this);
+    v->setContentsMargins(0, 6, 0, 0);
+    v->setSpacing(4);
+    auto* head = new QHBoxLayout;
+    head->setContentsMargins(10, 0, 6, 0);
+    header_ = new QLabel(this);
+    add_ = new QToolButton(this);
+    add_->setIcon(icon("new-note"));
+    add_->setText(tr("Add Note"));
+    add_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    add_->setAutoRaise(true);
+    head->addWidget(header_, 1);
+    head->addWidget(add_);
+    v->addLayout(head);
+    auto* split = new QSplitter(Qt::Vertical, this);
+    list_ = new QListWidget(split);
+    list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    editor_ = new NoteEditor(split);
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setSizes({110, 500});
+    split->setCollapsible(1, false);
+    v->addWidget(split, 1);
+    empty_ = new QLabel(tr("No notes yet."), this);
+    empty_->setAlignment(Qt::AlignCenter);
+    QPalette p = empty_->palette();
+    p.setColor(QPalette::WindowText, p.color(QPalette::Disabled, QPalette::WindowText));
+    empty_->setPalette(p);
+    v->addWidget(empty_, 1);
+
+    connect(add_, &QToolButton::clicked, this, &ItemNotesPanel::addNote);
+    connect(list_, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* item) {
+        if (item)
+            editor_->setNote(libraryId_, item->data(Qt::UserRole).toString());
+    });
+    connect(list_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        auto* item = list_->itemAt(pos);
+        if (!item || !AppContext::get().editable(libraryId_))
+            return;
+        QMenu menu(this);
+        menu.addAction(icon("trash"), tr("Move Note to Trash"), this, [this, key = item->data(Qt::UserRole).toString()] {
+            AppContext::get().library().trashItems(libraryId_, {ss(key)});
+        });
+        menu.exec(list_->viewport()->mapToGlobal(pos));
+    });
+    connect(&AppContext::get(), &AppContext::changed, this,
+            [this](qint64 lib, const QString& type, const QString&, const QStringList&) {
+                if (!key_.isEmpty() && (lib == libraryId_ || lib == 0) && (type == "item" || type == "*"))
+                    QMetaObject::invokeMethod(this, &ItemNotesPanel::reload, Qt::QueuedConnection);
+            });
+}
+
+void ItemNotesPanel::setItem(int64_t libraryId, const QString& key)
+{
+    if (libraryId == libraryId_ && key == key_)
+        return;
+    editor_->flush();
+    libraryId_ = libraryId;
+    key_ = key;
+    list_->clear();
+    reload();
+}
+
+void ItemNotesPanel::reload()
+{
+    auto& lib = AppContext::get().library();
+    std::vector<Json> notes;
+    for (auto& n : lib.children(libraryId_, ss(key_), "note"))
+        if (!jbool(n, "deleted"))
+            notes.push_back(n);
+    // most recently edited first
+    std::stable_sort(notes.begin(), notes.end(), [](const Json& a, const Json& b) {
+        return jstr(a, "dateModified") > jstr(b, "dateModified");
+    });
+    QString current = list_->currentItem() ? list_->currentItem()->data(Qt::UserRole).toString() : editor_->key();
+    {
+        QSignalBlocker block(list_);
+        list_->clear();
+        for (auto& n : notes) {
+            auto title = qs(noteTitle(jstr(n, "note")));
+            auto* item = new QListWidgetItem(icon("type-note"), title.isEmpty() ? tr("(empty note)") : title, list_);
+            item->setData(Qt::UserRole, jqs(n, "key"));
+            item->setToolTip(tr("Modified %1").arg(qs(isoToLocalDisplay(jstr(n, "dateModified")))));
+            if (jqs(n, "key") == current)
+                list_->setCurrentItem(item);
+        }
+        if (!list_->currentItem() && list_->count())
+            list_->setCurrentRow(0);
+    }
+    int n = (int)notes.size();
+    bool changed = n != count_;
+    count_ = n;
+    header_->setText(n == 0 ? QString() : n == 1 ? tr("1 note") : tr("%1 notes").arg(n));
+    list_->setVisible(n > 1);
+    editor_->setVisible(n > 0);
+    empty_->setVisible(n == 0);
+    add_->setEnabled(AppContext::get().editable(libraryId_));
+    if (list_->currentItem())
+        editor_->setNote(libraryId_, list_->currentItem()->data(Qt::UserRole).toString());
+    else
+        editor_->clear();
+    if (changed)
+        emit countChanged(n);
+}
+
+void ItemNotesPanel::addNote()
+{
+    auto note = AppContext::get().library().createNote(libraryId_, "", ss(key_));
+    reload();
+    for (int i = 0; i < list_->count(); ++i)
+        if (list_->item(i)->data(Qt::UserRole).toString() == jqs(note, "key"))
+            list_->setCurrentRow(i);
+    editor_->setNote(libraryId_, jqs(note, "key"));
+    editor_->focusEditor();
+}
+
 // --- ItemPane ----------------------------------------------------------------------------------
 
 static QScrollArea* scrollPage(QWidget* content, QWidget* parent)
@@ -770,8 +893,22 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     related_ = new RelatedBox(itemContent);
     iv->addWidget(related_);
     iv->addStretch();
-    itemPage_ = scrollPage(itemContent, this);
+    // Info and the item's notes side by side as tabs; clicking a paper that has notes
+    // shows them directly unless the user last chose the Info tab.
+    itemPage_ = new QTabWidget(this);
+    itemPage_->setDocumentMode(true);
+    itemPage_->addTab(scrollPage(itemContent, itemPage_), tr("Info"));
+    itemNotes_ = new ItemNotesPanel(itemPage_);
+    itemPage_->addTab(itemNotes_, icon("type-note"), tr("Notes"));
     addWidget(itemPage_);
+    connect(itemNotes_, &ItemNotesPanel::countChanged, this, [this](int n) {
+        itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
+    });
+    connect(itemPage_, &QTabWidget::tabBarClicked, this, [](int index) {
+        if (index >= 0) {
+            AppContext::get().config().set("/ui/itemPaneTab", index == 1 ? "notes" : "info");
+        }
+    });
 
     // note
     notePage_ = new QWidget(this);
@@ -836,6 +973,11 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
         info_->setItem(libraryId, keys[0]);
         tags_->setItems(libraryId, keys);
         related_->setItem(libraryId, keys[0]);
+        itemNotes_->setItem(libraryId, keys[0]);
+        int n = itemNotes_->count();
+        itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
+        bool preferNotes = AppContext::get().config().get("/ui/itemPaneTab", "notes").get<std::string>() == "notes";
+        itemPage_->setCurrentIndex(preferNotes && n > 0 ? 1 : 0);
         setCurrentWidget(itemPage_);
     }
 }

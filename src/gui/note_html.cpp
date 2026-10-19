@@ -11,11 +11,55 @@
 
 #include "gui/app_context.h"
 #include "gui/common.h"
+#include "gui/math_render.h"
 
 namespace fp::gui {
 
-QString noteHtmlForEditor(const QString& html, int64_t libraryId, QTextDocument* doc)
+// Zotero stores formulas as <span class="math">$…$</span> and <pre class="math">$$…$$</pre>.
+static QString mathToImages(const QString& html)
 {
+    static const QRegularExpression display(R"re(<pre class="math">([\s\S]*?)</pre>)re");
+    static const QRegularExpression inl(R"re(<span class="math">([\s\S]*?)</span>)re");
+    auto strip = [](QString tex, const QString& delim) {
+        tex = qs(htmlUnescape(ss(tex))).trimmed();
+        if (tex.startsWith(delim) && tex.endsWith(delim) && tex.size() >= 2 * delim.size())
+            tex = tex.mid(delim.size(), tex.size() - 2 * delim.size());
+        return tex.trimmed();
+    };
+    QString out = html;
+    out.replace(display, "\x01\\1\x02");  // placeholders, replaced below with escaping
+    QString result;
+    qsizetype i = 0;
+    while (i < out.size()) {
+        qsizetype a = out.indexOf(QChar(1), i);
+        if (a < 0) {
+            result += out.mid(i);
+            break;
+        }
+        qsizetype b = out.indexOf(QChar(2), a);
+        result += out.mid(i, a - i);
+        auto tex = strip(out.mid(a + 1, b - a - 1), "$$");
+        result += "<p align=\"center\"><img src=\"" + mathResourceName(tex, true) +
+                  "\" style=\"vertical-align: middle\"></p>";
+        i = b + 1;
+    }
+    QString final;
+    i = 0;
+    auto it = inl.globalMatch(result);
+    while (it.hasNext()) {
+        auto m = it.next();
+        final += result.mid(i, m.capturedStart() - i);
+        final += "<img src=\"" + mathResourceName(strip(m.captured(1), "$"), false) +
+                 "\" style=\"vertical-align: middle\">";
+        i = m.capturedEnd();
+    }
+    final += result.mid(i);
+    return final;
+}
+
+QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocument* doc)
+{
+    QString html = mathToImages(rawHtml);
     static const QRegularExpression img(R"re(<img\b([^>]*?)data-attachment-key="([A-Za-z0-9]+)"([^>]*)>)re");
     auto& lib = AppContext::get().library();
     QString out;
@@ -64,6 +108,9 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
         if (img.height() > 0)
             attrs += QString(" height=\"%1\"").arg(qRound(img.height()));
         auto name = img.name();
+        QString latex;
+        if (parseMathResourceName(name, &latex, nullptr))
+            return "<span class=\"math\">$" + esc(latex) + "$</span>";
         if (name.startsWith("attachment:"))
             return "<img data-attachment-key=\"" + esc(name.mid(11)) + "\"" + attrs + ">";
         return "<img src=\"" + esc(name) + "\"" + attrs + ">";
@@ -211,6 +258,16 @@ void serializeFrame(QTextFrame* frame, QString& out)
         }
         closeLists(0);
         openList = nullptr;
+        // a paragraph holding only a display formula
+        if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
+            auto f = block.begin().fragment().charFormat();
+            QString latex;
+            bool display = false;
+            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display) && display) {
+                out += "<pre class=\"math\">$$" + esc(latex) + "$$</pre>";
+                continue;
+            }
+        }
         auto content = blockContent(block);
         if (bf.headingLevel() > 0) {
             auto tag = QString("h%1").arg(std::min(6, bf.headingLevel()));

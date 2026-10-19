@@ -292,9 +292,11 @@ void LibraryView::selectItem(const QString& key, int64_t libraryId)
         // not visible in the current view: switch to the library root
         search_->clear();
         model_->setSearch({}, SearchMode::AllFields);
-        auto top = qs(lib.topLevelKey(libId, ss(key)));
-        auto d = lib.item(libId, ss(top));
-        Scope s{libId, d && jbool(*d, "deleted") ? ScopeKind::Trash : ScopeKind::Library, {}};
+        // an item is in the trash when it, or the item it belongs to, was trashed
+        auto self = lib.item(libId, ss(key));
+        auto top = lib.item(libId, lib.topLevelKey(libId, ss(key)));
+        bool trashed = (self && jbool(*self, "deleted")) || (top && jbool(*top, "deleted"));
+        Scope s{libId, trashed ? ScopeKind::Trash : ScopeKind::Library, {}};
         tree_->selectScope(s);
         idx = model_->indexOfKey(key);
     }
