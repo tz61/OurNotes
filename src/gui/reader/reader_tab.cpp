@@ -369,8 +369,10 @@ void ReaderTab::buildToolbar()
                             {ReaderTool::Area, "tool-area", "Select area"},
                             {ReaderTool::Ink, "tool-ink", "Draw"},
                             {ReaderTool::Eraser, "tool-eraser", "Eraser"}};
+    int number = 0;
     for (auto& d : defs) {
-        auto* a = tb->addAction(icon(d.icon), tr(d.tip));
+        // 1 … 8 pick them while the page has the keyboard (see PdfView::keyPressEvent)
+        auto* a = tb->addAction(icon(d.icon), tr("%1 (%2)").arg(tr(d.tip)).arg(++number));
         a->setCheckable(true);
         a->setData((int)d.tool);
         a->setActionGroup(tools_);

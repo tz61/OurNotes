@@ -2560,6 +2560,78 @@ TEST_CASE("main window: a short tab title is shown whole")
     CHECK(differing == 0);
 }
 
+TEST_CASE("reader: keys 1 to 8 pick the tools, but not while typing")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>Thoughts</p>", jstr(parent, "key"));
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 800);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    QTest::keyClick(view, Qt::Key_2);
+    CHECK(view->tool() == ReaderTool::Highlight);
+    QTest::keyClick(view, Qt::Key_8);
+    CHECK(view->tool() == ReaderTool::Eraser);
+    QTest::keyClick(view, Qt::Key_1);
+    CHECK(view->tool() == ReaderTool::Select);
+    QTest::keyClick(view, Qt::Key_9);  // not a tool
+    CHECK(view->tool() == ReaderTool::Select);
+
+    // typed into the note next to the PDF, or into a comment: digits
+    auto* note = tab.findChild<NoteTextEdit*>();
+    REQUIRE(note);
+    note->setFocus();
+    QTest::keyClicks(note, "34");
+    CHECK(note->toPlainText().contains("34"));
+    CHECK(view->tool() == ReaderTool::Select);
+    view->setFocus();
+    Json highlight;
+    QObject::connect(view, &PdfView::annotationCreated, [&](const Json& d) { highlight = d; });
+    QTest::keyClick(view, Qt::Key_2);
+    drag(view->viewport(), charCenter(*view, 0), charCenter(*view, 4));
+    REQUIRE(highlight.is_object());
+    view->setAnnotations({highlight});
+    QTest::keyClick(view, Qt::Key_1);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 2).toPoint());
+    auto* bubble = view->commentBubble();
+    REQUIRE(bubble->isEditing());
+    QTest::keyClicks(bubble->editor(), "page 5");
+    CHECK(bubble->editor()->toPlainText() == "page 5");
+    CHECK(view->tool() == ReaderTool::Select);
+}
+
+TEST_CASE("reader: in select mode a drag from beside the text selects it")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 1000);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    REQUIRE(view.tool() == ReaderTool::Select);
+    // from the left margin, level with the first line, into it
+    QPointF first = charCenter(view, 0);
+    QPointF margin = view.pageToViewport(0, {30, 0});
+    margin.setY(first.y());
+    drag(view.viewport(), margin, charCenter(view, 10));
+    REQUIRE(view.hasTextSelection());
+    CHECK(view.selectedText().startsWith("Hello"));
+    // a click beside the text still selects nothing
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, margin.toPoint());
+    CHECK(!view.hasTextSelection());
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

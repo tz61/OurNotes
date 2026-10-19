@@ -1493,15 +1493,15 @@ void PdfView::mousePressEvent(QMouseEvent* e)
             return;
         }
         clearTextSelection();
-        if (idx >= 0 || tool_ != ReaderTool::Select) {
-            if (idx < 0)
-                idx = text.hitTest({(float)pt.x(), (float)pt.y()}, true);
-            if (idx >= 0) {
-                selPage_ = page;
-                selAnchor_ = selFrom_ = selTo_ = idx;
-                selFrom_ = -1;  // nothing selected until the mouse moves
-                drag_ = Drag::Selecting;
-            }
+        // off the text (a margin, between columns) a drag still selects, from the
+        // nearest character, with every tool
+        if (idx < 0)
+            idx = text.hitTest({(float)pt.x(), (float)pt.y()}, true);
+        if (idx >= 0) {
+            selPage_ = page;
+            selAnchor_ = selFrom_ = selTo_ = idx;
+            selFrom_ = -1;  // nothing selected until the mouse moves
+            drag_ = Drag::Selecting;
         }
         viewport()->update();
         return;
@@ -1744,6 +1744,17 @@ void PdfView::wheelEvent(QWheelEvent* e)
 
 void PdfView::keyPressEvent(QKeyEvent* e)
 {
+    // 1 … 8: the tools, in the toolbar's order. Only the page itself takes them: in a
+    // comment, a text box or any other field the digit is typed (and never gets here).
+    if ((e->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier && e->key() >= Qt::Key_1 && e->key() <= Qt::Key_8) {
+        static const ReaderTool tools[] = {ReaderTool::Select, ReaderTool::Highlight, ReaderTool::Underline,
+                                           ReaderTool::Note,   ReaderTool::Text,      ReaderTool::Area,
+                                           ReaderTool::Ink,    ReaderTool::Eraser};
+        auto tool = tools[e->key() - Qt::Key_1];
+        if (editable_ || tool == ReaderTool::Select)
+            emit toolChangeRequested(tool);
+        return;
+    }
     if (e->matches(QKeySequence::Copy)) {
         copySelection();
         return;
