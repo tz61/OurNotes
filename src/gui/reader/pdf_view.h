@@ -58,6 +58,7 @@ public:
     QString color() const { return color_; }
     void setColor(const QString& color);
     void setEditable(bool editable);
+    bool toolAvailable(ReaderTool tool) const;  // reflowed text (EPUB, HTML): select and the text tools
 
     void setAnnotations(const std::vector<Json>& annotations);
     void selectAnnotation(const QString& key, bool scrollTo);
@@ -181,6 +182,9 @@ private:
     AnnView* findAnn(const QString& key);
     Json positionFromRects(int page, const std::vector<QRectF>& rects) const;
     Json baseAnnotation(const QString& type, int page, int charOffset, double top) const;
+    // A place in reflowed text: characters [from, to) of the page, as positions in the
+    // document's text (a W3C TextPositionSelector), which outlast a different layout.
+    Json textPosition(int page, int from, int to) const;
     void createFromSelection(const QString& type, const QString& color);
     void createInk();
     void eraseAt(int page, QPointF pt);

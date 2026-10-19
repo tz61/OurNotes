@@ -976,9 +976,18 @@ void LibraryView::showItemMenu(const QPoint& pos)
     bool single = keys.size() == 1;
     bool regular = schema::isRegularType(ss(type));
 
-    if (single && (type == "attachment" || regular))
-        menu.addAction(icon("open"), type == "attachment" ? tr("Open") : tr("Open PDF"), this,
-                       [this, index] { openIndex(index); });
+    if (single && (type == "attachment" || regular)) {
+        QString open = tr("Open");
+        if (regular)  // what it opens: its best attachment
+            if (auto best = lib.bestAttachment(s.libraryId, ss(keys[0]))) {
+                auto ct = jstr(*best, "contentType");
+                open = ct == "application/pdf"        ? tr("Open PDF")
+                       : ct == "application/epub+zip" ? tr("Open EPUB")
+                       : ct == "text/html"            ? tr("Open Snapshot")
+                                                      : tr("Open");
+            }
+        menu.addAction(icon("open"), open, this, [this, index] { openIndex(index); });
+    }
     if (single && type == "attachment") {
         menu.addAction(tr("Show File"), this, [&, key = keys[0]] {
             if (auto d = lib.item(s.libraryId, ss(key))) {

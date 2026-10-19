@@ -377,7 +377,7 @@ void ReaderTab::buildToolbar()
         a->setCheckable(true);
         a->setData((int)d.tool);
         a->setActionGroup(tools_);
-        a->setEnabled(editable_ || d.tool == ReaderTool::Select);
+        a->setEnabled(view_->toolAvailable(d.tool));
         if (d.tool == ReaderTool::Select)
             a->setChecked(true);
         connect(a, &QAction::triggered, this, [this, tool = d.tool] { setTool(tool); });

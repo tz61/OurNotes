@@ -382,9 +382,9 @@ void MainWindow::buildActions()
 
 void MainWindow::updateTabActions()
 {
-    bool reader = qobject_cast<ReaderTab*>(tabs_->currentWidget()) != nullptr;
-    if (auto* a = findChild<QAction*>("exportPdf"))
-        a->setEnabled(reader);
+    auto* reader = qobject_cast<ReaderTab*>(tabs_->currentWidget());
+    if (auto* a = findChild<QAction*>("exportPdf"))  // annotations go into PDFs only
+        a->setEnabled(reader && reader->view()->document() && reader->view()->document()->isPdf());
 }
 
 // --- attachments ---------------------------------------------------------------------------------
@@ -469,6 +469,18 @@ void MainWindow::saveSession()
         "/ui/session", Json{{"tabs", tabs}, {"selected", selected}, {"library", library_->viewState()}});
 }
 
+// A reader tab's icon: the PDF's, the EPUB's or the web page's.
+QIcon MainWindow::readerIcon(int64_t libraryId, const QString& key) const
+{
+    auto att = AppContext::get().library().item(libraryId, ss(key));
+    auto contentType = att ? jstr(*att, "contentType") : std::string();
+    if (contentType == "application/epub+zip")
+        return icon("type-epub");
+    if (contentType == "text/html" || contentType == "application/xhtml+xml")
+        return icon("type-snapshot");
+    return icon("type-pdf");
+}
+
 void MainWindow::restoreSession()
 {
     auto session = AppContext::get().config().get("/ui/session", Json::object());
@@ -482,7 +494,7 @@ void MainWindow::restoreSession()
         if (!lib.item(libraryId, ss(key)) || findTab(libraryId, key) >= 0)
             continue;  // deleted meanwhile, or already opened (e.g. from the command line)
         auto title = ReaderTab::titleFor(libraryId, key);
-        int i = tabs_->addTab(new PendingReaderTab(libraryId, key), icon("type-pdf"), tabText(title));
+        int i = tabs_->addTab(new PendingReaderTab(libraryId, key), readerIcon(libraryId, key), tabText(title));
         tabs_->setTabToolTip(i, title);
     }
     int selected = (int)jint(session, "selected");
@@ -512,9 +524,14 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
                              tr("The attached file could not be found at:\n\n%1").arg(qpath(path)));
         return;
     }
-    bool isPdf = jstr(*att, "contentType") == "application/pdf" || toLower(pathString(path.extension())) == ".pdf";
+    // PDFs, EPUBs and web pages (snapshots) open in a reader tab
+    auto contentType = jstr(*att, "contentType");
+    auto ext = toLower(pathString(path.extension()));
+    bool readable = contentType == "application/pdf" || contentType == "application/epub+zip" ||
+                    contentType == "text/html" || contentType == "application/xhtml+xml" || ext == ".pdf" ||
+                    ext == ".epub" || ext == ".html" || ext == ".htm" || ext == ".xhtml";
     bool inApp = AppContext::get().config().get("/ui/openPdfIn", "tab").get<std::string>() == "tab";
-    if (!isPdf || !inApp) {
+    if (!readable || !inApp) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(qpath(path)));
         return;
     }
@@ -536,7 +553,7 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
             return;
         }
         auto title = reader->title();
-        int i = tabs_->addTab(reader, icon("type-pdf"), tabText(title));
+        int i = tabs_->addTab(reader, readerIcon(libraryId, key), tabText(title));
         tabs_->setTabToolTip(i, title);
     }
     tabs_->setCurrentWidget(reader);

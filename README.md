@@ -17,6 +17,7 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   images, ink), tag colours, reading positions and CSL styles. Zotero's files are only
   read. Re-running the import picks up items changed in Zotero since.
 - **PDF reader** — continuous scrolling, zoom/fit, thumbnails, outline, links, find.
+  EPUBs and web page snapshots open in it too, with highlights, underlines and notes.
   Annotation tools: highlight, underline, sticky note, text box, area (image), ink and
   eraser, eight colours, comments, move/resize. A comment shows over the page while the
   mouse rests on its annotation and is edited right there after a click, with `$…$`
@@ -241,7 +242,10 @@ pushes local changes with optimistic concurrency.
 
 - Citation styles are built in; the CSL files copied from Zotero are kept in
   `~/OurNotes/styles` but not yet interpreted.
-- EPUB and HTML snapshots open in the system viewer; annotations are PDF-only.
+- EPUBs and HTML snapshots open in OurNotes, laid out on pages by MuPDF, whose HTML
+  engine knows only basic CSS: web pages look plain. They take highlights, underlines
+  and notes, kept as positions in their text; Zotero's own EPUB and snapshot
+  annotations (EPUB CFI and CSS selectors) are not shown yet.
 - Zotero feeds, saved searches and its web sync are not imported/supported.
 - Notes are rewritten as clean HTML when you edit them; Zotero-specific markup
   (embedded citation data) in edited notes is reduced to its visible text.

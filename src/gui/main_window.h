@@ -4,6 +4,7 @@
 
 #include <vector>
 
+class QIcon;
 class QLabel;
 class QTabWidget;
 class QToolButton;
@@ -39,6 +40,7 @@ private:
     void buildActions();
     int findTab(int64_t libraryId, const QString& key) const;  // a reader, loaded or not
     void reopenClosedTab();
+    QIcon readerIcon(int64_t libraryId, const QString& key) const;
     struct ClosedTab {
         int64_t libraryId;
         QString key;
