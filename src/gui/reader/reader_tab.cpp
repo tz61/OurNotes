@@ -97,6 +97,10 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
         if (auto* item = thumbnails_->item(page))
             item->setIcon(QPixmap::fromImage(img));
     });
+    connect(view_, &PdfView::renderingRestarted, this, [this] {
+        if (thumbnailsRequested_)
+            requestThumbnails();
+    });
     connect(view_, &PdfView::darkPagesChanged, this, [this] {
         updateDarkPagesAction();
         if (thumbnailsRequested_)

@@ -39,6 +39,7 @@
 #include "gui/fulltext_indexer.h"
 #include "gui/icons.h"
 #include "gui/library_view.h"
+#include "gui/memory.h"
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
 #include "gui/sync_controller.h"
@@ -102,6 +103,7 @@ MainWindow::MainWindow()
         auto* w = tabs_->widget(i);
         tabs_->removeTab(i);
         w->deleteLater();
+        releaseFreedMemory();  // a reader tab frees tens of megabytes
     });
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int i) {
         loadPendingTab(i);

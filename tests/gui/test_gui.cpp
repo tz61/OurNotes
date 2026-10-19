@@ -591,6 +591,36 @@ TEST_CASE("reader: Ctrl+Z / Ctrl+Y undo and redo annotation changes, per tab")
     CHECK(stack->index() == before);
 }
 
+TEST_CASE("reader: a hidden tab gives back its memory and comes back when shown")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    QTabWidget tabs;
+    tabs.resize(900, 900);
+    auto* view = new PdfView;
+    view->open(file);
+    tabs.addTab(view, "pdf");
+    tabs.addTab(new QWidget, "other");
+    tabs.show();
+    view->setReleaseDelays(100, 300);
+    CHECK(QTest::qWaitFor([&] { return view->renderedPages() > 0; }));
+    view->setZoom(2);
+    view->verticalScrollBar()->setValue(300);
+    int scrolled = view->verticalScrollBar()->value();
+
+    tabs.setCurrentIndex(1);  // hidden: first the rendered pages go, then the render thread
+    CHECK(QTest::qWaitFor([&] { return view->renderedPages() == 0; }, 2000));
+    CHECK(view->isRendering());
+    CHECK(QTest::qWaitFor([&] { return !view->isRendering(); }, 2000));
+
+    tabs.setCurrentIndex(0);  // shown again: rendering resumes where it was
+    CHECK(QTest::qWaitFor([&] { return view->isRendering() && view->renderedPages() > 0; }, 3000));
+    CHECK(view->verticalScrollBar()->value() == scrolled);
+    CHECK(view->zoom() == doctest::Approx(2));
+}
+
 TEST_CASE("reader tab persists annotations in the library")
 {
     app();

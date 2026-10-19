@@ -15,6 +15,7 @@ set(OURNOTES_GUI_SOURCES
     main_window.cpp
     math_dialog.cpp
     math_render.cpp
+    memory.cpp
     metadata_progress.cpp
     note_editor.cpp
     note_html.cpp

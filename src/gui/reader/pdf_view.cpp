@@ -23,6 +23,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
+#include "gui/memory.h"
 #include "gui/reader/render_worker.h"
 #include "gui/theme.h"
 
@@ -117,9 +118,25 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
         hidePopup();
     });
     lastInkTime_.invalidate();
+    releaseTimer_.setSingleShot(true);
+    releaseTimer_.setInterval(20000);
+    connect(&releaseTimer_, &QTimer::timeout, this, &PdfView::releaseMemory);
+    // rendered pages are the bulk (megabytes each) and quick to render again
+    imagesTimer_.setSingleShot(true);
+    imagesTimer_.setInterval(3000);
+    connect(&imagesTimer_, &QTimer::timeout, this, [this] {
+        cache_.clear();
+        ++generation_;
+        releaseFreedMemory();
+    });
 }
 
-PdfView::~PdfView() = default;
+PdfView::~PdfView()
+{
+    worker_.reset();
+    doc_.reset();
+    releaseFreedMemory();
+}
 
 void PdfView::open(const fs::path& path)
 {
@@ -131,10 +148,61 @@ void PdfView::open(const fs::path& path)
         auto s = doc_->pageSize(i);
         pageSizes_.push_back(QSizeF(s.width, s.height));
     }
-    worker_ = std::make_unique<RenderWorker>(path);
-    connect(worker_.get(), &RenderWorker::rendered, this, &PdfView::onRendered);
+    path_ = path;
     cache_.clear();
+    startWorker();
     relayout(false);
+}
+
+void PdfView::startWorker()
+{
+    worker_ = std::make_unique<RenderWorker>(path_);
+    connect(worker_.get(), &RenderWorker::rendered, this, &PdfView::onRendered);
+}
+
+void PdfView::setReleaseDelays(int imagesMs, int allMs)
+{
+    imagesTimer_.setInterval(imagesMs);
+    releaseTimer_.setInterval(allMs);
+}
+
+void PdfView::releaseMemory()
+{
+    if (!worker_)
+        return;
+    worker_.reset();  // stops its thread and closes its copy of the document
+    cache_.clear();
+    ++generation_;
+    if (doc_)
+        doc_->releaseMemory();
+    releaseFreedMemory();
+}
+
+void PdfView::showEvent(QShowEvent* e)
+{
+    QAbstractScrollArea::showEvent(e);
+    releaseTimer_.stop();
+    imagesTimer_.stop();
+    if (worker_ && cache_.empty())
+        requestRenders();
+    if (!worker_ && !path_.empty())
+        // not for a tab shown only in passing, e.g. while several tabs are being closed
+        QTimer::singleShot(50, this, [this] {
+            if (isVisible() && !worker_) {
+                startWorker();
+                requestRenders();
+                emit renderingRestarted();
+            }
+        });
+}
+
+void PdfView::hideEvent(QHideEvent* e)
+{
+    QAbstractScrollArea::hideEvent(e);
+    if (!e->spontaneous()) {  // another tab was chosen (not a minimised window)
+        imagesTimer_.start();
+        releaseTimer_.start();
+    }
 }
 
 // --- geometry ------------------------------------------------------------------------------

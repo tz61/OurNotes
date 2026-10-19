@@ -113,6 +113,10 @@ public:
     // to leave photos alone when recolouring a page. Images in patterns are left out.
     std::vector<Rect> imageRects(int page);
 
+    // Drops cached pages, page text and MuPDF's resource store (fonts, images); they are
+    // loaded again when needed. For documents that are not being looked at.
+    void releaseMemory();
+
     const PageText& text(int page);
     std::string pageText(int page);
     std::string fullText(int maxPages = 0);  // for indexing

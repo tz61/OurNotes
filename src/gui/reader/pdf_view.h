@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractScrollArea>
+#include <QTimer>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QPolygonF>
@@ -75,12 +76,19 @@ public:
     void clearFind();
     void requestThumbnails(double scale);
 
+    // While hidden, the view drops its rendered pages after imagesMs and its render
+    // thread and MuPDF caches after allMs (defaults 3 s and 20 s).
+    void setReleaseDelays(int imagesMs, int allMs);
+    int renderedPages() const { return (int)cache_.size(); }
+    bool isRendering() const { return worker_ != nullptr; }
+
     // Dark mode for the pages themselves (see darkPdfPages()); follows the theme.
     bool darkPages() const { return darkPages_; }
     void setDarkPages(bool dark);
 
 signals:
     void darkPagesChanged(bool dark);
+    void renderingRestarted();  // after being hidden for a while: ask for thumbnails again
     void pageChanged(int page);
     void zoomChanged(double zoom);
     void viewChanged();  // scrolled or zoomed
@@ -96,6 +104,8 @@ signals:
 protected:
     void paintEvent(QPaintEvent* e) override;
     void changeEvent(QEvent* e) override;
+    void showEvent(QShowEvent* e) override;
+    void hideEvent(QHideEvent* e) override;
     void resizeEvent(QResizeEvent* e) override;
     void scrollContentsBy(int dx, int dy) override;
     void mousePressEvent(QMouseEvent* e) override;
@@ -142,6 +152,10 @@ private:
     QPointF toView(int page, QPointF pagePoint) const;
     std::pair<int, int> visiblePages(double margin = 0) const;
     void requestRenders();
+    // A view not shown for a while gives back its rendered pages, render thread and
+    // MuPDF caches; they come back when it is shown again.
+    void releaseMemory();
+    void startWorker();
     void onRendered(int page, double scale, quint64 generation, bool thumbnail, bool dark, const QImage& image);
 
     // annotations
@@ -175,6 +189,9 @@ private:
 
     std::unique_ptr<pdf::Document> doc_;
     std::unique_ptr<RenderWorker> worker_;
+    fs::path path_;
+    QTimer releaseTimer_;  // hidden for a while: everything
+    QTimer imagesTimer_;   // hidden for a moment: the rendered pages
     std::vector<QSizeF> pageSizes_;
     std::vector<QRectF> pageRects_;  // content coordinates (device-independent pixels)
     QSizeF contentSize_;

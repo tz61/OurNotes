@@ -367,6 +367,17 @@ void* Document::loadPage(int n)
     return page;
 }
 
+void Document::releaseMemory()
+{
+    auto& im = *d_;
+    for (auto& [n, p] : im.pages)
+        fz_drop_page(im.ctx, p);
+    im.pages.clear();
+    im.lru.clear();
+    im.texts.clear();
+    fz_empty_store(im.ctx);
+}
+
 Size Document::pageSize(int n)
 {
     auto* page = (fz_page*)loadPage(n);

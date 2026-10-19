@@ -14,6 +14,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/main_window.h"
+#include "gui/memory.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 
@@ -46,6 +47,7 @@ static bool usesDefaultLocations(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+    configureAllocator();
     if (usesDefaultLocations(argc, argv))
         migrateFromFreePen();  // the first start after the rename from freePen
     std::unique_ptr<Config> config;
