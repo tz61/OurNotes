@@ -69,8 +69,10 @@ QToolButton* smallButton(const QIcon& ic, const QString& tip, QWidget* parent)
 void clearLayout(QLayout* layout)
 {
     while (auto* item = layout->takeAt(0)) {
-        if (auto* w = item->widget())
+        if (auto* w = item->widget()) {
+            w->hide();  // at once: deleted later, the old rows were drawn over the new for a frame
             w->deleteLater();
+        }
         if (auto* l = item->layout()) {
             clearLayout(l);
             delete l;
@@ -123,7 +125,7 @@ void AutoTextEdit::updateHeight()
 void AutoTextEdit::resizeEvent(QResizeEvent* e)
 {
     QPlainTextEdit::resizeEvent(e);
-    QTimer::singleShot(0, this, &AutoTextEdit::updateHeight);
+    updateHeight();  // now: a frame later, the rows below it were drawn where they were not to stay
 }
 
 void AutoTextEdit::focusOutEvent(QFocusEvent* e)
@@ -269,6 +271,27 @@ void InfoEditor::rebuild()
     addInfo(tr("Date Added"), qs(isoToLocalDisplay(jstr(*data, "dateAdded"))));
     addInfo(tr("Modified"), qs(isoToLocalDisplay(jstr(*data, "dateModified"))));
     grid_->setRowStretch(row, 1);
+    if (isVisible())
+        settleLayout();
+}
+
+// In place before anything is drawn. Shown by the layout later, the new rows took a frame
+// at a default width, where the title and the abstract are many lines tall, and the
+// creators below then jumped up. Laid out once for the widths, once more for the heights
+// the text boxes take at them.
+void InfoEditor::settleLayout()
+{
+    for (int i = 0; i < grid_->count(); ++i)
+        if (auto* w = grid_->itemAt(i)->widget())
+            w->show();
+    grid_->activate();
+    grid_->activate();
+}
+
+void InfoEditor::showEvent(QShowEvent* e)
+{
+    QWidget::showEvent(e);
+    settleLayout();
 }
 
 void InfoEditor::addCreatorRow(int index, const std::string& itemType, const std::string& creatorType, bool single,
@@ -1164,6 +1187,12 @@ void LocationBox::rebuild()
         });
         lines_->addWidget(row);
     }
+    if (isVisible()) {  // shown now, not a frame later (see InfoEditor::settleLayout)
+        for (int i = 0; i < lines_->count(); ++i)
+            if (auto* w = lines_->itemAt(i)->widget())
+                w->show();
+        lines_->activate();
+    }
 }
 
 // --- ItemPane ----------------------------------------------------------------------------------
@@ -1295,6 +1324,12 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
         itemPage_->setCurrentIndex(preferNotes && n > 0 ? 1 : 0);
         setCurrentWidget(itemContainer_);
     }
+    // The page laid out around its new contents before it is drawn: the location's lines
+    // above, the fields, and the scroll area's page as tall as they are (left to the
+    // event loop, the fields were drawn squeezed into the old height for a frame). Each
+    // round of layout can ask for another.
+    for (int round = 0; round < 4; ++round)
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
 }
 
 } // namespace on::gui

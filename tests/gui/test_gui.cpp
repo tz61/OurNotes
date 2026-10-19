@@ -34,6 +34,8 @@
 #include <QTextDocument>
 #include <QMimeData>
 #include <QPushButton>
+#include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QClipboard>
@@ -2751,6 +2753,48 @@ TEST_CASE("main window: Ctrl+Shift+T reopens closed tabs, last closed first, whe
     int count = secondTabs->count();
     QTest::keyClick(&second, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
     CHECK(secondTabs->count() == count);
+}
+
+TEST_CASE("item pane: an item's fields are in place when first drawn")
+{
+    app();
+    Env env;
+    auto item = env.library.createItem(
+        env.lib, Json{{"itemType", "journalArticle"},
+                      {"title", "A rather long title that wraps over several lines when the box is narrow, as new boxes are"},
+                      {"creators", Json::array({Json{{"creatorType", "author"}, {"firstName", "Ada"}, {"lastName", "Lovelace"}},
+                                                Json{{"creatorType", "author"}, {"firstName", "Alan"}, {"lastName", "Turing"}}})},
+                      {"abstractNote", std::string(600, 'x')}});
+    auto other = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Short"}});
+    ItemPane pane;
+    pane.resize(500, 900);
+    pane.show();
+    pane.showItems(env.lib, {qs(jstr(other, "key"))});
+    QApplication::processEvents();
+    auto where = [&] {  // the title box's height and the first creator's place
+        std::pair<int, int> out{-1, -1};
+        for (auto* e : pane.findChildren<AutoTextEdit*>())
+            if (e->isVisible() && e->toPlainText().startsWith("A rather long"))
+                out.first = e->height();
+        for (auto* c : pane.findChildren<QComboBox*>())
+            if (c->isVisible() && c->currentText() == "Author:")
+                out.second = out.second < 0 ? c->mapTo(&pane, QPoint(0, 0)).y() : std::min(out.second, c->mapTo(&pane, QPoint(0, 0)).y());
+        return out;
+    };
+    pane.showItems(env.lib, {qs(jstr(item, "key"))});
+    auto first = where();  // as the next frame would draw it
+    for (int i = 0; i < 5; ++i)
+        QApplication::processEvents();
+    QTest::qWait(50);
+    auto settled = where();
+    REQUIRE(settled.first > 0);
+    CHECK(first == settled);
+    // and nothing of the item before is left to be drawn over it
+    pane.showItems(env.lib, {qs(jstr(other, "key"))});
+    int stale = 0;
+    for (auto* e : pane.findChildren<AutoTextEdit*>())
+        stale += e->isVisible() && e->toPlainText().startsWith("A rather long");
+    CHECK(stale == 0);
 }
 
 TEST_CASE("library: moving between items does not change the window's minimum height")

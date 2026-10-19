@@ -53,7 +53,11 @@ public:
     void setItem(int64_t libraryId, const QString& key);
     void rebuild();
 
+protected:
+    void showEvent(QShowEvent* e) override;  // (from the Notes tab) laid out before drawn, too
+
 private:
+    void settleLayout();
     struct CreatorRow {
         QComboBox* type = nullptr;
         QLineEdit* last = nullptr;
