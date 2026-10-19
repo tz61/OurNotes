@@ -565,8 +565,10 @@ TagsBox::TagsBox(QWidget* parent) : QWidget(parent)
             [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
                 if (lib != libraryId_)
                     return;
+                // of the settings, only tag colours matter (not e.g. reading positions)
+                bool colors = type == "setting" && keys.contains("tagColors");
                 for (auto& k : keys_)
-                    if (keys.contains(k) || type == "*" || type == "setting") {
+                    if (keys.contains(k) || type == "*" || colors) {
                         QMetaObject::invokeMethod(this, &TagsBox::rebuild, Qt::QueuedConnection);
                         return;
                     }

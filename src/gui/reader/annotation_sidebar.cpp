@@ -8,6 +8,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QToolButton>
@@ -163,6 +164,8 @@ void AnnotationCard::focusComment()
 
 void AnnotationCard::setSelected(bool selected)
 {
+    if (selected == selected_)
+        return;
     selected_ = selected;
     refresh();
 }
@@ -197,21 +200,28 @@ void AnnotationCard::refresh()
         tags << "#" + jqs(t, "tag");
     tags_->setText(tags.join(" "));
     tags_->setVisible(!tags.isEmpty());
-    auto pal = QApplication::palette();
-    QColor base = pal.color(QPalette::Base), hl = pal.color(QPalette::Highlight);
+    QWidget::update();
+}
+
+// Painted rather than styled with a style sheet: style sheets on hundreds of cards are
+// slow, and the colours here follow theme changes without any refresh.
+void AnnotationCard::paintEvent(QPaintEvent*)
+{
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    QColor base = palette().color(QPalette::Base), hl = palette().color(QPalette::Highlight);
     QColor bg = selected_ ? QColor::fromRgbF(base.redF() * 0.75 + hl.redF() * 0.25, base.greenF() * 0.75 + hl.greenF() * 0.25,
                                              base.blueF() * 0.75 + hl.blueF() * 0.25)
                           : base;
-    setStyleSheet(QString("QFrame#annotationCard { background: %1; border: 1px solid %2; border-left: 4px solid %3; "
-                          "border-radius: 3px; }")
-                      .arg(bg.name(), pal.color(QPalette::Mid).name(), color.name()));
-}
-
-void AnnotationCard::changeEvent(QEvent* e)
-{
-    QFrame::changeEvent(e);
-    if (e->type() == QEvent::PaletteChange)
-        QMetaObject::invokeMethod(this, &AnnotationCard::refresh, Qt::QueuedConnection);
+    QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+    p.setPen(QPen(palette().color(QPalette::Mid), 1));
+    p.setBrush(bg);
+    p.drawRoundedRect(r, 3, 3);
+    // the annotation's colour along the left edge
+    QPainterPath edge;
+    edge.addRoundedRect(QRectF(0, 0, 8, height()), 3, 3);
+    p.setClipRect(QRectF(0, 0, 4, height()));
+    p.fillPath(edge, QColor(jqs(data_, "annotationColor")));
 }
 
 void AnnotationCard::mousePressEvent(QMouseEvent* e)

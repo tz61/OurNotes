@@ -56,7 +56,7 @@ signals:
 
 protected:
     void mousePressEvent(QMouseEvent* e) override;
-    void changeEvent(QEvent* e) override;
+    void paintEvent(QPaintEvent* e) override;
 
 private:
     void refresh();

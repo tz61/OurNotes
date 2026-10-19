@@ -205,6 +205,66 @@ TEST_CASE("reader: PDF pages follow dark mode")
     applyAppearance(Appearance::System);
 }
 
+TEST_CASE("reader: annotation cards stay idle and follow the theme")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    {
+        ReaderTab tab(env.lib, qs(key));
+        tab.resize(1200, 900);
+        tab.show();
+        QApplication::processEvents();
+        auto* view = tab.view();
+        view->setTool(ReaderTool::Highlight);
+        for (int i = 0; i < 40; ++i)  // many annotations, like a well-read paper
+            drag(view->viewport(), charCenter(*view, (i % 4) * 5), charCenter(*view, (i % 4) * 5 + 3));
+        view->setTool(ReaderTool::Select);
+        QTest::qWait(100);
+    }
+    REQUIRE(env.library.annotations(env.lib, key).size() == 40);
+
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    applyAppearance(Appearance::Dark);
+
+    // nothing keeps restyling itself once the theme has changed (this used to loop
+    // forever, freezing the reader and eventually running out of memory)
+    struct Counter : QObject {
+        int changes = 0;
+        bool eventFilter(QObject*, QEvent* e) override
+        {
+            if (e->type() == QEvent::StyleChange || e->type() == QEvent::PaletteChange)
+                ++changes;
+            return false;
+        }
+    } counter;
+    QTest::qWait(100);
+    qApp->installEventFilter(&counter);
+    QTest::qWait(300);
+    qApp->removeEventFilter(&counter);
+    CHECK(counter.changes == 0);
+
+    // cards are painted in the current theme's colours
+    QWidget* card = nullptr;
+    for (auto* c : tab.findChildren<QWidget*>("annotationCard"))
+        if (c->isVisible())
+            card = c;
+    REQUIRE(card);
+    auto img = card->grab().toImage();
+    QColor inside = img.pixelColor(img.width() - 4 * img.devicePixelRatio(), img.height() / 2);
+    CHECK(inside == QApplication::palette().color(QPalette::Base));
+    QColor edge = img.pixelColor(int(1.5 * img.devicePixelRatio()), img.height() / 2);
+    CHECK(edge == QColor("#ffd400"));  // the annotation's colour
+
+    applyAppearance(Appearance::System);
+}
+
 TEST_CASE("reader tab persists annotations in the library")
 {
     app();

@@ -53,8 +53,10 @@ TagSelector::TagSelector(QWidget* parent) : QWidget(parent)
     connect(deselect_, &QToolButton::clicked, list_, &QListWidget::clearSelection);
     connect(list_, &QWidget::customContextMenuRequested, this, &TagSelector::showMenu);
     connect(&AppContext::get(), &AppContext::changed, this,
-            [this](qint64 lib, const QString& type, const QString&, const QStringList&) {
-                if ((lib == libraryId_ || lib == 0) && (type == "item" || type == "setting" || type == "*"))
+            [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
+                // of the settings, only tag colours matter (not e.g. reading positions)
+                bool colors = type == "setting" && keys.contains("tagColors");
+                if ((lib == libraryId_ || lib == 0) && (type == "item" || colors || type == "*"))
                     reload();
             });
 }
