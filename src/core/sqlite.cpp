@@ -29,7 +29,7 @@ Stmt::~Stmt()
 
 Stmt::Stmt(Stmt&& o) noexcept : db_(o.db_), st_(o.st_) { o.st_ = nullptr; }
 
-Stmt& Stmt::bind(int idx, int64_t v)
+Stmt& Stmt::bindInt64(int idx, int64_t v)
 {
     check(db_, sqlite3_bind_int64(st_, idx, v), "bind");
     return *this;
@@ -138,25 +138,34 @@ void Db::setUserVersion(int v) { exec("PRAGMA user_version=" + std::to_string(v)
 
 static std::atomic<int> g_savepoint{0};
 
-Transaction::Transaction(Db& db) : db_(db), name_("sp" + std::to_string(++g_savepoint))
+Transaction::Transaction(Db& db) : db_(db)
 {
-    db_.exec("SAVEPOINT " + name_);
+    if (sqlite3_get_autocommit(db_.handle())) {
+        db_.exec("BEGIN IMMEDIATE");
+    } else {
+        name_ = "sp" + std::to_string(++g_savepoint);
+        db_.exec("SAVEPOINT " + name_);
+    }
 }
 
 Transaction::~Transaction()
 {
-    if (!done_) {
-        try {
+    if (done_)
+        return;
+    try {
+        if (name_.empty()) {
+            db_.exec("ROLLBACK");
+        } else {
             db_.exec("ROLLBACK TO " + name_);
             db_.exec("RELEASE " + name_);
-        } catch (...) {
         }
+    } catch (...) {
     }
 }
 
 void Transaction::commit()
 {
-    db_.exec("RELEASE " + name_);
+    db_.exec(name_.empty() ? "COMMIT" : "RELEASE " + name_);
     done_ = true;
 }
 

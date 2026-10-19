@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include "core/util.h"
 
@@ -29,9 +30,11 @@ public:
     Stmt(const Stmt&) = delete;
     Stmt& operator=(const Stmt&) = delete;
 
-    Stmt& bind(int idx, int64_t v);
-    Stmt& bind(int idx, int v) { return bind(idx, (int64_t)v); }
-    Stmt& bind(int idx, bool v) { return bind(idx, (int64_t)v); }
+    template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+    Stmt& bind(int idx, T v)
+    {
+        return bindInt64(idx, (int64_t)v);
+    }
     Stmt& bind(int idx, double v);
     Stmt& bind(int idx, std::string_view v);
     Stmt& bind(int idx, const std::string& v) { return bind(idx, std::string_view(v)); }
@@ -64,6 +67,8 @@ public:
     std::string blob(int col) const;
 
 private:
+    Stmt& bindInt64(int idx, int64_t v);
+
     sqlite3* db_;
     sqlite3_stmt* st_ = nullptr;
 };
@@ -122,7 +127,9 @@ private:
     sqlite3* db_ = nullptr;
 };
 
-// Nestable transaction (uses SAVEPOINTs). Rolls back unless commit() is called.
+// Nestable transaction. The outermost level is BEGIN IMMEDIATE (takes the write
+// lock up front, so concurrent connections in WAL mode never hit a stale-snapshot
+// SQLITE_BUSY); inner levels are SAVEPOINTs. Rolls back unless commit() is called.
 class Transaction {
 public:
     explicit Transaction(Db& db);
@@ -131,7 +138,7 @@ public:
 
 private:
     Db& db_;
-    std::string name_;
+    std::string name_;  // empty for the outermost level
     bool done_ = false;
 };
 

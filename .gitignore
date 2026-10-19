@@ -7,3 +7,4 @@ compile_commands.json
 CMakeUserPresets.json
 *.swp
 __pycache__/
+/.claude/
