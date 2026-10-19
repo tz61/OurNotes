@@ -26,6 +26,7 @@ signals:
     void bibliographyRequested(const Scope& scope);
     void newLibraryRequested();
     void deleteLibraryRequested(qint64 libraryId);
+    void filesDropped(const Scope& scope, const QStringList& files);  // from outside the app
 
 protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
@@ -40,6 +41,7 @@ private:
     Scope scopeOf(const QTreeWidgetItem* item) const;
     QTreeWidgetItem* findItem(const Scope& s) const;
     bool acceptsDrop(QDropEvent* e, QTreeWidgetItem** target) const;
+    static QStringList droppedFiles(const QMimeData* mime);  // files dragged in from outside
 
     void newCollection(int64_t lib, const std::string& parentKey);
     void renameItem(QTreeWidgetItem* item);

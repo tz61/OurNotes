@@ -3,6 +3,7 @@
 #include <QCollator>
 #include <QContextMenuEvent>
 #include <QDrag>
+#include <QFileInfo>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -313,12 +314,27 @@ bool CollectionTree::acceptsDrop(QDropEvent* e, QTreeWidgetItem** target) const
                 return false;
         return true;
     }
+    if (!droppedFiles(mime).isEmpty())  // from outside: into the library or a collection
+        return (s.kind == ScopeKind::Library || s.kind == ScopeKind::Collection || s.kind == ScopeKind::Unfiled) &&
+               AppContext::get().editable(s.libraryId);
     return false;
+}
+
+QStringList CollectionTree::droppedFiles(const QMimeData* mime)
+{
+    QStringList files;
+    if (mime->hasFormat(kItemsMime) || mime->hasFormat(kCollectionMime))
+        return files;
+    for (auto& url : mime->urls())
+        if (url.isLocalFile() && QFileInfo(url.toLocalFile()).isFile())
+            files << url.toLocalFile();
+    return files;
 }
 
 void CollectionTree::dragEnterEvent(QDragEnterEvent* e)
 {
-    if (e->mimeData()->hasFormat(kItemsMime) || e->mimeData()->hasFormat(kCollectionMime))
+    if (e->mimeData()->hasFormat(kItemsMime) || e->mimeData()->hasFormat(kCollectionMime) ||
+        !droppedFiles(e->mimeData()).isEmpty())
         e->acceptProposedAction();
     else
         e->ignore();
@@ -345,6 +361,11 @@ void CollectionTree::dropEvent(QDropEvent* e)
     auto s = scopeOf(target);
     auto& lib = AppContext::get().library();
     auto* mime = e->mimeData();
+    if (auto files = droppedFiles(mime); !files.isEmpty()) {
+        e->acceptProposedAction();
+        emit filesDropped(s, files);
+        return;
+    }
     if (mime->hasFormat(kItemsMime)) {
         auto obj = QJsonDocument::fromJson(mime->data(kItemsMime)).object();
         std::vector<std::string> keys;

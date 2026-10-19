@@ -56,6 +56,8 @@ public:
     void duplicateSelected();
     void mergeSelected();
     void importFiles(const QStringList& files, const QString& parentKey);
+    // Into a library or collection other than the one shown (dropped on it).
+    void importFilesInto(const Scope& target, const QStringList& files);
 
 signals:
     void openAttachmentRequested(qint64 libraryId, const QString& key);
@@ -70,6 +72,7 @@ protected:
     bool eventFilter(QObject* watched, QEvent* e) override;
 
 private:
+    void importFilesTo(const Scope& target, const QStringList& files, const QString& parentKey);
     void onScopeChanged(const Scope& scope);
     void onSelectionChanged();
     void reloadItems();

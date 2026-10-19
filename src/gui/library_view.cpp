@@ -256,6 +256,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             [this](const Scope& s) { emit bibliographyRequested(s, {}); });
     connect(tree_, &CollectionTree::newLibraryRequested, this, &LibraryView::newLibraryRequested);
     connect(tree_, &CollectionTree::deleteLibraryRequested, this, &LibraryView::deleteLibraryRequested);
+    connect(tree_, &CollectionTree::filesDropped, this, &LibraryView::importFilesInto);
     connect(tags_, &TagSelector::selectionChanged, this, [this](const QStringList& tags) {
         model_->setTagFilter(tags);
         if (model_->isSearching())
@@ -846,7 +847,16 @@ void LibraryView::mergeSelected()
 
 void LibraryView::importFiles(const QStringList& files, const QString& parentKey)
 {
-    auto s = scope();
+    importFilesTo(scope(), files, parentKey);
+}
+
+void LibraryView::importFilesInto(const Scope& target, const QStringList& files)
+{
+    importFilesTo(target, files, {});
+}
+
+void LibraryView::importFilesTo(const Scope& s, const QStringList& files, const QString& parentKey)
+{
     if (!s.libraryId || !AppContext::get().editable(s.libraryId))
         return;
     auto& lib = AppContext::get().library();

@@ -28,6 +28,8 @@
 #include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
+#include <QMimeData>
+#include <QDropEvent>
 #include <QPainter>
 #include <QWheelEvent>
 
@@ -36,6 +38,7 @@
 #include "core/config.h"
 #include "core/library.h"
 #include "gui/app_context.h"
+#include "gui/collection_tree.h"
 #include "gui/common.h"
 #include "gui/fancy_progress.h"
 #include "gui/flow_layout.h"
@@ -1891,6 +1894,79 @@ TEST_CASE("sync history: filled by the syncs the app runs")
         listed |= c["key"] == jstr(paper, "key") && c["title"] == "Synced Book" && c["incoming"] == false;
     CHECK(listed);
     CHECK(fs::exists(env.library.dataDir() / "sync-history.json"));
+}
+
+TEST_CASE("library: a PDF dropped on a collection or an item goes there")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto pdf = tmp.path / "datasheet.pdf";
+    writeSamplePdf(pdf);
+    auto datasheets = jstr(env.library.createCollection(env.lib, "Datasheet"), "key");
+    auto other = jstr(env.library.createCollection(env.lib, "Other"), "key");
+    auto book = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "TMS"}});
+    env.library.addToCollection(env.lib, datasheets, {jstr(book, "key")});
+    LibraryView view;
+    view.resize(1200, 700);
+    view.show();
+    auto* tree = view.findChild<CollectionTree*>();
+    REQUIRE(tree);
+    tree->selectScope({env.lib, ScopeKind::Collection, other});
+    QApplication::processEvents();
+
+    auto dropOn = [&](QWidget* target, QPoint at) {
+        QMimeData mime;
+        mime.setUrls({QUrl::fromLocalFile(qpath(pdf))});
+        QDragEnterEvent enter(at, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(target, &enter);
+        QDragMoveEvent move(at, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(target, &move);
+        QDropEvent drop(at, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(target, &drop);
+        QApplication::processEvents();
+        return drop.isAccepted();
+    };
+    auto attachments = [&] {
+        std::vector<Json> out;
+        for (auto& d : env.library.allItems(env.lib))
+            if (jstr(d, "itemType") == "attachment")
+                out.push_back(d);
+        return out;
+    };
+
+    // onto a collection that is not the one shown
+    QTreeWidgetItem* target = nullptr;
+    for (QTreeWidgetItemIterator it(tree); *it; ++it)
+        if ((*it)->text(0) == "Datasheet")
+            target = *it;
+    REQUIRE(target);
+    CHECK(dropOn(tree->viewport(), tree->visualItemRect(target).center()));
+    auto added = attachments();
+    REQUIRE(added.size() == 1);
+    CHECK(jstr(added[0], "parentItem").empty());
+    CHECK(env.library.collectionItemKeys(env.lib, datasheets).count(jstr(added[0], "key")));
+    CHECK(!env.library.collectionItemKeys(env.lib, other).count(jstr(added[0], "key")));
+
+    // onto an item: its attachment
+    tree->selectScope({env.lib, ScopeKind::Collection, datasheets});
+    QApplication::processEvents();
+    auto* items = view.findChild<QTreeView*>("itemsView");
+    if (!items)
+        for (auto* t : view.findChildren<QTreeView*>())
+            if (t != tree && qobject_cast<ItemsModel*>(t->model()))
+                items = t;
+    REQUIRE(items);
+    QModelIndex row;
+    for (int r = 0; r < items->model()->rowCount(); ++r)
+        if (items->model()->index(r, 0).data().toString() == "TMS")
+            row = items->model()->index(r, 0);
+    REQUIRE(row.isValid());
+    CHECK(dropOn(items->viewport(), items->visualRect(row).center()));
+    bool attached = false;
+    for (auto& a : attachments())
+        attached |= jstr(a, "parentItem") == jstr(book, "key");
+    CHECK(attached);
 }
 
 TEST_CASE("main window: only an empty library is deleted, after asking")
