@@ -193,6 +193,11 @@ TEST_CASE("pdf view: area annotations resize from any edge or corner")
     CHECK(r[2] - before[2] == doctest::Approx(20).epsilon(0.05));
     CHECK(r[3] - before[3] == doctest::Approx(-10).epsilon(0.05));
 
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
+        view.selectAnnotation(qs(jstr(changed.back(), "key")), false);
+        view.viewport()->grab().save(dir + "/area-handles.png");
+    }
+
     // an edge cannot be dragged past the opposite one
     double left = r[0], right = r[2], mid = 792 - (r[1] + r[3]) / 2;
     drag(view.viewport(), at(left, mid), at(right + 200, mid));
