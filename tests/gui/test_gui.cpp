@@ -1839,6 +1839,72 @@ TEST_CASE("flow layout: justified rows reach the edge; a short last row keeps it
     }
 }
 
+TEST_CASE("main window: the tab strip never shows a stray or misplaced tab")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    QStringList keys;
+    for (int i = 0; i < 12; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(
+            env.lib, Json{{"itemType", "journalArticle"}, {"title", "Quite a long paper title, number " + std::to_string(i)}});
+        keys << qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    }
+    // what the next frame shows: one round of events after a change
+    auto consistent = [](MainWindow& window) {
+        auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+        QList<QWidget*> shown;
+        for (auto* b : window.findChild<QWidget*>("tabStrip")->findChildren<QWidget*>("tabButton"))
+            if (b->isVisible())
+                shown << b;
+        if (shown.size() != tabs->count())
+            return false;  // a tab too many (one on its way out) or too few
+        auto* area = shown.first()->parentWidget();
+        for (int i = 0; i < shown.size(); ++i) {
+            auto g = shown[i]->geometry();
+            if (g.right() >= area->width() || g.bottom() >= area->height() || g.left() < 0)
+                return false;  // outside the strip, or in a row it has no room for yet
+            for (int j = i + 1; j < shown.size(); ++j)
+                if (g.intersects(shown[j]->geometry()))
+                    return false;
+        }
+        return true;
+    };
+    {
+        MainWindow window;
+        window.resize(1000, 700);
+        window.show();
+        QApplication::processEvents();
+        for (auto& k : keys) {
+            window.openAttachment(env.lib, k);
+            QApplication::processEvents();
+            CHECK(consistent(window));
+        }
+        window.findChild<QTabWidget*>("mainTabs")->setCurrentIndex(5);
+        window.close();
+    }
+    // restarted: the restored tabs, then the selected one loading, then another
+    MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    CHECK(QTest::qWaitFor([&] { return tabs->count() == 13; }));
+    QApplication::processEvents();
+    CHECK(consistent(window));
+    for (int i : {8, 2, 11}) {
+        tabs->setCurrentIndex(i);  // a pending tab becomes a reader
+        QApplication::processEvents();
+        CHECK(consistent(window));
+    }
+    for (int i = 0; i < 4; ++i) {
+        emit tabs->tabCloseRequested(tabs->count() - 2);
+        QApplication::processEvents();
+        CHECK(consistent(window));
+    }
+}
+
 int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");

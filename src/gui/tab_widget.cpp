@@ -211,17 +211,27 @@ public:
             ordered << button;
         }
         for (auto* b : buttons_)
-            if (!ordered.contains(b))
+            if (!ordered.contains(b)) {
+                b->hide();  // at once: deleted later, it would sit at its old place for a frame
                 b->deleteLater();
+            }
         while (auto* item = flow_->takeAt(0))
             delete item;
         for (auto* b : ordered) {
             flow_->addWidget(b);
             b->sync();
-            b->show();
         }
         buttons_ = ordered;
         updateGeometry();
+        // Lay the tabs out now, and the window around the strip (it may need another row),
+        // so the next frame shows them in place: laid out later, new tabs were drawn
+        // before they had a place, and the others where they were.
+        if (auto* outer = parentWidget() ? parentWidget()->layout() : nullptr)
+            outer->activate();
+        layout()->activate();
+        flow_->activate();
+        for (auto* b : ordered)
+            b->show();
     }
 
 protected:
