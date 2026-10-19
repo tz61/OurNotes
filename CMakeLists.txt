@@ -22,6 +22,7 @@ option(FREEPEN_BUILD_CLI "Build freepen-cli" ON)
 option(FREEPEN_BUILD_SERVER "Build the freepend sync daemon" ON)
 option(FREEPEN_BUILD_TESTS "Build unit tests" ON)
 option(FREEPEN_WITH_OPENSSL "Enable HTTPS (TLS sync, metadata lookup)" ON)
+option(FREEPEN_BUILD_TOOLS "Build developer tools (icon rendering)" OFF)
 
 # The sync daemon alone needs neither Qt nor MuPDF.
 set(FREEPEN_NEED_PDF OFF)
@@ -63,6 +64,10 @@ if(FREEPEN_BUILD_CLI)
 endif()
 if(FREEPEN_BUILD_GUI)
     fp_add_component(src/gui)
+endif()
+
+if(FREEPEN_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()
 
 if(FREEPEN_BUILD_TESTS)

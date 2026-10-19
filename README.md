@@ -56,6 +56,18 @@ ctest --test-dir build          # set FREEPEN_NO_NETWORK=1 to skip online lookup
 sudo cmake --install build      # installs freepen, freepen-cli, freepend, .desktop file
 ```
 
+### Installing on Linux (per user)
+
+```sh
+scripts/install-linux.sh                # build + install, menu entry and desktop launcher
+scripts/install-linux.sh --uninstall    # remove it again (your library is kept)
+```
+
+The script builds a release copy, installs it with its own Qt runtime in
+`~/.local/opt/freepen`, links `freepen`, `freepen-cli` and `freepend` into `~/.local/bin`,
+and adds the icon, an application-menu entry and a launcher on the desktop. Options:
+`--qt DIR`, `--prefix DIR`, `--no-desktop-shortcut`, `--no-build`.
+
 ### macOS
 
 ```sh
@@ -143,6 +155,9 @@ src/formats  BibTeX/RIS/CSL JSON, DOI/arXiv/ISBN/PMID lookup, citation styles
 src/cli      freepen-cli
 src/gui      Qt 6 desktop application
 tests/       doctest suites for every module (GUI tests use Qt Test, offscreen)
+resources/   item type schema, application icon (SVG source + generated PNG/ICO/ICNS)
+tools/       gen_schema.py (schema from a Zotero database), render_icons (icon assets)
+scripts/     install-linux.sh
 ```
 
 Every object (item, collection, setting) carries the server version it was last synced
