@@ -1,7 +1,7 @@
-add_executable(freepend main.cpp)
-target_link_libraries(freepend PRIVATE freepen_sync)
+add_executable(ournotesd main.cpp)
+target_link_libraries(ournotesd PRIVATE ournotes_sync)
 if(WIN32)
-    target_link_libraries(freepend PRIVATE shell32)  # CommandLineToArgvW
+    target_link_libraries(ournotesd PRIVATE shell32)  # CommandLineToArgvW
 endif()
 
-install(TARGETS freepend RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS ournotesd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

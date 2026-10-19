@@ -6,7 +6,7 @@
 
 #include "core/hash.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 namespace {
 
@@ -241,9 +241,9 @@ FileInfo HttpTransport::download(const std::string& uid, const std::string& key,
             status = r.status;
             if (!ok())
                 return true;  // keep reading: the body carries the error message
-            info.md5 = toLower(r.get_header_value("X-FreePen-MD5"));
-            info.mtime = toInt64(r.get_header_value("X-FreePen-Mtime"));
-            info.filename = urlDecode(r.get_header_value("X-FreePen-Filename"));
+            info.md5 = toLower(r.get_header_value("X-OurNotes-MD5"));
+            info.mtime = toInt64(r.get_header_value("X-OurNotes-Mtime"));
+            info.filename = urlDecode(r.get_header_value("X-OurNotes-Filename"));
             info.contentType = r.get_header_value("Content-Type");
             if (out.is_open())
                 out.close();
@@ -328,4 +328,4 @@ FileInfo HttpTransport::upload(const std::string& uid, const std::string& key, c
     return fileInfoFromJson(j);
 }
 
-} // namespace fp::sync
+} // namespace on::sync

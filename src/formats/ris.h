@@ -5,7 +5,7 @@
 
 #include "core/json.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 std::string exportRis(const std::vector<Json>& items);
 
@@ -13,4 +13,4 @@ std::string exportRis(const std::vector<Json>& items);
 // (L1/L4 paths).
 std::vector<Json> importRis(const std::string& text);
 
-} // namespace fp::formats
+} // namespace on::formats

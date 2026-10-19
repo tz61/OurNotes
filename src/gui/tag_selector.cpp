@@ -15,7 +15,7 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 TagSelector::TagSelector(QWidget* parent) : QWidget(parent)
 {
@@ -156,4 +156,4 @@ void TagSelector::showMenu(const QPoint& pos)
     menu.exec(list_->viewport()->mapToGlobal(pos));
 }
 
-} // namespace fp::gui
+} // namespace on::gui

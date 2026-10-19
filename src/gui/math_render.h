@@ -4,7 +4,7 @@
 #include <QImage>
 #include <QString>
 
-namespace fp::gui {
+namespace on::gui {
 
 struct MathImage {
     QImage image;     // device pixels (devicePixelRatio set)
@@ -24,4 +24,4 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
 QString mathResourceName(const QString& latex, bool display);
 bool parseMathResourceName(const QString& name, QString* latex, bool* display);
 
-} // namespace fp::gui
+} // namespace on::gui

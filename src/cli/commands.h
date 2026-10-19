@@ -41,19 +41,19 @@ struct Args {
     }
     bool flag(const std::string& name) const { return options.count(name) > 0; }
     std::string positional(size_t i) const { return i < positionals.size() ? positionals[i] : std::string(); }
-    int64_t libraryId(fp::Library& lib) const
+    int64_t libraryId(on::Library& lib) const
     {
         auto v = option("--library");
         return v.empty() ? lib.defaultLibrary() : std::stoll(v);
     }
 };
 
-using CommandMap = std::map<std::string, std::function<int(fp::Library&, Args&)>>;
+using CommandMap = std::map<std::string, std::function<int(on::Library&, Args&)>>;
 
 // Commands implemented in other translation units (sync, export, full-text index).
-void registerExtraCommands(CommandMap& commands, fp::Config& config);
+void registerExtraCommands(CommandMap& commands, on::Config& config);
 
-#define FREEPEN_CLI_EXTRA_USAGE \
+#define OURNOTES_CLI_EXTRA_USAGE \
     "  index [--rebuild]                 build the full-text index of PDF attachments\n" \
     "  add FILE|DOI|ISBN|arXiv|PMID...   add items (PDFs get metadata looked up) [--collection KEY]\n" \
     "  import FILE [--collection KEY]    import BibTeX, RIS or CSL JSON\n" \
@@ -62,7 +62,7 @@ void registerExtraCommands(CommandMap& commands, fp::Config& config);
     "\nSync:\n" \
     "  targets                           list sync targets (* = active)\n" \
     "  add-server URL --user NAME [--password PW] [--insecure]\n" \
-    "                                    sign in to a freepend server\n" \
+    "                                    sign in to an ournotesd server\n" \
     "  add-folder PATH                   sync through a folder (USB drive, network share)\n" \
     "  use-target ID | remove-target ID\n" \
     "  sync [--target ID] [--no-files]   synchronise all libraries\n"

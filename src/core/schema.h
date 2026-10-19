@@ -8,7 +8,7 @@
 
 // Item type / field / creator-type schema, generated from Zotero (tools/gen_schema.py)
 // and compiled into the binary.
-namespace fp::schema {
+namespace on::schema {
 
 struct Color {
     const char* name;
@@ -39,4 +39,4 @@ const Json& cslMappings();  // {"types":{csl:[zotero...]}, "fields":{...}, "name
 // Convert item data to another type, mapping base fields; returns fields that were dropped.
 Json convertType(const Json& data, const std::string& newType, Json* dropped = nullptr);
 
-} // namespace fp::schema
+} // namespace on::schema

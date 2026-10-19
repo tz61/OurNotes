@@ -2,8 +2,8 @@
 
 #include "formats/metadata.h"
 
-using namespace fp;
-using namespace fp::formats;
+using namespace on;
+using namespace on::formats;
 
 namespace {
 

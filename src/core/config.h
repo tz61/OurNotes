@@ -7,17 +7,23 @@
 #include "core/json.h"
 #include "core/util.h"
 
-namespace fp {
+namespace on {
 
 fs::path homeDir();
-fs::path configDir();       // ~/.config/freepen, ~/Library/Application Support/freePen, %APPDATA%\freePen
-fs::path defaultDataDir();  // $FREEPEN_DATA_DIR or ~/freePen
+fs::path configDir();       // ~/.config/ournotes, ~/Library/Application Support/OurNotes, %APPDATA%\OurNotes
+fs::path defaultDataDir();  // $OURNOTES_DATA_DIR or ~/OurNotes
+
+// OurNotes used to be called freePen. On the first start under the new name, this
+// takes over freePen's settings (copied; the old file stays) and moves its library
+// from ~/freePen to ~/OurNotes, unless the settings name another data directory.
+// The programs call it before reading their configuration.
+void migrateFromFreePen();
 
 // A place the library can be synced with.
 struct SyncTarget {
     std::string id;
     std::string name;
-    std::string kind;  // "remote" (freepend server) or "local" (a folder)
+    std::string kind;  // "remote" (ournotesd server) or "local" (a folder)
     std::string url;   // remote
     std::string path;  // local
     std::string username;
@@ -56,4 +62,4 @@ private:
     mutable std::mutex mutex_;
 };
 
-} // namespace fp
+} // namespace on

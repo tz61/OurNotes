@@ -3,9 +3,9 @@
 #include "sync/local_transport.h"
 #include "sync_test_util.h"
 
-using namespace fp;
-using namespace fp::sync;
-using namespace fp::test;
+using namespace on;
+using namespace on::sync;
+using namespace on::test;
 
 TEST_CASE("local transport: two devices sharing a folder")
 {

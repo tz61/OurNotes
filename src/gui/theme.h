@@ -9,7 +9,7 @@
 
 #include <vector>
 
-namespace fp::gui {
+namespace on::gui {
 
 enum class Appearance { System, Light, Dark };
 
@@ -38,4 +38,4 @@ void darkenPage(QImage& image);
 void darkenPage(QImage& image, const std::vector<pdf::Rect>& keep, double scale, pdf::Size page);
 QColor darkPageColor();  // what white paper becomes
 
-} // namespace fp::gui
+} // namespace on::gui

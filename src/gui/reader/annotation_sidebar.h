@@ -15,7 +15,7 @@ class QScrollArea;
 class QToolButton;
 class QVBoxLayout;
 
-namespace fp::gui {
+namespace on::gui {
 
 class AutoTextEdit;
 
@@ -50,9 +50,9 @@ public:
 
 signals:
     void activated(const QString& key);
-    void changed(const fp::Json& data);
+    void changed(const on::Json& data);
     void deleted(const QString& key);
-    void addToNote(const fp::Json& data);
+    void addToNote(const on::Json& data);
 
 protected:
     void mousePressEvent(QMouseEvent* e) override;
@@ -83,9 +83,9 @@ public:
 
 signals:
     void activated(const QString& key);
-    void changed(const fp::Json& data);
+    void changed(const on::Json& data);
     void deleted(const QString& key);
-    void addToNote(const fp::Json& data);
+    void addToNote(const on::Json& data);
 
 private:
     void applyFilter();
@@ -101,4 +101,4 @@ private:
     QString selected_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

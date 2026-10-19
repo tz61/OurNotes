@@ -3,7 +3,7 @@
 #include <QLayout>
 #include <QList>
 
-namespace fp::gui {
+namespace on::gui {
 
 // Lays out widgets left to right, wrapping to new lines (Qt's flow layout example).
 class FlowLayout : public QLayout {
@@ -29,4 +29,4 @@ private:
     int spacing_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -6,7 +6,7 @@ class QLineEdit;
 class QListWidget;
 class QToolButton;
 
-namespace fp::gui {
+namespace on::gui {
 
 // Tag filter under the collection tree: coloured tags first, then all tags.
 // Selecting tags filters the item list to items having all of them.
@@ -34,4 +34,4 @@ private:
     QToolButton* deselect_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -3,13 +3,13 @@
 #include <QMetaObject>
 
 #include "core/sync/engine.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "sync/http_transport.h"
 #include "sync/local_transport.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -103,7 +103,7 @@ void SyncController::syncNow()
             summary = qs(report.summary());
             ok = report.errors.empty();
             if (!ok)
-                summary += "\n" + qs(fp::join(report.errors, "\n"));
+                summary += "\n" + qs(on::join(report.errors, "\n"));
         } catch (const sync::SyncError& e) {
             ok = false;
             summary = e.status == 401 ? tr("Authentication failed. Sign in again in Preferences → Sync.") : qs(e.what());
@@ -150,4 +150,4 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
     }).detach();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

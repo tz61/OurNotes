@@ -6,7 +6,7 @@
 #include <atomic>
 #include <thread>
 
-namespace fp::gui {
+namespace on::gui {
 
 // Extracts text from PDF/HTML/text attachments in the background so the
 // "Everything" search mode can find words inside documents.
@@ -32,4 +32,4 @@ private:
     QTimer timer_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

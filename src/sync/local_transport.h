@@ -3,7 +3,7 @@
 #include "core/sync/protocol.h"
 #include "sync/store.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 // Sync with a folder (USB drive, NAS share, cloud-drive folder). The folder holds
 // a Store; this transport acts as its implicit user "local", which owns every
@@ -35,4 +35,4 @@ private:
     Store store_;
 };
 
-} // namespace fp::sync
+} // namespace on::sync

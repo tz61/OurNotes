@@ -10,9 +10,9 @@
 
 #include <httplib.h>
 
-#include "freepen/version.h"
+#include "ournotes/version.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 namespace {
 
@@ -23,7 +23,7 @@ using HandlerResponse = httplib::Server::HandlerResponse;
 
 constexpr size_t kMaxJsonBody = 64u << 20;    // push batches
 constexpr size_t kMaxSmallBody = 64u << 10;   // login, library metadata
-const char* const kUserKey = "freepen.user";  // Response::user_data slot
+const char* const kUserKey = "ournotes.user";  // Response::user_data slot
 
 // In-memory throttle for failed logins, per client address.
 class LoginLimiter {
@@ -99,13 +99,13 @@ void guarded(Response& res, F&& fn)
         if (e.status >= 400 && e.status < 600) {
             sendError(res, e.status, e.what());
         } else {
-            std::cerr << "freepend: error: " << e.what() << std::endl;
+            std::cerr << "ournotesd: error: " << e.what() << std::endl;
             sendError(res, 500, "internal server error");
         }
     } catch (const Json::exception& e) {
         sendError(res, 400, std::string("invalid request: ") + e.what());
     } catch (const std::exception& e) {
-        std::cerr << "freepend: internal error: " << e.what() << std::endl;
+        std::cerr << "ournotesd: internal error: " << e.what() << std::endl;
         sendError(res, 500, "internal server error");
     }
 }
@@ -335,9 +335,9 @@ struct ApiServer::State {
         if (!*in || ec)
             throw SyncError("file data is missing on the server", 404);
 
-        res.set_header("X-FreePen-MD5", info->md5);
-        res.set_header("X-FreePen-Mtime", std::to_string(info->mtime));
-        res.set_header("X-FreePen-Filename", urlEncode(info->filename));
+        res.set_header("X-OurNotes-MD5", info->md5);
+        res.set_header("X-OurNotes-Mtime", std::to_string(info->mtime));
+        res.set_header("X-OurNotes-Filename", urlEncode(info->filename));
         auto buf = std::make_shared<std::vector<char>>(256 * 1024);
         res.set_content_provider(
             (size_t)size, info->contentType.empty() ? "application/octet-stream" : info->contentType,
@@ -471,7 +471,7 @@ void ApiServer::mount(httplib::Server& svr)
     const std::string api = "/api/v1";
     const std::string lib = api + "/libraries/:uid";
     svr.Get(api + "/info", [s](const Request&, Response& res) {
-        sendJson(res, Json{{"server", s->opts.serverName}, {"version", FREEPEN_VERSION}, {"api", kApiVersion}});
+        sendJson(res, Json{{"server", s->opts.serverName}, {"version", OURNOTES_VERSION}, {"api", kApiVersion}});
     });
     svr.Post(api + "/login", withBody(&State::login));
     svr.Post(api + "/logout", ignoreBody(&State::logout));
@@ -487,4 +487,4 @@ void ApiServer::mount(httplib::Server& svr)
     svr.Delete(lib + "/files/:key", ignoreBody(&State::deleteFile));
 }
 
-} // namespace fp::sync
+} // namespace on::sync

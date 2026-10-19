@@ -2,7 +2,7 @@
 
 #include "core/config.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 constexpr int kDefaultInterfaceScale = 150;  // percent
 
@@ -16,4 +16,4 @@ void applyInterfaceScale(const Config& config);
 // True when QT_SCALE_FACTOR came from the environment rather than the configuration.
 bool interfaceScaleFromEnvironment();
 
-} // namespace fp::gui
+} // namespace on::gui

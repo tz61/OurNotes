@@ -12,11 +12,11 @@
 struct sqlite3;
 struct sqlite3_stmt;
 
-namespace fp::sql {
+namespace on::sql {
 
-class Error : public fp::Error {
+class Error : public on::Error {
 public:
-    Error(const std::string& msg, int code) : fp::Error(msg), code(code) {}
+    Error(const std::string& msg, int code) : on::Error(msg), code(code) {}
     int code;
 };
 
@@ -142,4 +142,4 @@ private:
     bool done_ = false;
 };
 
-} // namespace fp::sql
+} // namespace on::sql

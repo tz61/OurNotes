@@ -15,7 +15,7 @@ class QLabel;
 class QPushButton;
 class QTreeWidget;
 
-namespace fp::gui {
+namespace on::gui {
 
 class FancyProgressBar;
 
@@ -81,4 +81,4 @@ private:
     bool userInteracted_ = false;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

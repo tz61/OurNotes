@@ -2,7 +2,7 @@
 
 #include "gui/common.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 static AppContext* g_context = nullptr;
 
@@ -30,4 +30,4 @@ bool AppContext::editable(int64_t libraryId)
     return info && info->editable;
 }
 
-} // namespace fp::gui
+} // namespace on::gui

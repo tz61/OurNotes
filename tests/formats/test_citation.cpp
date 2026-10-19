@@ -4,8 +4,8 @@
 #include "fixtures.h"
 #include "formats/citation.h"
 
-using namespace fp;
-using namespace fp::formats;
+using namespace on;
+using namespace on::formats;
 
 namespace {
 
@@ -34,7 +34,7 @@ TEST_CASE("style list")
     for (auto& s : builtinStyles())
         ids.push_back(s.id);
     CHECK(ids == std::vector<std::string>{"apa", "chicago-author-date", "ieee", "mla", "harvard", "nature", "vancouver"});
-    CHECK_THROWS_AS(formatBibliography(allItems(), "nope", OutputFormat::Text), fp::Error);
+    CHECK_THROWS_AS(formatBibliography(allItems(), "nope", OutputFormat::Text), on::Error);
 }
 
 TEST_CASE("APA 7 bibliography")

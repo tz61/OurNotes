@@ -1,7 +1,7 @@
 # Import/export formats, metadata lookup and citations
 
-The `freepen_formats` library (`src/formats/`) converts items in Zotero Web API v3
-"data" form (`fp::Json`) to and from bibliographic exchange formats, fetches metadata
+The `ournotes_formats` library (`src/formats/`) converts items in Zotero Web API v3
+"data" form (`on::Json`) to and from bibliographic exchange formats, fetches metadata
 for identifiers, and formats citations. Everything is synchronous; network calls are
 meant to run on worker threads.
 
@@ -109,7 +109,7 @@ used as `id`. Tags are written to `keyword`.
   `arxivPdfUrl(id)` builds the arXiv PDF URL.
 
 All requests use HTTPS, 15 s connect/read timeouts and the User-Agent
-`freePen/<version> (mailto:freepen@users.noreply.github.com)`. Redirects are followed
+`OurNotes/<version> (mailto:ournotes@users.noreply.github.com)`. Redirects are followed
 manually across hosts, up to 5. A dropped connection or a 429/503 answer is retried
 once. Failures throw `MetadataError` with a message that can be shown to the user (not
 found, network error, timeout, HTTPS unavailable).

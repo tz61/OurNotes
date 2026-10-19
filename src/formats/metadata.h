@@ -9,11 +9,11 @@
 
 // Online metadata lookup by identifier (Crossref, arXiv, Open Library, PubMed).
 // All calls are synchronous with 15 s network timeouts; call them from a worker thread.
-namespace fp::formats {
+namespace on::formats {
 
-class MetadataError : public fp::Error {
+class MetadataError : public on::Error {
 public:
-    using fp::Error::Error;
+    using on::Error::Error;
 };
 
 struct Identifier {
@@ -51,4 +51,4 @@ std::string arxivPdfUrl(const std::string& arxivId);
 // body must start with the %PDF magic. Throws MetadataError.
 void downloadFile(const std::string& url, const fs::path& dest, bool requirePdf = false);
 
-} // namespace fp::formats
+} // namespace on::formats

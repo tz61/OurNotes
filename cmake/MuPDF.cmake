@@ -4,15 +4,15 @@
 #   1. -DMUPDF_ROOT=<prefix>   prefix containing include/mupdf and lib/libmupdf(.a|.lib)
 #                              (+ libmupdf-third / libthirdparty when built from source)
 #   2. a system installation (Homebrew, distro packages)
-#   3. FREEPEN_BUNDLE_MUPDF=ON (default on Unix): download and build MuPDF with make.
+#   3. OURNOTES_BUNDLE_MUPDF=ON (default on Unix): download and build MuPDF with make.
 
 set(MUPDF_ROOT "" CACHE PATH "Prefix of a MuPDF installation")
-set(FREEPEN_MUPDF_VERSION "1.28.5")
-set(FREEPEN_MUPDF_SHA256 "98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934")
+set(OURNOTES_MUPDF_VERSION "1.28.5")
+set(OURNOTES_MUPDF_SHA256 "98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934")
 if(UNIX)
-    option(FREEPEN_BUNDLE_MUPDF "Download and build MuPDF if it is not found" ON)
+    option(OURNOTES_BUNDLE_MUPDF "Download and build MuPDF if it is not found" ON)
 else()
-    option(FREEPEN_BUNDLE_MUPDF "Download and build MuPDF if it is not found" OFF)
+    option(OURNOTES_BUNDLE_MUPDF "Download and build MuPDF if it is not found" OFF)
 endif()
 
 set(_mupdf_hints)
@@ -31,10 +31,10 @@ if(NOT MUPDF_ROOT)
 endif()
 
 if(TARGET unofficial::mupdf::mupdf)
-    message(STATUS "freePen: using MuPDF from vcpkg")
+    message(STATUS "OurNotes: using MuPDF from vcpkg")
     target_link_libraries(MuPDF::MuPDF INTERFACE unofficial::mupdf::mupdf)
 elseif(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
-    message(STATUS "freePen: using MuPDF from ${MUPDF_LIBRARY}")
+    message(STATUS "OurNotes: using MuPDF from ${MUPDF_LIBRARY}")
     target_include_directories(MuPDF::MuPDF INTERFACE "${MUPDF_INCLUDE_DIR}")
     target_link_libraries(MuPDF::MuPDF INTERFACE "${MUPDF_LIBRARY}")
     if(MUPDF_THIRD_LIBRARY)
@@ -49,15 +49,15 @@ elseif(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
             endif()
         endif()
     endif()
-elseif(FREEPEN_BUNDLE_MUPDF)
+elseif(OURNOTES_BUNDLE_MUPDF)
     include(ExternalProject)
     find_program(MAKE_EXECUTABLE NAMES gmake make REQUIRED)
     set(_prefix "${CMAKE_BINARY_DIR}/mupdf")
     set(_flags build=release HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no mujs=no "XCFLAGS=-fPIC")
     ExternalProject_Add(mupdf_ext
-        URL "https://mupdf.com/downloads/archive/mupdf-${FREEPEN_MUPDF_VERSION}-source.tar.gz"
-        URL_HASH SHA256=${FREEPEN_MUPDF_SHA256}
-        ${FREEPEN_EXTRACT_TIMESTAMP}
+        URL "https://mupdf.com/downloads/archive/mupdf-${OURNOTES_MUPDF_VERSION}-source.tar.gz"
+        URL_HASH SHA256=${OURNOTES_MUPDF_SHA256}
+        ${OURNOTES_EXTRACT_TIMESTAMP}
         PREFIX "${_prefix}"
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND ""
@@ -68,7 +68,7 @@ elseif(FREEPEN_BUNDLE_MUPDF)
     add_dependencies(MuPDF::MuPDF mupdf_ext)
     target_include_directories(MuPDF::MuPDF INTERFACE "${_prefix}/include")
     target_link_libraries(MuPDF::MuPDF INTERFACE "${_prefix}/lib/libmupdf.a" "${_prefix}/lib/libmupdf-third.a")
-    message(STATUS "freePen: MuPDF ${FREEPEN_MUPDF_VERSION} will be built from source")
+    message(STATUS "OurNotes: MuPDF ${OURNOTES_MUPDF_VERSION} will be built from source")
 else()
     message(FATAL_ERROR "MuPDF not found. Set -DMUPDF_ROOT=<prefix> (see README).")
 endif()

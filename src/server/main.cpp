@@ -1,4 +1,4 @@
-// freepend: the freePen sync server and its administration commands.
+// ournotesd: the OurNotes sync server and its administration commands.
 
 #include <atomic>
 #include <chrono>
@@ -25,12 +25,12 @@
 #endif
 
 #include "core/config.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 #include "sync/server_api.h"
 #include "sync/store.h"
 
-using namespace fp;
-using namespace fp::sync;
+using namespace on;
+using namespace on::sync;
 
 namespace {
 
@@ -123,31 +123,46 @@ int64_t parseInt(const std::string& s, const char* what, int64_t min, int64_t ma
 
 // --- environment ------------------------------------------------------------------------
 
-fs::path defaultServerDataDir()
+static fs::path serverDataDir(const char* name, const char* envName, const wchar_t* wideEnvName)
 {
 #ifdef _WIN32
-    if (const wchar_t* v = _wgetenv(L"FREEPEND_DATA"); v && *v)
+    (void)envName;
+    if (const wchar_t* v = _wgetenv(wideEnvName); v && *v)
         return fs::path(v);
     if (const wchar_t* v = _wgetenv(L"LOCALAPPDATA"); v && *v)
-        return fs::path(v) / "freepend";
-    return homeDir() / "AppData" / "Local" / "freepend";
+        return fs::path(v) / name;
+    return homeDir() / "AppData" / "Local" / name;
 #else
-    if (const char* v = std::getenv("FREEPEND_DATA"); v && *v)
+    (void)wideEnvName;
+    if (const char* v = std::getenv(envName); v && *v)
         return u8path(v);
     if (geteuid() == 0)
-        return "/var/lib/freepend";
+        return fs::path("/var/lib") / name;
 #ifdef __APPLE__
-    return homeDir() / "Library" / "Application Support" / "freepend";
+    return homeDir() / "Library" / "Application Support" / name;
 #else
     if (const char* v = std::getenv("XDG_DATA_HOME"); v && *v)
-        return u8path(v) / "freepend";
-    return homeDir() / ".local" / "share" / "freepend";
+        return u8path(v) / name;
+    return homeDir() / ".local" / "share" / name;
 #endif
 #endif
 }
 
+fs::path defaultServerDataDir()
+{
+    auto dir = serverDataDir("ournotesd", "OURNOTESD_DATA", L"OURNOTESD_DATA");
+    // a server set up before the rename to OurNotes (freepend) keeps its data
+    std::error_code ec;
+    if (!fs::exists(dir, ec)) {
+        auto legacy = serverDataDir("freepend", "FREEPEND_DATA", L"FREEPEND_DATA");
+        if (fs::exists(legacy, ec))
+            return legacy;
+    }
+    return dir;
+}
+
 // The data directory. Run as root on a directory owned by a service account
-// (/var/lib/freepend owned by "freepend"), freepend first switches to that
+// (/var/lib/ournotesd owned by "ournotesd"), ournotesd first switches to that
 // account, so files it creates stay accessible to the daemon.
 fs::path dataDir(const Args& a)
 {
@@ -300,11 +315,11 @@ int cmdServe(const Args& a)
 #ifdef CPPHTTPLIB_SSL_ENABLED
         svr = std::make_unique<httplib::SSLServer>(cert.c_str(), key.c_str());
         if (!svr->is_valid()) {
-            std::cerr << "freepend: cannot load TLS certificate " << cert << " / key " << key << "\n";
+            std::cerr << "ournotesd: cannot load TLS certificate " << cert << " / key " << key << "\n";
             return 1;
         }
 #else
-        std::cerr << "freepend: built without TLS support; run it behind a TLS reverse proxy instead\n";
+        std::cerr << "ournotesd: built without TLS support; run it behind a TLS reverse proxy instead\n";
         return 1;
 #endif
     } else {
@@ -320,7 +335,7 @@ int cmdServe(const Args& a)
     svr->set_logger(logRequest);
 
     if (!svr->bind_to_port(host, port)) {
-        std::cerr << "freepend: cannot listen on " << host << ":" << port << "\n";
+        std::cerr << "ournotesd: cannot listen on " << host << ":" << port << "\n";
         return 1;
     }
     installSignalHandlers();
@@ -334,17 +349,17 @@ int cmdServe(const Args& a)
         }
     });
 
-    std::printf("freepend %s listening on %s://%s:%d (data: %s)\n", FREEPEN_VERSION, cert.empty() ? "http" : "https",
+    std::printf("ournotesd %s listening on %s://%s:%d (data: %s)\n", OURNOTES_VERSION, cert.empty() ? "http" : "https",
                 host.c_str(), port, pathString(dir).c_str());
     if (store.users().empty())
-        std::printf("no users yet: create one with 'freepend useradd NAME --data %s'\n", pathString(dir).c_str());
+        std::printf("no users yet: create one with 'ournotesd useradd NAME --data %s'\n", pathString(dir).c_str());
     std::fflush(stdout);
 
     bool ok = svr->listen_after_bind();
     finished = true;
     g_stop = true;
     watcher.join();
-    std::printf("freepend stopped\n");
+    std::printf("ournotesd stopped\n");
     return ok ? 0 : 1;
 }
 
@@ -400,7 +415,7 @@ int cmdUsers(const Args& a)
 int cmdToken(const Args& a)
 {
     Store store(dataDir(a));
-    std::printf("%s\n", store.createToken(a.positional[0], a.get("device", "freepend token")).c_str());
+    std::printf("%s\n", store.createToken(a.positional[0], a.get("device", "ournotesd token")).c_str());
     return 0;
 }
 
@@ -454,7 +469,7 @@ int cmdVersion(const Args&)
 #else
     const char* tls = "no";
 #endif
-    std::printf("freepend %s (sync API %d, TLS support: %s)\n", FREEPEN_VERSION, kApiVersion, tls);
+    std::printf("ournotesd %s (sync API %d, TLS support: %s)\n", OURNOTES_VERSION, kApiVersion, tls);
     return 0;
 }
 
@@ -492,14 +507,14 @@ const std::vector<Command>& commands()
 
 void printUsage(std::FILE* out)
 {
-    std::fprintf(out, "freepend %s - freePen sync server\n\nUsage: freepend COMMAND [OPTIONS]\n\nCommands:\n",
-                 FREEPEN_VERSION);
+    std::fprintf(out, "ournotesd %s - OurNotes sync server\n\nUsage: ournotesd COMMAND [OPTIONS]\n\nCommands:\n",
+                 OURNOTES_VERSION);
     for (auto& c : commands())
         std::fprintf(out, "  %s\n", c.usage);
     std::fprintf(out,
-                 "\nEvery command accepts --data DIR (default: $FREEPEND_DATA, /var/lib/freepend\n"
+                 "\nEvery command accepts --data DIR (default: $OURNOTESD_DATA, /var/lib/ournotesd\n"
                  "as root, else a per-user data directory: %s).\n"
-                 "Run 'freepend COMMAND --help' for details.\n",
+                 "Run 'ournotesd COMMAND --help' for details.\n",
                  pathString(defaultServerDataDir()).c_str());
 }
 
@@ -542,7 +557,7 @@ int main(int argc, char** argv)
         if (args[1] == c.name)
             cmd = &c;
     if (!cmd) {
-        std::fprintf(stderr, "freepend: unknown command '%s'\n\n", args[1].c_str());
+        std::fprintf(stderr, "ournotesd: unknown command '%s'\n\n", args[1].c_str());
         printUsage(stderr);
         return 2;
     }
@@ -550,7 +565,7 @@ int main(int argc, char** argv)
     try {
         auto parsed = parseArgs(std::vector<std::string>(args.begin() + 2, args.end()), *cmd);
         if (parsed.has("help")) {
-            std::printf("Usage: freepend %s\n\n%s\n", cmd->usage, cmd->help);
+            std::printf("Usage: ournotesd %s\n\n%s\n", cmd->usage, cmd->help);
             if (std::string(cmd->name) != "version")
                 std::printf("\n--data DIR   data directory (default: %s)\n",
                             pathString(defaultServerDataDir()).c_str());
@@ -558,10 +573,10 @@ int main(int argc, char** argv)
         }
         return cmd->run(parsed);
     } catch (const UsageError& e) {
-        std::fprintf(stderr, "freepend %s: %s\nUsage: freepend %s\n", cmd->name, e.what(), cmd->usage);
+        std::fprintf(stderr, "ournotesd %s: %s\nUsage: ournotesd %s\n", cmd->name, e.what(), cmd->usage);
         return 2;
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "freepend: %s\n", e.what());
+        std::fprintf(stderr, "ournotesd: %s\n", e.what());
         return 1;
     }
 }

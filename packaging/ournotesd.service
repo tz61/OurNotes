@@ -1,29 +1,29 @@
-# systemd unit for the freePen sync server. See docs/server.md.
+# systemd unit for the OurNotes sync server. See docs/server.md.
 #
-#   sudo useradd --system --home-dir /var/lib/freepend --shell /usr/sbin/nologin freepend
-#   sudo install -m 644 packaging/freepend.service /etc/systemd/system/
-#   sudo systemctl enable --now freepend
+#   sudo useradd --system --home-dir /var/lib/ournotesd --shell /usr/sbin/nologin ournotesd
+#   sudo install -m 644 packaging/ournotesd.service /etc/systemd/system/
+#   sudo systemctl enable --now ournotesd
 #
-# Adjust ExecStart in a drop-in (systemctl edit freepend), e.g. to listen on all
+# Adjust ExecStart in a drop-in (systemctl edit ournotesd), e.g. to listen on all
 # interfaces with built-in TLS (see docs/server.md for LoadCredential=).
 
 [Unit]
-Description=freePen sync server
-Documentation=https://github.com/freepen/freepen/blob/main/docs/server.md
+Description=OurNotes sync server
+Documentation=https://github.com/ournotes/ournotes/blob/main/docs/server.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=freepend
-Group=freepend
+User=ournotesd
+Group=ournotesd
 # Listens on localhost only: put a TLS reverse proxy in front of it.
-ExecStart=/usr/local/bin/freepend serve --data /var/lib/freepend --host 127.0.0.1 --port 8642 --trusted-proxy 127.0.0.1
+ExecStart=/usr/local/bin/ournotesd serve --data /var/lib/ournotesd --host 127.0.0.1 --port 8642 --trusted-proxy 127.0.0.1
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
 
-StateDirectory=freepend
+StateDirectory=ournotesd
 StateDirectoryMode=0700
 UMask=0077
 

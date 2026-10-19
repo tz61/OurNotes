@@ -6,10 +6,10 @@
 
 #include "core/library.h"
 
-namespace fp {
+namespace on {
 
 enum class ZoteroFileMode {
-    Copy,      // copy attachment files into freePen's storage (default)
+    Copy,      // copy attachment files into OurNotes' storage (default)
     Hardlink,  // hard-link when on the same filesystem, else copy
     None       // metadata only
 };
@@ -53,4 +53,4 @@ fs::path findZoteroDataDir();
 // Re-running updates items that changed in Zotero since the previous import.
 ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& options);
 
-} // namespace fp
+} // namespace on

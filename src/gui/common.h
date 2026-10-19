@@ -9,7 +9,7 @@
 #include "core/json.h"
 #include "core/util.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 inline QString qs(const std::string& s) { return QString::fromStdString(s); }
 inline std::string ss(const QString& s) { return s.toStdString(); }
@@ -34,6 +34,6 @@ inline std::vector<std::string> toStdVector(const QStringList& v)
 }
 
 // MIME type used when dragging items between views (JSON: {"library": id, "keys": [...]}).
-inline const char* kItemsMime = "application/x-freepen-items";
+inline const char* kItemsMime = "application/x-ournotes-items";
 
-} // namespace fp::gui
+} // namespace on::gui

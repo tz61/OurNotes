@@ -1,4 +1,4 @@
-// Live lookups against Crossref, arXiv and Open Library. Set FREEPEN_NO_NETWORK=1 to skip.
+// Live lookups against Crossref, arXiv and Open Library. Set OURNOTES_NO_NETWORK=1 to skip.
 #include <doctest.h>
 
 #include <cstdlib>
@@ -6,14 +6,14 @@
 #include "core/util.h"
 #include "formats/metadata.h"
 
-using namespace fp;
-using namespace fp::formats;
+using namespace on;
+using namespace on::formats;
 
 namespace {
 
 bool noNetwork()
 {
-    const char* v = std::getenv("FREEPEN_NO_NETWORK");
+    const char* v = std::getenv("OURNOTES_NO_NETWORK");
     return v && std::string(v) == "1";
 }
 
@@ -109,13 +109,13 @@ TEST_SUITE("network" * doctest::skip(noNetwork()))
         auto longer = lookupByTitle("Deep Residual Learning for Image Recognition");
         REQUIRE(longer.has_value());
         CHECK(normalize(longer->value("title", "")) == "deep residual learning for image recognition");
-        CHECK_FALSE(lookupByTitle("zq xv freepen nonexistent title kplw").has_value());
+        CHECK_FALSE(lookupByTitle("zq xv ournotes nonexistent title kplw").has_value());
     }
 
     TEST_CASE("unknown DOI and non-PDF downloads fail cleanly")
     {
-        CHECK_THROWS_AS(lookup({"doi", "10.1038/this-does-not-exist-freepen"}), MetadataError);
-        auto dir = fs::temp_directory_path() / ("freepen-test-" + newKey());
+        CHECK_THROWS_AS(lookup({"doi", "10.1038/this-does-not-exist-ournotes"}), MetadataError);
+        auto dir = fs::temp_directory_path() / ("ournotes-test-" + newKey());
         CHECK_THROWS_AS(downloadFile("https://export.arxiv.org/api/query?id_list=2301.08243", dir / "x.pdf", true),
                         MetadataError);
         CHECK_FALSE(fs::exists(dir / "x.pdf"));

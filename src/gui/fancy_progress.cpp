@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace fp::gui {
+namespace on::gui {
 
 FancyProgressBar::FancyProgressBar(QWidget* parent) : QWidget(parent)
 {
@@ -148,4 +148,4 @@ void FancyProgressBar::paintEvent(QPaintEvent*)
     p.drawPath(track);
 }
 
-} // namespace fp::gui
+} // namespace on::gui

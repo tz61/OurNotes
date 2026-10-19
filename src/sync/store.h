@@ -9,7 +9,7 @@
 #include "core/sync/protocol.h"
 
 // Persistent storage for the sync protocol: users, tokens, libraries, versioned
-// objects and file blobs. Used by the freepend daemon and, directly, by
+// objects and file blobs. Used by the ournotesd daemon and, directly, by
 // LocalTransport for folder sync targets.
 //
 // Layout:  <root>/store.sqlite      metadata
@@ -20,7 +20,7 @@
 //
 // Errors are reported as SyncError with an HTTP-like status (400, 403, 404, 409).
 // Access control (roles) is the caller's job; see role().
-namespace fp::sync {
+namespace on::sync {
 
 inline constexpr int kMaxPushObjects = 1000;
 inline constexpr int kDefaultChangesLimit = 1000;
@@ -103,4 +103,4 @@ private:
     std::mutex mutex_;  // serializes all access to db_ (and blob moves)
 };
 
-} // namespace fp::sync
+} // namespace on::sync

@@ -4,7 +4,7 @@
 
 #include <sqlite3.h>
 
-namespace fp::sql {
+namespace on::sql {
 
 static void check(sqlite3* db, int rc, const char* what)
 {
@@ -169,4 +169,4 @@ void Transaction::commit()
     done_ = true;
 }
 
-} // namespace fp::sql
+} // namespace on::sql

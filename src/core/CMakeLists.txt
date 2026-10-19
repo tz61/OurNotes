@@ -1,4 +1,4 @@
-add_library(freepen_core STATIC
+add_library(ournotes_core STATIC
     config.cpp
     fulltext.cpp
     hash.cpp
@@ -10,12 +10,12 @@ add_library(freepen_core STATIC
     sync/engine.cpp
     sync/protocol.cpp
 )
-fp_embed_file(freepen_core "${PROJECT_SOURCE_DIR}/resources/schema.json" fp_schema_json)
+on_embed_file(ournotes_core "${PROJECT_SOURCE_DIR}/resources/schema.json" on_schema_json)
 
-target_include_directories(freepen_core PUBLIC
+target_include_directories(ournotes_core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_BINARY_DIR}/generated")
-target_link_libraries(freepen_core PUBLIC fp_json fp_sqlite3 Threads::Threads)
+target_link_libraries(ournotes_core PUBLIC on_json on_sqlite3 Threads::Threads)
 if(WIN32)
-    target_link_libraries(freepen_core PUBLIC bcrypt)
+    target_link_libraries(ournotes_core PUBLIC bcrypt)
 endif()

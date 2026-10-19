@@ -6,7 +6,7 @@
 #include "formats/metadata.h"
 #include "pdf/document.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 namespace {
 
@@ -102,4 +102,4 @@ std::optional<PdfMetadataMatch> retrieveMetadataForPdf(const fs::path& path,
     return std::nullopt;
 }
 
-} // namespace fp::formats
+} // namespace on::formats

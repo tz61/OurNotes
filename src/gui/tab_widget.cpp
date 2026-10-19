@@ -11,7 +11,7 @@
 
 #include "gui/flow_layout.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // One tab of the strip: icon, elided title and a close button.
 class TabButton : public QWidget {
@@ -263,4 +263,4 @@ void TabWidget::tabRemoved(int index)
     strip_->scheduleRefresh();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

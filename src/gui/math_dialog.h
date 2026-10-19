@@ -7,7 +7,7 @@ class QCheckBox;
 class QLabel;
 class QPlainTextEdit;
 
-namespace fp::gui {
+namespace on::gui {
 
 // Edits a LaTeX formula with a live preview.
 class MathDialog : public QDialog {
@@ -30,4 +30,4 @@ private:
     QTimer timer_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

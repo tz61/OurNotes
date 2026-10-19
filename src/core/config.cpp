@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #endif
 
-namespace fp {
+namespace on {
 
 static std::string env(const char* name)
 {
@@ -28,6 +28,29 @@ fs::path configDir()
 {
 #if defined(_WIN32)
     auto appdata = env("APPDATA");
+    return (appdata.empty() ? homeDir() : u8path(appdata)) / "OurNotes";
+#elif defined(__APPLE__)
+    return homeDir() / "Library" / "Application Support" / "OurNotes";
+#else
+    auto xdg = env("XDG_CONFIG_HOME");
+    return (xdg.empty() ? homeDir() / ".config" : u8path(xdg)) / "ournotes";
+#endif
+}
+
+fs::path defaultDataDir()
+{
+    auto e = env("OURNOTES_DATA_DIR");
+    if (!e.empty())
+        return u8path(e);
+    return homeDir() / "OurNotes";
+}
+
+// --- the name before OurNotes ----------------------------------------------------------
+
+static fs::path legacyConfigDir()
+{
+#if defined(_WIN32)
+    auto appdata = env("APPDATA");
     return (appdata.empty() ? homeDir() : u8path(appdata)) / "freePen";
 #elif defined(__APPLE__)
     return homeDir() / "Library" / "Application Support" / "freePen";
@@ -37,12 +60,33 @@ fs::path configDir()
 #endif
 }
 
-fs::path defaultDataDir()
+void migrateFromFreePen()
 {
-    auto e = env("FREEPEN_DATA_DIR");
-    if (!e.empty())
-        return u8path(e);
-    return homeDir() / "freePen";
+    std::error_code ec;
+    auto config = configDir() / "config.json";
+    auto oldConfig = legacyConfigDir() / "config.json";
+    if (!fs::exists(config, ec) && fs::is_regular_file(oldConfig, ec)) {
+        fs::create_directories(configDir(), ec);
+        fs::copy_file(oldConfig, config, ec);
+    }
+    if (!env("OURNOTES_DATA_DIR").empty())
+        return;
+    Config settings(config);
+    auto custom = settings.get("/dataDir", Json());
+    if (custom.is_string() && !custom.get<std::string>().empty())
+        return;  // a data directory of the user's choice stays where it is
+    auto dir = homeDir() / "OurNotes", oldDir = homeDir() / "freePen";
+    if (fs::exists(dir, ec) || !fs::is_directory(oldDir, ec))
+        return;
+    fs::rename(oldDir, dir, ec);
+    if (ec) {
+        // cannot move it (e.g. in use, or another disk): keep using it where it is
+        settings.setDataDir(oldDir);
+        try {
+            settings.save();
+        } catch (const std::exception&) {
+        }
+    }
 }
 
 // --- SyncTarget -------------------------------------------------------------------
@@ -207,4 +251,4 @@ void Config::setActiveTarget(const std::string& id)
     data_["sync"]["active"] = id;
 }
 
-} // namespace fp
+} // namespace on

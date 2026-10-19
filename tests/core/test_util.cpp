@@ -4,7 +4,7 @@
 #include "core/schema.h"
 #include "core/util.h"
 
-using namespace fp;
+using namespace on;
 
 TEST_CASE("md5 and sha256 test vectors")
 {

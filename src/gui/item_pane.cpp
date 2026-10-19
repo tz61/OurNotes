@@ -33,7 +33,7 @@
 #include "gui/icons.h"
 #include "gui/note_editor.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -1111,4 +1111,4 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
     }
 }
 
-} // namespace fp::gui
+} // namespace on::gui

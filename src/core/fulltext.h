@@ -7,7 +7,7 @@
 
 #include "core/sqlite.h"
 
-namespace fp {
+namespace on {
 
 // Full-text index of attachment contents (FTS5), kept in its own database file so
 // background indexing never contends with edits in the main library database.
@@ -24,11 +24,11 @@ public:
     std::string text(int64_t lib, const std::string& key);
     int count(int64_t lib);
 
-    // Attachment keys whose text matches all tokens (as produced by fp::searchTokens).
+    // Attachment keys whose text matches all tokens (as produced by on::searchTokens).
     std::set<std::string> search(int64_t lib, const std::vector<std::string>& tokens);
 
 private:
     sql::Db db_;
 };
 
-} // namespace fp
+} // namespace on

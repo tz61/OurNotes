@@ -6,7 +6,7 @@
 
 namespace fixtures {
 
-using fp::Json;
+using on::Json;
 
 inline Json journalArticle()
 {

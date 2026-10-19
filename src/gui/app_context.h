@@ -6,7 +6,7 @@
 #include "core/config.h"
 #include "core/library.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // Shared application state for the GUI thread: configuration, the library
 // database, and Qt signals for library changes.
@@ -37,4 +37,4 @@ private:
     int listener_ = 0;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

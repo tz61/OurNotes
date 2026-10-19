@@ -1,6 +1,6 @@
 #include "core/sync/protocol.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 bool isObjectType(const std::string& t)
 {
@@ -147,4 +147,4 @@ FileInfo fileInfoFromJson(const Json& j)
     return f;
 }
 
-} // namespace fp::sync
+} // namespace on::sync

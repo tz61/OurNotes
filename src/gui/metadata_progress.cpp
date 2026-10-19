@@ -21,7 +21,7 @@
 #include "gui/fancy_progress.h"
 #include "gui/formats_actions.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -342,4 +342,4 @@ void MetadataProgressDialog::closeEvent(QCloseEvent* e)
     QDialog::closeEvent(e);
 }
 
-} // namespace fp::gui
+} // namespace on::gui

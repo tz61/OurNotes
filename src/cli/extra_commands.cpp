@@ -1,4 +1,4 @@
-// freepen-cli commands for sync targets, synchronisation and full-text indexing.
+// ournotes-cli commands for sync targets, synchronisation and full-text indexing.
 
 #include <iostream>
 
@@ -22,7 +22,7 @@
 #include <unistd.h>
 #endif
 
-using namespace fp;
+using namespace on;
 
 namespace {
 
@@ -227,7 +227,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
         auto url = args.positional(0);
         auto user = args.option("--user");
         if (url.empty() || user.empty()) {
-            std::cerr << "usage: freepen-cli add-server URL --user NAME [--password PW] [--insecure]\n";
+            std::cerr << "usage: ournotes-cli add-server URL --user NAME [--password PW] [--insecure]\n";
             return 1;
         }
         if (url.find("://") == std::string::npos)
@@ -236,7 +236,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
         if (pw.empty())
             pw = readPassword("Password for " + user + ": ");
         bool verify = !args.flag("--insecure");
-        auto token = sync::HttpTransport::login(url, user, pw, "freepen-cli", verify);
+        auto token = sync::HttpTransport::login(url, user, pw, "ournotes-cli", verify);
         SyncTarget t;
         t.id = randomToken(4);
         t.kind = "remote";
@@ -255,7 +255,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
     commands["add-folder"] = [&config](Library&, Args& args) {
         auto path = args.positional(0);
         if (path.empty()) {
-            std::cerr << "usage: freepen-cli add-folder PATH\n";
+            std::cerr << "usage: ournotes-cli add-folder PATH\n";
             return 1;
         }
         SyncTarget t;

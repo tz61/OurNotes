@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace fp::gui {
+namespace on::gui {
 
 FlowLayout::FlowLayout(QWidget* parent, int spacing) : QLayout(parent), spacing_(spacing)
 {
@@ -79,4 +79,4 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
     return y + lineHeight - rect.y() + m.bottom();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

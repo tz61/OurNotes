@@ -16,7 +16,7 @@ class QTabWidget;
 class QToolButton;
 class QVBoxLayout;
 
-namespace fp::gui {
+namespace on::gui {
 
 class FlowLayout;
 class NoteEditor;
@@ -185,4 +185,4 @@ private:
     TagsBox* attachmentTags_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

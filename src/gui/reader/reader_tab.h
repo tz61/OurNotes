@@ -20,7 +20,7 @@ class QTreeWidget;
 
 class QUndoStack;
 
-namespace fp::gui {
+namespace on::gui {
 
 class AnnotationSidebar;
 class NoteEditor;
@@ -109,4 +109,4 @@ private:
     QAction* darkPages_ = nullptr;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

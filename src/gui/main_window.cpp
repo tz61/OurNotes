@@ -31,7 +31,7 @@
 
 #include "core/schema.h"
 #include "core/zotero_importer.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
@@ -44,7 +44,7 @@
 #include "gui/sync_controller.h"
 #include "gui/tab_widget.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -69,7 +69,7 @@ QString tabText(const QString& title) { return title.length() > 40 ? title.left(
 
 MainWindow::MainWindow()
 {
-    setWindowTitle(FREEPEN_APP_NAME);
+    setWindowTitle(OURNOTES_APP_NAME);
     setAcceptDrops(true);
     auto* tabs = new TabWidget(this);  // tabs wrap onto more rows when there are many
     tabs_ = tabs;
@@ -310,7 +310,7 @@ void MainWindow::buildActions()
     });
 
     auto* help = menuBar()->addMenu(tr("&Help"));
-    auto* about = help->addAction(tr("About freePen"), this, &MainWindow::showAbout);
+    auto* about = help->addAction(tr("About OurNotes"), this, &MainWindow::showAbout);
     about->setMenuRole(QAction::AboutRole);
 }
 
@@ -514,13 +514,13 @@ void MainWindow::restartApplication()
 void MainWindow::showAbout()
 {
     QMessageBox::about(
-        this, tr("About freePen"),
-        tr("<h3>freePen %1</h3>"
+        this, tr("About OurNotes"),
+        tr("<h3>OurNotes %1</h3>"
            "<p>An open-source reference manager: collect and organise papers, read and annotate PDFs, write "
            "notes, and sync through your own server or a folder.</p>"
            "<p>Licensed under the GNU Affero General Public License v3.</p>"
            "<p>Built with Qt %2 and MuPDF. Item type schema from Zotero.</p>")
-            .arg(FREEPEN_VERSION, qVersion()));
+            .arg(OURNOTES_VERSION, qVersion()));
 }
 
 void MainWindow::newLibrary()
@@ -587,7 +587,7 @@ void MainWindow::offerZoteroImport()
         return;
     auto answer = QMessageBox::question(
         this, tr("Import from Zotero"),
-        tr("A Zotero library was found at %1.\n\nImport it into freePen now? Items, collections, notes, "
+        tr("A Zotero library was found at %1.\n\nImport it into OurNotes now? Items, collections, notes, "
            "annotations and attachment files are copied; Zotero's own data is not modified.")
             .arg(qpath(dir)));
     if (answer == QMessageBox::Yes)
@@ -628,7 +628,7 @@ void MainWindow::importZotero()
                     },
                     Qt::QueuedConnection);
             };
-            report = fp::importZotero(lib, opt);
+            report = on::importZotero(lib, opt);
         } catch (const std::exception& e) {
             error = qs(e.what());
         }
@@ -676,7 +676,7 @@ void MainWindow::addByIdentifier()
 
 void MainWindow::retrieveMetadata(int64_t libraryId, const QStringList& keys)
 {
-    if (auto* dlg = fp::gui::retrieveMetadata(this, libraryId, keys))
+    if (auto* dlg = on::gui::retrieveMetadata(this, libraryId, keys))
         connect(dlg, &MetadataProgressDialog::itemActivated, this,
                 [this](qint64, const QString& key) { selectItem(key); });
 }
@@ -711,4 +711,4 @@ void MainWindow::shutDown()
     sync_->cancel();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

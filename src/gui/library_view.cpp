@@ -26,7 +26,7 @@
 #include "gui/note_editor.h"
 #include "gui/tag_selector.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -733,4 +733,4 @@ void LibraryView::showItemMenu(const QPoint& pos)
     menu.exec(items_->viewport()->mapToGlobal(pos));
 }
 
-} // namespace fp::gui
+} // namespace on::gui

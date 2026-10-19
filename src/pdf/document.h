@@ -15,7 +15,7 @@
 // Coordinates: "page space" is MuPDF's space for the displayed (rotated) page, in
 // points with the origin at the top-left. Annotation positions are stored, like
 // Zotero, in PDF user space (origin bottom-left, unrotated); use pdfToPage/pageToPdf.
-namespace fp::pdf {
+namespace on::pdf {
 
 struct Point {
     float x = 0, y = 0;
@@ -89,7 +89,7 @@ struct Link {
 
 class Document {
 public:
-    // Throws fp::Error on failure.
+    // Throws on::Error on failure.
     static std::unique_ptr<Document> open(const fs::path& path);
     ~Document();
     Document(const Document&) = delete;
@@ -145,4 +145,4 @@ private:
 // Zotero's annotationSortIndex: "PPPPP|OOOOOO|TTTTT" (page, char offset, top).
 std::string sortIndex(int pageIndex, int charOffset, float top);
 
-} // namespace fp::pdf
+} // namespace on::pdf

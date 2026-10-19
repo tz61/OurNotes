@@ -4,7 +4,7 @@
 
 #include "gui/items_model.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // Left pane: libraries with their collections, Unfiled, Duplicates and Trash.
 class CollectionTree : public QTreeWidget {
@@ -45,4 +45,4 @@ private:
     void deleteCollection(QTreeWidgetItem* item, bool trashItems);
 };
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -9,7 +9,7 @@ class QListWidget;
 class QSpinBox;
 class QTabWidget;
 
-namespace fp::gui {
+namespace on::gui {
 
 class SyncController;
 
@@ -51,4 +51,4 @@ private:
     bool restart_ = false;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

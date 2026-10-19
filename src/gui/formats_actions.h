@@ -9,7 +9,7 @@
 
 class QWidget;
 
-namespace fp::gui {
+namespace on::gui {
 
 struct Scope;
 class MetadataProgressDialog;
@@ -27,4 +27,4 @@ MetadataProgressDialog* retrieveMetadata(QWidget* parent, int64_t libraryId, con
 // parent's key, or an empty string if the attachment already has a parent.
 QString applyMetadataMatch(int64_t libraryId, const QString& attachmentKey, const Json& item);
 
-} // namespace fp::gui
+} // namespace on::gui

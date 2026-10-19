@@ -7,7 +7,7 @@
 
 class QTextDocument;
 
-namespace fp::gui {
+namespace on::gui {
 
 // Character format properties used by the note editor.
 constexpr int kMathSourceProperty = QTextFormat::UserProperty + 11;          // 1 inline / 2 display formula source
@@ -21,4 +21,4 @@ QString noteHtmlForEditor(const QString& html, int64_t libraryId, QTextDocument*
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.
 QString documentToNoteHtml(const QTextDocument* doc);
 
-} // namespace fp::gui
+} // namespace on::gui

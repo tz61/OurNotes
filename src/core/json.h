@@ -2,7 +2,7 @@
 
 #include <json.hpp>
 
-namespace fp {
+namespace on {
 
 // Ordered so item fields keep the order they were written in (matches schema order
 // and keeps diffs/conflict views readable).
@@ -36,4 +36,4 @@ inline bool jbool(const Json& j, const char* key, bool def = false)
     return def;
 }
 
-} // namespace fp
+} // namespace on

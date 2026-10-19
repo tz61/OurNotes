@@ -30,7 +30,7 @@
 #include "gui/items_model.h"
 #include "gui/metadata_progress.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -326,7 +326,7 @@ void addByIdentifierDialog(QWidget* parent, int64_t libraryId, const std::string
         std::string error;
     };
     std::vector<Result> results;
-    auto tmpDir = fs::temp_directory_path() / ("freepen-" + randomToken(6));
+    auto tmpDir = fs::temp_directory_path() / ("ournotes-" + randomToken(6));
     runWithProgress(parent, QObject::tr("Looking up %n item(s)…", nullptr, (int)ids.size()), [&](std::atomic<bool>& cancel) {
         for (auto& id : ids) {
             if (cancel)
@@ -415,4 +415,4 @@ MetadataProgressDialog* retrieveMetadata(QWidget* parent, int64_t libraryId, con
     return dlg;
 }
 
-} // namespace fp::gui
+} // namespace on::gui

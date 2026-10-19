@@ -1,7 +1,7 @@
-# Running a freePen sync server (freepend)
+# Running an OurNotes sync server (ournotesd)
 
-`freepend` keeps libraries, notes, annotations and attachment files in sync
-between freePen installations. It is a single self-contained binary storing
+`ournotesd` keeps libraries, notes, annotations and attachment files in sync
+between OurNotes installations. It is a single self-contained binary storing
 everything in one data directory (SQLite + plain files). The protocol is
 described in [sync-protocol.md](sync-protocol.md).
 
@@ -11,25 +11,25 @@ The daemon needs neither Qt nor MuPDF; a C++17 compiler, CMake ≥ 3.21 and
 (for built-in HTTPS) OpenSSL ≥ 3.0 are enough.
 
 ```sh
-cmake -S . -B build -DFREEPEN_BUILD_GUI=OFF -DFREEPEN_BUILD_CLI=OFF
+cmake -S . -B build -DOURNOTES_BUILD_GUI=OFF -DOURNOTES_BUILD_CLI=OFF
 cmake --build build -j
 ctest --test-dir build          # optional
-sudo cmake --install build      # installs /usr/local/bin/freepend
+sudo cmake --install build      # installs /usr/local/bin/ournotesd
 ```
 
 The SQLite amalgamation is downloaded at configure time; for offline builds pass
 `-DFETCHCONTENT_SOURCE_DIR_SQLITE=/path/to/sqlite-amalgamation`. Without
 OpenSSL the build still works, but `--cert/--key` are unavailable (use a reverse
-proxy for TLS). `-DFREEPEN_WITH_OPENSSL=OFF` forces that.
+proxy for TLS). `-DOURNOTES_WITH_OPENSSL=OFF` forces that.
 
 ## Quick start
 
 ```sh
-freepend useradd alice              # prompts for a password
-freepend serve --port 8642
+ournotesd useradd alice              # prompts for a password
+ournotesd serve --port 8642
 ```
 
-In freePen, add a sync target with the URL `http://SERVER:8642`, the user name
+In OurNotes, add a sync target with the URL `http://SERVER:8642`, the user name
 and the password. The client exchanges the password for a token and stores only
 the token.
 
@@ -38,10 +38,10 @@ HTTP only on `localhost` or a trusted LAN, otherwise enable TLS (below).
 
 ## Commands
 
-Every command accepts `--data DIR`. The default is `$FREEPEND_DATA`, else
-`/var/lib/freepend` when run as root, else `~/.local/share/freepend` (Linux,
-or `$XDG_DATA_HOME/freepend`), `~/Library/Application Support/freepend` (macOS),
-`%LOCALAPPDATA%\freepend` (Windows).
+Every command accepts `--data DIR`. The default is `$OURNOTESD_DATA`, else
+`/var/lib/ournotesd` when run as root, else `~/.local/share/ournotesd` (Linux,
+or `$XDG_DATA_HOME/ournotesd`), `~/Library/Application Support/ournotesd` (macOS),
+`%LOCALAPPDATA%\ournotesd` (Windows).
 
 | command | |
 |---|---|
@@ -57,8 +57,8 @@ or `$XDG_DATA_HOME/freepend`), `~/Library/Application Support/freepend` (macOS),
 | `version` | print the version |
 
 Administration commands work while the server is running. When run as root on
-a data directory owned by another account (e.g. the `freepend` service user),
-freepend switches to that account first, so `sudo freepend useradd bob` works
+a data directory owned by another account (e.g. the `ournotesd` service user),
+ournotesd switches to that account first, so `sudo ournotesd useradd bob` works
 without leaving root-owned files behind.
 
 `serve` logs one line per request to stdout
@@ -71,7 +71,7 @@ address (10 per 10 minutes).
 ### Built-in
 
 ```sh
-freepend serve --cert /etc/freepend/fullchain.pem --key /etc/freepend/privkey.pem --port 8642
+ournotesd serve --cert /etc/ournotesd/fullchain.pem --key /etc/ournotesd/privkey.pem --port 8642
 ```
 
 The certificate file may contain the full chain. Restart the server after
@@ -79,12 +79,12 @@ renewing certificates.
 
 ### Reverse proxy (recommended for public servers)
 
-Run freepend on localhost and let the proxy terminate TLS (and renew
-certificates). `--trusted-proxy 127.0.0.1` makes freepend use the proxy's
+Run ournotesd on localhost and let the proxy terminate TLS (and renew
+certificates). `--trusted-proxy 127.0.0.1` makes ournotesd use the proxy's
 `X-Forwarded-For` header for login throttling and logs.
 
 ```sh
-freepend serve --host 127.0.0.1 --port 8642 --trusted-proxy 127.0.0.1
+ournotesd serve --host 127.0.0.1 --port 8642 --trusted-proxy 127.0.0.1
 ```
 
 **Caddy** (automatic HTTPS, no body size limit by default):
@@ -94,9 +94,9 @@ sync.example.org {
     reverse_proxy 127.0.0.1:8642
 }
 
-# or under a path prefix; clients then use https://example.org/freepen
+# or under a path prefix; clients then use https://example.org/ournotes
 example.org {
-    handle_path /freepen/* {
+    handle_path /ournotes/* {
         reverse_proxy 127.0.0.1:8642
     }
 }
@@ -111,12 +111,12 @@ server {
     ssl_certificate     /etc/letsencrypt/live/sync.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/sync.example.org/privkey.pem;
 
-    client_max_body_size 1024m;      # at least freepend's --max-upload-mb
+    client_max_body_size 1024m;      # at least ournotesd's --max-upload-mb
     proxy_request_buffering off;     # stream uploads instead of spooling them
     proxy_read_timeout 300s;
     proxy_send_timeout 300s;
 
-    location / {                     # or: location /freepen/ { proxy_pass http://127.0.0.1:8642/; ... }
+    location / {                     # or: location /ournotes/ { proxy_pass http://127.0.0.1:8642/; ... }
         proxy_pass http://127.0.0.1:8642;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -126,26 +126,26 @@ server {
 ```
 
 With a path prefix the proxy must strip it (the trailing `/` in `proxy_pass`
-does that for nginx, `handle_path` for Caddy); freepend always serves
+does that for nginx, `handle_path` for Caddy); ournotesd always serves
 `/api/v1/...`.
 
 ## systemd
 
-`packaging/freepend.service` runs the server as the system user `freepend`
-with its data in `/var/lib/freepend`, on localhost behind a reverse proxy, with
+`packaging/ournotesd.service` runs the server as the system user `ournotesd`
+with its data in `/var/lib/ournotesd`, on localhost behind a reverse proxy, with
 a strict sandbox (`ProtectSystem=strict`, no capabilities, system-call filter).
 
 ```sh
-sudo useradd --system --home-dir /var/lib/freepend --shell /usr/sbin/nologin freepend
-sudo install -m 644 packaging/freepend.service /etc/systemd/system/
+sudo useradd --system --home-dir /var/lib/ournotesd --shell /usr/sbin/nologin ournotesd
+sudo install -m 644 packaging/ournotesd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now freepend
-sudo freepend useradd alice
-journalctl -u freepend -f
+sudo systemctl enable --now ournotesd
+sudo ournotesd useradd alice
+journalctl -u ournotesd -f
 ```
 
-If freepend is installed elsewhere than `/usr/local/bin`, or should serve TLS
-itself, override `ExecStart` with `sudo systemctl edit freepend`. Certificates
+If ournotesd is installed elsewhere than `/usr/local/bin`, or should serve TLS
+itself, override `ExecStart` with `sudo systemctl edit ournotesd`. Certificates
 readable only by root can be passed in with `LoadCredential=`:
 
 ```ini
@@ -153,7 +153,7 @@ readable only by root can be passed in with `LoadCredential=`:
 LoadCredential=cert:/etc/letsencrypt/live/sync.example.org/fullchain.pem
 LoadCredential=key:/etc/letsencrypt/live/sync.example.org/privkey.pem
 ExecStart=
-ExecStart=/usr/local/bin/freepend serve --data /var/lib/freepend --port 8642 \
+ExecStart=/usr/local/bin/ournotesd serve --data /var/lib/ournotesd --port 8642 \
     --cert ${CREDENTIALS_DIRECTORY}/cert --key ${CREDENTIALS_DIRECTORY}/key
 ```
 
@@ -168,22 +168,22 @@ tmp/                uploads in progress
 ```
 
 Passwords are stored as salted PBKDF2-SHA256 hashes and tokens only as SHA-256
-hashes; still, keep the directory private. freepend runs with umask 077, so
+hashes; still, keep the directory private. ournotesd runs with umask 077, so
 everything it creates is accessible only to its own user.
 
 **Simple backup** — stop the server, copy the directory, start it again:
 
 ```sh
-sudo systemctl stop freepend
-sudo tar -C /var/lib -czf freepend-$(date +%F).tar.gz freepend
-sudo systemctl start freepend
+sudo systemctl stop ournotesd
+sudo tar -C /var/lib -czf ournotesd-$(date +%F).tar.gz ournotesd
+sudo systemctl start ournotesd
 ```
 
 **Online backup** — snapshot the database first, then copy the files:
 
 ```sh
-sudo -u freepend sqlite3 /var/lib/freepend/store.sqlite ".backup '/backup/freepend/store.sqlite'"
-sudo rsync -a --delete /var/lib/freepend/files/ /backup/freepend/files/
+sudo -u ournotesd sqlite3 /var/lib/ournotesd/store.sqlite ".backup '/backup/ournotesd/store.sqlite'"
+sudo rsync -a --delete /var/lib/ournotesd/files/ /backup/ournotesd/files/
 ```
 
 Never copy `store.sqlite` alone while the server runs (the WAL holds recent

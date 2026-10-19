@@ -11,7 +11,7 @@
 
 #include "gui/math_render.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 MathDialog::MathDialog(const QString& latex, bool display, QWidget* parent) : QDialog(parent)
 {
@@ -87,4 +87,4 @@ void MathDialog::updatePreview()
     status_->setText(m.ok ? QString() : "<span style=\"color:#c0392b\">" + m.error.toHtmlEscaped() + "</span>");
 }
 
-} // namespace fp::gui
+} // namespace on::gui

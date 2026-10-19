@@ -8,10 +8,10 @@ namespace httplib {
 class Client;
 }
 
-namespace fp::sync {
+namespace on::sync {
 
-// Client for a freepend server. baseUrl is "http://host:port" or, behind a reverse
-// proxy, e.g. "https://example.org/freepen". Not thread-safe: use one instance
+// Client for an ournotesd server. baseUrl is "http://host:port" or, behind a reverse
+// proxy, e.g. "https://example.org/ournotes". Not thread-safe: use one instance
 // from one thread at a time. Errors are SyncError with the HTTP status, or
 // status 0 for network/IO errors and cancellation.
 class HttpTransport : public Transport {
@@ -49,4 +49,4 @@ private:
     std::unique_ptr<httplib::Client> client_;
 };
 
-} // namespace fp::sync
+} // namespace on::sync

@@ -7,7 +7,7 @@
 #include "formats/csljson.h"
 #include "formats/ris.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 const std::vector<Format>& allFormats()
 {
@@ -78,4 +78,4 @@ std::string detectFormat(const std::string& text)
     return {};
 }
 
-} // namespace fp::formats
+} // namespace on::formats

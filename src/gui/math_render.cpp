@@ -14,7 +14,7 @@
 #include "latex.h"
 #include "platform/qt/graphic_qt.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -22,14 +22,14 @@ namespace {
 QString findResources()
 {
     QStringList candidates;
-    if (qEnvironmentVariableIsSet("FREEPEN_MICROTEX_RES"))
-        candidates << qEnvironmentVariable("FREEPEN_MICROTEX_RES");
+    if (qEnvironmentVariableIsSet("OURNOTES_MICROTEX_RES"))
+        candidates << qEnvironmentVariable("OURNOTES_MICROTEX_RES");
     QString app = QCoreApplication::applicationDirPath();
-    candidates << app + "/../share/freepen/microtex"  // Linux install
+    candidates << app + "/../share/ournotes/microtex"  // Linux install
                << app + "/microtex"                   // Windows
                << app + "/../Resources/microtex";     // macOS bundle
-#ifdef FREEPEN_MICROTEX_BUILD_RES
-    candidates << QStringLiteral(FREEPEN_MICROTEX_BUILD_RES);  // build tree
+#ifdef OURNOTES_MICROTEX_BUILD_RES
+    candidates << QStringLiteral(OURNOTES_MICROTEX_BUILD_RES);  // build tree
 #endif
     for (auto& c : candidates)
         if (QFileInfo::exists(c + "/.clatexmath-res_root"))
@@ -151,4 +151,4 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
     return m;
 }
 
-} // namespace fp::gui
+} // namespace on::gui

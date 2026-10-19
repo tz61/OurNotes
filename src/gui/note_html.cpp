@@ -13,7 +13,7 @@
 #include "gui/common.h"
 #include "gui/math_render.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // Zotero stores formulas as <span class="math">$…$</span> and <pre class="math">$$…$$</pre>.
 static QString mathToImages(const QString& html)
@@ -333,4 +333,4 @@ QString documentToNoteHtml(const QTextDocument* doc)
     return "<div data-schema-version=\"9\">" + body + "</div>";
 }
 
-} // namespace fp::gui
+} // namespace on::gui

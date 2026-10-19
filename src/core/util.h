@@ -9,7 +9,7 @@
 
 #include "core/json.h"
 
-namespace fp {
+namespace on {
 
 namespace fs = std::filesystem;
 
@@ -70,4 +70,4 @@ std::string readFile(const fs::path& path);
 void writeFileAtomic(const fs::path& path, std::string_view data);
 std::string guessContentType(const fs::path& path);
 
-} // namespace fp
+} // namespace on

@@ -13,9 +13,9 @@
 #include "core/schema.h"
 #include "formats/common.h"
 #include "formats/csljson.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 namespace {
 
@@ -32,7 +32,7 @@ bool isAlnum(char c) { return std::isalnum((unsigned char)c) != 0; }
 
 std::string userAgent()
 {
-    return std::string("freePen/") + FREEPEN_VERSION + " (mailto:freepen@users.noreply.github.com)";
+    return std::string("OurNotes/") + OURNOTES_VERSION + " (mailto:ournotes@users.noreply.github.com)";
 }
 
 struct Url {
@@ -117,7 +117,7 @@ Response httpGet(const std::string& url, const std::string& accept, const Sink& 
         auto u = parseUrl(current);
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
         if (u.scheme == "https")
-            throw MetadataError("HTTPS is unavailable: this build of freePen was compiled without OpenSSL, so "
+            throw MetadataError("HTTPS is unavailable: this build of OurNotes was compiled without OpenSSL, so "
                                 "online lookups are disabled.");
 #endif
         httplib::Client cli(u.origin);
@@ -1106,4 +1106,4 @@ void downloadFile(const std::string& url, const fs::path& dest, bool requirePdf)
     }
 }
 
-} // namespace fp::formats
+} // namespace on::formats

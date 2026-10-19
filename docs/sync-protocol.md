@@ -1,6 +1,6 @@
-# freePen sync protocol (API v1)
+# OurNotes sync protocol (API v1)
 
-freePen synchronises libraries through a *transport*: a freepend server over
+OurNotes synchronises libraries through a *transport*: an ournotesd server over
 HTTP(S) (`HttpTransport`) or a plain folder (`LocalTransport`, e.g. a USB drive
 or NAS share). Both implement the same model; this document describes it and the
 HTTP API. The C++ wire types live in `src/core/sync/protocol.h`.
@@ -74,7 +74,7 @@ what was sent — treat that as success.
 ## HTTP API
 
 All endpoints are under `<base>/api/v1`, where `<base>` is e.g.
-`http://host:8642` or `https://example.org/freepen` behind a reverse proxy.
+`http://host:8642` or `https://example.org/ournotes` behind a reverse proxy.
 Requests and responses are JSON (`application/json`) unless noted. Everything
 except `/info` and `/login` needs `Authorization: Bearer <token>`.
 
@@ -98,13 +98,13 @@ Limits: push ≤ 1000 objects and ≤ 64 MiB of JSON; `changes` returns at most
 ### `GET /info` (no auth)
 
 ```json
-{"server": "freepend", "version": "0.1.0", "api": 1}
+{"server": "ournotesd", "version": "0.1.0", "api": 1}
 ```
 
 ### `POST /login` (no auth)
 
 ```json
-{"username": "alice", "password": "secret", "device": "laptop (freePen 0.1)"}
+{"username": "alice", "password": "secret", "device": "laptop (OurNotes 0.1)"}
 ```
 → `{"token": "64 hex chars", "username": "alice"}`. Tokens do not expire; they
 are revoked by `/logout`, by a password change, or by deleting the user. After
@@ -176,8 +176,8 @@ The same key twice in one batch: the second entry conflicts with the first.
 
 ### `GET /libraries/{uid}/files/{key}`
 
-The raw file. Headers: `Content-Type`, `Content-Length`, `X-FreePen-MD5`,
-`X-FreePen-Mtime` (ms), `X-FreePen-Filename` (percent-encoded UTF-8). Range
+The raw file. Headers: `Content-Type`, `Content-Length`, `X-OurNotes-MD5`,
+`X-OurNotes-Mtime` (ms), `X-OurNotes-Filename` (percent-encoded UTF-8). Range
 requests are supported. Clients should write to a temporary file and verify the
 MD5 before using it.
 

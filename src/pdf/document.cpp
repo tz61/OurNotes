@@ -16,7 +16,7 @@ extern "C" {
 // we only call C functions and assign to variables declared outside, then turn
 // failures into C++ exceptions after the block.
 
-namespace fp::pdf {
+namespace on::pdf {
 
 namespace {
 
@@ -973,4 +973,4 @@ void Document::exportWithAnnotations(const fs::path& out, const std::vector<Json
         im.fail("cannot save " + file);
 }
 
-} // namespace fp::pdf
+} // namespace on::pdf

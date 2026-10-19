@@ -1,4 +1,4 @@
-// freepen-cli: command-line access to a freePen library.
+// ournotes-cli: command-line access to an OurNotes library.
 
 #include <cstdio>
 #include <functional>
@@ -9,7 +9,7 @@
 #include "core/library.h"
 #include "core/schema.h"
 #include "core/zotero_importer.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 
 #include "cli/commands.h"
 
@@ -21,15 +21,15 @@
 #define FP_ISATTY(fd) isatty(fd)
 #endif
 
-using namespace fp;
+using namespace on;
 
 namespace {
 
 void usage()
 {
-    std::cout << R"(freepen-cli )" FREEPEN_VERSION R"( - command-line interface to a freePen library
+    std::cout << R"(ournotes-cli )" OURNOTES_VERSION R"( - command-line interface to an OurNotes library
 
-Usage: freepen-cli [--data-dir DIR] <command> [options]
+Usage: ournotes-cli [--data-dir DIR] <command> [options]
 
 Library:
   info                              data directory and library statistics
@@ -39,9 +39,9 @@ Library:
   show KEY [--library ID]           print an item as JSON
   import-zotero [ZOTERO_DIR] [--hardlink | --no-files] [--no-trash]
                                     import (or update from) a Zotero data directory
-)" FREEPEN_CLI_EXTRA_USAGE R"(
+)" OURNOTES_CLI_EXTRA_USAGE R"(
 The data directory defaults to the one configured in the desktop app
-(~/freePen unless changed); FREEPEN_DATA_DIR overrides it.
+(~/OurNotes unless changed); OURNOTES_DATA_DIR overrides it.
 )";
 }
 
@@ -193,12 +193,14 @@ int main(int argc, char** argv)
         return args.command.empty() ? 1 : 0;
     }
     if (args.command == "version") {
-        std::cout << "freepen-cli " << FREEPEN_VERSION << "\n";
+        std::cout << "ournotes-cli " << OURNOTES_VERSION << "\n";
         return 0;
     }
     try {
-        Config config;
         auto dataDir = args.option("--data-dir");
+        if (dataDir.empty())
+            migrateFromFreePen();
+        Config config;
         Library lib(dataDir.empty() ? config.dataDir() : u8path(dataDir));
         std::map<std::string, std::function<int(Library&, Args&)>> commands = {
             {"info", cmdInfo},

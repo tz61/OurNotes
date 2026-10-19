@@ -6,7 +6,7 @@
 
 #include "gui/flow_layout.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 WrapToolBar::WrapToolBar(QWidget* parent) : QWidget(parent)
 {
@@ -56,4 +56,4 @@ void WrapToolBar::actionEvent(QActionEvent* e)
     QWidget::actionEvent(e);
 }
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -6,7 +6,7 @@ class QLabel;
 class QTabWidget;
 class QToolButton;
 
-namespace fp::gui {
+namespace on::gui {
 
 class LibraryView;
 class ReaderTab;
@@ -63,4 +63,4 @@ private:
     bool shutDown_ = false;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

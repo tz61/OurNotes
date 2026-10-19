@@ -15,7 +15,7 @@
 
 class QPlainTextEdit;
 
-namespace fp::gui {
+namespace on::gui {
 
 class RenderWorker;
 class SelectionPopup;
@@ -31,7 +31,7 @@ public:
     explicit PdfView(QWidget* parent = nullptr);
     ~PdfView() override;
 
-    void open(const fs::path& path);  // throws fp::Error
+    void open(const fs::path& path);  // throws on::Error
     pdf::Document* document() const { return doc_.get(); }
     int pageCount() const { return (int)pageSizes_.size(); }
     int currentPage() const;
@@ -84,14 +84,14 @@ signals:
     void pageChanged(int page);
     void zoomChanged(double zoom);
     void viewChanged();  // scrolled or zoomed
-    void annotationCreated(const fp::Json& data);
-    void annotationChanged(const fp::Json& data);
+    void annotationCreated(const on::Json& data);
+    void annotationChanged(const on::Json& data);
     void annotationDeleted(const QString& key);
     void annotationSelected(const QString& key);
     void findStatus(int current, int total);
     void thumbnailRendered(int page, const QImage& image);
     void addToNote(const QString& html);
-    void toolChangeRequested(fp::gui::ReaderTool tool);
+    void toolChangeRequested(on::gui::ReaderTool tool);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -218,4 +218,4 @@ private:
     QString editingKey_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

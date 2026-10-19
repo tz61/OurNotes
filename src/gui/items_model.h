@@ -10,7 +10,7 @@
 
 #include "core/library.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 enum class ScopeKind { Library, Collection, Unfiled, Duplicates, Trash };
 
@@ -97,4 +97,4 @@ private:
     std::map<std::string, Node*> byKey_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

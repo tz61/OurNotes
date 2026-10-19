@@ -4,7 +4,7 @@
 
 class QToolButton;
 
-namespace fp::gui {
+namespace on::gui {
 
 class FlowLayout;
 
@@ -27,4 +27,4 @@ private:
     FlowLayout* flow_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

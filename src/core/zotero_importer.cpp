@@ -9,7 +9,7 @@
 #include "core/schema.h"
 #include "core/sqlite.h"
 
-namespace fp {
+namespace on {
 
 namespace {
 
@@ -86,7 +86,7 @@ int64_t fileMtimeMs(const fs::path& p)
 
 // Copy (or hard-link) the contents of one Zotero storage folder, skipping Zotero's
 // own cache files. The reader state (where the file was left) only seeds ours: it is
-// copied if we have none, and never linked, as freePen rewrites it. Returns bytes copied.
+// copied if we have none, and never linked, as OurNotes rewrites it. Returns bytes copied.
 int64_t copyStorageDir(const fs::path& src, const fs::path& dst, ZoteroFileMode mode, int& files)
 {
     int64_t bytes = 0;
@@ -198,7 +198,7 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
         throw Error("No Zotero database found at " + pathString(zdb));
 
     // Snapshot the database: Zotero holds an exclusive lock while it runs.
-    fs::path tmp = fs::temp_directory_path() / ("freepen-zotero-" + randomToken(6));
+    fs::path tmp = fs::temp_directory_path() / ("ournotes-zotero-" + randomToken(6));
     fs::create_directories(tmp);
     struct Cleanup {
         fs::path p;
@@ -648,4 +648,4 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
     return report;
 }
 
-} // namespace fp
+} // namespace on

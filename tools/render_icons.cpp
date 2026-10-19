@@ -1,9 +1,9 @@
-// Renders resources/icons/freepen.svg into the raster formats each platform needs:
-//   hicolor/<N>x<N>/apps/freepen.png   (Linux icon theme)
-//   freepen.ico                        (Windows executable resource)
-//   freepen.icns                       (macOS application bundle)
-// Sizes up to 24 px use freepen-small.svg (a simplified design) when it exists.
-// Build with -DFREEPEN_BUILD_TOOLS=ON, then: render_icons resources/icons
+// Renders resources/icons/ournotes.svg into the raster formats each platform needs:
+//   hicolor/<N>x<N>/apps/ournotes.png   (Linux icon theme)
+//   ournotes.ico                        (Windows executable resource)
+//   ournotes.icns                       (macOS application bundle)
+// Sizes up to 24 px use ournotes-small.svg (a simplified design) when it exists.
+// Build with -DOURNOTES_BUILD_TOOLS=ON, then: render_icons resources/icons
 
 #include <QBuffer>
 #include <QDir>
@@ -63,17 +63,17 @@ int main(int argc, char** argv)
 {
     QGuiApplication app(argc, argv);
     if (argc < 2) {
-        std::fprintf(stderr, "usage: render_icons ICON_DIR [SVG] (default SVG: ICON_DIR/freepen.svg)\n");
+        std::fprintf(stderr, "usage: render_icons ICON_DIR [SVG] (default SVG: ICON_DIR/ournotes.svg)\n");
         return 1;
     }
     QDir dir(QString::fromLocal8Bit(argv[1]));
-    QString source = argc > 2 ? QString::fromLocal8Bit(argv[2]) : dir.filePath("freepen.svg");
+    QString source = argc > 2 ? QString::fromLocal8Bit(argv[2]) : dir.filePath("ournotes.svg");
     QSvgRenderer svg(source);
     if (!svg.isValid()) {
         std::fprintf(stderr, "cannot load %s\n", qPrintable(source));
         return 1;
     }
-    QSvgRenderer small(dir.filePath("freepen-small.svg"));
+    QSvgRenderer small(dir.filePath("ournotes-small.svg"));
     std::map<int, QByteArray> png;
     for (int size : {16, 22, 24, 32, 48, 64, 128, 256, 512, 1024})
         png[size] = renderPng(size <= 24 && small.isValid() ? small : svg, size);
@@ -81,7 +81,7 @@ int main(int argc, char** argv)
     for (int size : {16, 22, 24, 32, 48, 64, 128, 256, 512}) {
         QString sub = QString("hicolor/%1x%1/apps").arg(size);
         dir.mkpath(sub);
-        if (!writeFile(dir.filePath(sub + "/freepen.png"), png[size]))
+        if (!writeFile(dir.filePath(sub + "/ournotes.png"), png[size]))
             return 1;
     }
 
@@ -105,7 +105,7 @@ int main(int argc, char** argv)
     }
     for (int s : icoSizes)
         ico.append(png[s]);
-    if (!writeFile(dir.filePath("freepen.ico"), ico))
+    if (!writeFile(dir.filePath("ournotes.ico"), ico))
         return 1;
 
     // ICNS with PNG chunks
@@ -121,11 +121,11 @@ int main(int argc, char** argv)
     QByteArray icns("icns", 4);
     put32be(icns, (quint32)body.size() + 8);
     icns.append(body);
-    if (!writeFile(dir.filePath("freepen.icns"), icns))
+    if (!writeFile(dir.filePath("ournotes.icns"), icns))
         return 1;
 
     // contact sheet for reviewing the design at small sizes
-    if (qEnvironmentVariableIsSet("FREEPEN_ICON_PREVIEW")) {
+    if (qEnvironmentVariableIsSet("OURNOTES_ICON_PREVIEW")) {
         QImage sheet(16 + 24 + 32 + 48 + 64 + 128 + 256 + 8 * 12, 256 + 24, QImage::Format_ARGB32);
         sheet.fill(QColor("#f2f2f2"));
         QPainter p(&sheet);
@@ -135,8 +135,8 @@ int main(int argc, char** argv)
             x += s + 12;
         }
         p.end();
-        sheet.save(qEnvironmentVariable("FREEPEN_ICON_PREVIEW"));
+        sheet.save(qEnvironmentVariable("OURNOTES_ICON_PREVIEW"));
     }
-    std::printf("wrote PNGs, freepen.ico and freepen.icns to %s\n", qPrintable(dir.absolutePath()));
+    std::printf("wrote PNGs, ournotes.ico and ournotes.icns to %s\n", qPrintable(dir.absolutePath()));
     return 0;
 }

@@ -10,7 +10,7 @@
 #include "core/hash.h"
 #include "core/schema.h"
 
-namespace fp {
+namespace on {
 
 namespace {
 
@@ -235,7 +235,14 @@ Library::Library(const fs::path& dataDir) : dataDir_(dataDir)
 {
     fs::create_directories(dataDir_);
     fs::create_directories(storageDir());
-    db_.open(dataDir_ / "freepen.sqlite");
+    // the database of a library from before the rename to OurNotes
+    std::error_code ec;
+    if (!fs::exists(dataDir_ / "ournotes.sqlite", ec) && fs::exists(dataDir_ / "freepen.sqlite", ec))
+        for (const char* suffix : {"", "-wal", "-shm", "-journal"})
+            if (fs::exists(dataDir_ / ("freepen.sqlite" + std::string(suffix)), ec))
+                fs::rename(dataDir_ / ("freepen.sqlite" + std::string(suffix)),
+                           dataDir_ / ("ournotes.sqlite" + std::string(suffix)), ec);
+    db_.open(dataDir_ / "ournotes.sqlite");
     db_.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=OFF;");
     migrate();
 }
@@ -1600,4 +1607,4 @@ void Library::setSyncedMd5(int64_t lib, const std::string& key, const std::strin
             lib, key, md5);
 }
 
-} // namespace fp
+} // namespace on

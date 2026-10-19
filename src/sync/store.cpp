@@ -5,7 +5,7 @@
 
 #include "core/hash.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 namespace {
 
@@ -279,7 +279,7 @@ void Store::initSchema()
 {
     int v = db_.userVersion();
     if (v > kSchemaVersion)
-        throw SyncError(pathString(root_) + " was created by a newer version of freePen");
+        throw SyncError(pathString(root_) + " was created by a newer version of OurNotes");
     db_.exec(kSchema);
     if (v < kSchemaVersion)
         db_.setUserVersion(kSchemaVersion);
@@ -402,7 +402,7 @@ bool Store::checkPassword(const std::string& username, const std::string& passwo
     }
     if (!salt) {
         // Same amount of work as for a real user, so timing does not reveal user names.
-        hashPassword(password, "freepend-no-such-user", kPasswordIterations);
+        hashPassword(password, "ournotesd-no-such-user", kPasswordIterations);
         return false;
     }
     return constantTimeEquals(hashPassword(password, *salt, iterations), *hash);
@@ -837,4 +837,4 @@ bool Store::deleteFile(const std::string& uid, const std::string& key)
     return existed;
 }
 
-} // namespace fp::sync
+} // namespace on::sync

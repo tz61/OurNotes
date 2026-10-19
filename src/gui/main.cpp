@@ -1,4 +1,4 @@
-// freePen desktop application.
+// OurNotes desktop application.
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -10,15 +10,15 @@
 #include "core/config.h"
 #include "core/library.h"
 #include "core/zotero_importer.h"
-#include "freepen/version.h"
+#include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/main_window.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 
-using namespace fp;
-using namespace fp::gui;
+using namespace on;
+using namespace on::gui;
 
 // The --config option has to be known before the QApplication exists (for the scale).
 static fs::path configPathFromArgs(int argc, char** argv)
@@ -33,8 +33,21 @@ static fs::path configPathFromArgs(int argc, char** argv)
     return {};
 }
 
+// Whether DIR-like options choose the configuration or data instead of the defaults.
+static bool usesDefaultLocations(int argc, char** argv)
+{
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (startsWith(a, "--config") || startsWith(a, "--data-dir"))
+            return false;
+    }
+    return true;
+}
+
 int main(int argc, char** argv)
 {
+    if (usesDefaultLocations(argc, argv))
+        migrateFromFreePen();  // the first start after the rename from freePen
     std::unique_ptr<Config> config;
     try {
         config = std::make_unique<Config>(configPathFromArgs(argc, argv));
@@ -44,15 +57,15 @@ int main(int argc, char** argv)
     applyInterfaceScale(*config);
 
     QApplication app(argc, argv);
-    QApplication::setApplicationName("freePen");
-    QApplication::setOrganizationName("freePen");
-    QApplication::setApplicationVersion(FREEPEN_VERSION);
-    QApplication::setDesktopFileName("freepen");
-    QApplication::setWindowIcon(QIcon(":/freepen.svg"));
+    QApplication::setApplicationName("OurNotes");
+    QApplication::setOrganizationName("OurNotes");
+    QApplication::setApplicationVersion(OURNOTES_VERSION);
+    QApplication::setDesktopFileName("ournotes");
+    QApplication::setWindowIcon(QIcon(":/ournotes.svg"));
     applyAppearance(appearanceFromConfig(*config));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("freePen reference manager");
+    parser.setApplicationDescription("OurNotes reference manager");
     parser.addHelpOption();
     parser.addVersionOption();
     QCommandLineOption dataDirOpt("data-dir", "Use DIR as the data directory.", "DIR");
@@ -85,7 +98,7 @@ int main(int argc, char** argv)
         auto dataDir = parser.isSet(dataDirOpt) ? fspath(parser.value(dataDirOpt)) : config->dataDir();
         library = std::make_unique<Library>(dataDir);
     } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "freePen", QObject::tr("Could not open the library:\n\n%1").arg(qs(e.what())));
+        QMessageBox::critical(nullptr, "OurNotes", QObject::tr("Could not open the library:\n\n%1").arg(qs(e.what())));
         return 1;
     }
     bool firstRun = library->libraries().empty();
@@ -126,8 +139,8 @@ int main(int argc, char** argv)
         });
     if (parser.isSet(screenshotOpt)) {
         // FILE gets the main window; other open windows go to FILE-1.png, FILE-2.png, ...
-        int delay = qEnvironmentVariableIsSet("FREEPEN_SCREENSHOT_DELAY")
-                        ? qEnvironmentVariableIntValue("FREEPEN_SCREENSHOT_DELAY")
+        int delay = qEnvironmentVariableIsSet("OURNOTES_SCREENSHOT_DELAY")
+                        ? qEnvironmentVariableIntValue("OURNOTES_SCREENSHOT_DELAY")
                         : 2500;
         QTimer::singleShot(delay, &window, [&] {
             auto file = parser.value(screenshotOpt);

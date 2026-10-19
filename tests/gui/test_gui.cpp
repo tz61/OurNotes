@@ -49,8 +49,8 @@
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
 
-using namespace fp;
-using namespace fp::gui;
+using namespace on;
+using namespace on::gui;
 
 namespace {
 
@@ -198,7 +198,7 @@ TEST_CASE("pdf view: area annotations resize from any edge or corner")
     CHECK(r[2] - before[2] == doctest::Approx(20).epsilon(0.05));
     CHECK(r[3] - before[3] == doctest::Approx(-10).epsilon(0.05));
 
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
         view.selectAnnotation(qs(jstr(changed.back(), "key")), false);
         view.viewport()->grab().save(dir + "/area-handles.png");
     }
@@ -308,7 +308,7 @@ TEST_CASE("reader: PDF pages follow dark mode")
         CHECK(c.red() > c.blue() + 30);
         CHECK(inkIsLight());
     }
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         tab.grab().save(dir + "/reader-dark.png");
 
     // the toolbar button shows the PDF's own colours, and is remembered
@@ -692,8 +692,8 @@ TEST_CASE("interface scale: defaults to 150% and is editable in preferences")
     combo->setCurrentIndex(combo->findData(125));
     CHECK(env.config.get("/ui/scale").get<int>() == 125);
     CHECK(interfaceScale(env.config) == 125);
-    if (qEnvironmentVariableIsSet("FREEPEN_TEST_SNAPSHOT_DIR"))
-        dlg.grab().save(qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR") + "/preferences.png");
+    if (qEnvironmentVariableIsSet("OURNOTES_TEST_SNAPSHOT_DIR"))
+        dlg.grab().save(qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR") + "/preferences.png");
 }
 
 TEST_CASE("retrieve metadata window: progress, results and parent items")
@@ -727,7 +727,7 @@ TEST_CASE("retrieve metadata window: progress, results and parent items")
     dlg.start();
     REQUIRE(QTest::qWaitFor([&] { return dlg.foundCount() + dlg.notFoundCount() == 2; }, 5000));
     QTest::qWait(500);  // let the bar animation settle
-    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    auto snapshots = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR");
     if (!snapshots.isEmpty())
         dlg.grab().save(snapshots + "/metadata-progress.png");
     CHECK(!dlg.isFinished());
@@ -832,7 +832,7 @@ TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")
     QApplication::processEvents();
     CHECK(edit.horizontalScrollBar()->maximum() == 0);
     CHECK(edit.document()->documentLayout()->documentSize().width() <= edit.viewport()->width() + 1);
-    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    auto snapshots = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR");
     if (!snapshots.isEmpty())
         edit.grab().save(snapshots + "/note-image-fit.png");
 }
@@ -864,7 +864,7 @@ TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
     pane.showItems(env.lib, {qs(jstr(bare, "key"))});
     CHECK(tabs->currentIndex() == 0);  // nothing to show: Info
     CHECK(tabs->tabText(1) == "Notes");
-    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    auto snapshots = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR");
     pane.showItems(env.lib, {qs(key)});
     QApplication::processEvents();
     if (!snapshots.isEmpty())
@@ -885,7 +885,7 @@ void answerConfirmation(const QString& name, bool confirm, QString* text)
             if (!box || !box->isVisible() || box->objectName() != name)
                 continue;
             *text = box->text();
-            if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+            if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
                 box->grab().save(dir + "/" + name + ".png");
             for (auto* b : box->buttons())
                 if ((box->buttonRole(b) == QMessageBox::DestructiveRole) == confirm) {
@@ -959,7 +959,7 @@ TEST_CASE("item pane: tags are shown as visible chips")
         CHECK(remove->isVisible());
         CHECK(chip->rect().contains(remove->geometry()));
     }
-    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    auto snapshots = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR");
     if (!snapshots.isEmpty())
         tags->grab().save(snapshots + "/tags.png");
 
@@ -1187,7 +1187,7 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     CHECK(brightest([](QColor c) { return c.red() > 180 && c.green() < 90; }) > 3);
     env.config.set("/notes/formulaColor", "");
 
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         edit.grab().save(dir + "/note-dark.png");
 
     // back to light: the original black is shown again
@@ -1207,7 +1207,7 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     CHECK(isDarkTheme());
     // also windows that were never shown (Qt only updates those with a native window)
     CHECK(dlg.palette().color(QPalette::Window) == QApplication::palette().color(QPalette::Window));
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         dlg.grab().save(dir + "/preferences-dark.png");
     combo->setCurrentIndex(combo->findData("system"));
     CHECK(appearanceFromConfig(env.config) == Appearance::System);
@@ -1235,7 +1235,7 @@ TEST_CASE("notes: the toolbar wraps instead of hiding buttons")
     CHECK(buttons >= 12);  // style, B I U S, lists, quote, link, formula, colour
     CHECK(rows.size() >= 2);
     CHECK(editor.findChild<QToolBar*>() == nullptr);
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         editor.grab().save(dir + "/note-toolbar-wrapped.png");
 }
 
@@ -1304,7 +1304,7 @@ TEST_CASE("main window: many tabs wrap onto more rows")
         CHECK(b->geometry().right() < strip->width());
     }
     CHECK(rows.size() >= 2);  // wrapped, not squeezed into one row
-    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         window.grab().save(dir + "/tabs-wrapped.png");
 
     // clicking a tab shows it; middle-clicking closes it; the library tab cannot be closed

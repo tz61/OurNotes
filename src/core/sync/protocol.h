@@ -9,9 +9,9 @@
 #include "core/json.h"
 #include "core/util.h"
 
-// Wire types of the freePen sync protocol (v1), shared by the client, the local
-// folder backend and the freepend daemon. See docs/sync-protocol.md.
-namespace fp::sync {
+// Wire types of the OurNotes sync protocol (v1), shared by the client, the local
+// folder backend and the ournotesd daemon. See docs/sync-protocol.md.
+namespace on::sync {
 
 constexpr int kApiVersion = 1;
 
@@ -22,9 +22,9 @@ inline constexpr const char* kSetting = "setting";
 inline constexpr const char* kSearch = "search";
 bool isObjectType(const std::string& type);
 
-class SyncError : public fp::Error {
+class SyncError : public on::Error {
 public:
-    explicit SyncError(const std::string& msg, int status = 0) : fp::Error(msg), status(status) {}
+    explicit SyncError(const std::string& msg, int status = 0) : on::Error(msg), status(status) {}
     int status;  // HTTP status, 0 for transport/IO errors
 };
 
@@ -101,7 +101,7 @@ FileInfo fileInfoFromJson(const Json& j);
 // Return false to cancel a transfer.
 using ProgressFn = std::function<bool(int64_t done, int64_t total)>;
 
-// A sync backend: a freepend server (HttpTransport) or a folder (LocalTransport).
+// A sync backend: an ournotesd server (HttpTransport) or a folder (LocalTransport).
 class Transport {
 public:
     virtual ~Transport() = default;
@@ -120,4 +120,4 @@ public:
                             const FileInfo& meta, const ProgressFn& progress = {}) = 0;
 };
 
-} // namespace fp::sync
+} // namespace on::sync

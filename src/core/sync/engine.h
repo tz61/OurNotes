@@ -7,7 +7,7 @@
 #include "core/library.h"
 #include "core/sync/protocol.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 struct SyncOptions {
     bool syncFiles = true;
@@ -60,4 +60,4 @@ private:
     SyncOptions options_;
 };
 
-} // namespace fp::sync
+} // namespace on::sync

@@ -10,7 +10,7 @@
 
 #include "core/util.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // Renders pages on a background thread with its own MuPDF document.
 // The request queue is replaced wholesale, so scrolling quickly never renders
@@ -47,4 +47,4 @@ private:
     bool stop_ = false;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

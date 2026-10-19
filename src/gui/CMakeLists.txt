@@ -1,7 +1,7 @@
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Svg)
 include(MicroTeX)
 
-set(FREEPEN_GUI_SOURCES
+set(OURNOTES_GUI_SOURCES
     app_context.cpp
     collection_tree.cpp
     fancy_progress.cpp
@@ -33,43 +33,43 @@ set(FREEPEN_GUI_SOURCES
 )
 
 # Everything but main() is a library so tests can drive the widgets.
-add_library(freepen_gui STATIC ${FREEPEN_GUI_SOURCES})
-set_target_properties(freepen_gui PROPERTIES AUTOMOC ON AUTORCC ON)
-target_link_libraries(freepen_gui PUBLIC freepen_core freepen_sync freepen_pdf freepen_formats Qt6::Widgets Qt6::Svg
-    PRIVATE fp_microtex)
-target_compile_definitions(freepen_gui PRIVATE FREEPEN_MICROTEX_BUILD_RES="${FREEPEN_MICROTEX_RES}")
+add_library(ournotes_gui STATIC ${OURNOTES_GUI_SOURCES})
+set_target_properties(ournotes_gui PROPERTIES AUTOMOC ON AUTORCC ON)
+target_link_libraries(ournotes_gui PUBLIC ournotes_core ournotes_sync ournotes_pdf ournotes_formats Qt6::Widgets Qt6::Svg
+    PRIVATE on_microtex)
+target_compile_definitions(ournotes_gui PRIVATE OURNOTES_MICROTEX_BUILD_RES="${OURNOTES_MICROTEX_RES}")
 
-set(FREEPEN_ICON_DIR "${PROJECT_SOURCE_DIR}/resources/icons")
-set(FREEPEN_PLATFORM_SOURCES)
+set(OURNOTES_ICON_DIR "${PROJECT_SOURCE_DIR}/resources/icons")
+set(OURNOTES_PLATFORM_SOURCES)
 if(WIN32)
-    list(APPEND FREEPEN_PLATFORM_SOURCES freepen.rc)
+    list(APPEND OURNOTES_PLATFORM_SOURCES ournotes.rc)
 elseif(APPLE)
-    set(FREEPEN_PLATFORM_SOURCES "${FREEPEN_ICON_DIR}/freepen.icns")
-    set_source_files_properties("${FREEPEN_ICON_DIR}/freepen.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set(OURNOTES_PLATFORM_SOURCES "${OURNOTES_ICON_DIR}/ournotes.icns")
+    set_source_files_properties("${OURNOTES_ICON_DIR}/ournotes.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 endif()
 
-qt_add_executable(freepen WIN32 MACOSX_BUNDLE main.cpp resources.qrc ${FREEPEN_PLATFORM_SOURCES})
-set_target_properties(freepen PROPERTIES
+qt_add_executable(ournotes WIN32 MACOSX_BUNDLE main.cpp resources.qrc ${OURNOTES_PLATFORM_SOURCES})
+set_target_properties(ournotes PROPERTIES
     AUTORCC ON
-    MACOSX_BUNDLE_BUNDLE_NAME freePen
-    MACOSX_BUNDLE_GUI_IDENTIFIER org.freepen.freePen
-    MACOSX_BUNDLE_ICON_FILE freepen.icns
+    MACOSX_BUNDLE_BUNDLE_NAME OurNotes
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.ournotes.OurNotes
+    MACOSX_BUNDLE_ICON_FILE ournotes.icns
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
-target_link_libraries(freepen PRIVATE freepen_gui)
+target_link_libraries(ournotes PRIVATE ournotes_gui)
 
-install(TARGETS freepen RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION .)
+install(TARGETS ournotes RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION .)
 if(UNIX AND NOT APPLE)
-    install(FILES "${PROJECT_SOURCE_DIR}/packaging/freepen.desktop" DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-    install(FILES "${FREEPEN_ICON_DIR}/freepen.svg" DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
-    install(DIRECTORY "${FREEPEN_ICON_DIR}/hicolor/" DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor)
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/ournotes.desktop" DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES "${OURNOTES_ICON_DIR}/ournotes.svg" DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+    install(DIRECTORY "${OURNOTES_ICON_DIR}/hicolor/" DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor)
 endif()
 
 # Self-contained installs (the per-user install script, app bundles): copy the Qt
 # libraries and plugins next to the application.
-option(FREEPEN_DEPLOY_QT "Copy the Qt runtime into the install prefix" OFF)
-if(FREEPEN_DEPLOY_QT)
-    qt_generate_deploy_app_script(TARGET freepen OUTPUT_SCRIPT freepen_deploy_script
+option(OURNOTES_DEPLOY_QT "Copy the Qt runtime into the install prefix" OFF)
+if(OURNOTES_DEPLOY_QT)
+    qt_generate_deploy_app_script(TARGET ournotes OUTPUT_SCRIPT ournotes_deploy_script
         NO_UNSUPPORTED_PLATFORM_ERROR NO_TRANSLATIONS)
-    install(SCRIPT "${freepen_deploy_script}")
+    install(SCRIPT "${ournotes_deploy_script}")
 endif()

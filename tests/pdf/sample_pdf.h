@@ -7,9 +7,9 @@
 
 // A one-page PDF (US letter) with two lines of Helvetica text. Offsets in the
 // xref table are not exact; MuPDF repairs them, which is fine for tests.
-inline void writeSamplePdf(const fp::fs::path& path, int rotate = 0)
+inline void writeSamplePdf(const on::fs::path& path, int rotate = 0)
 {
-    std::string content = "BT /F1 24 Tf 72 700 Td (Hello World from freePen) Tj ET\n"
+    std::string content = "BT /F1 24 Tf 72 700 Td (Hello World from OurNotes) Tj ET\n"
                           "BT /F1 24 Tf 72 660 Td (second line of text) Tj ET\n";
     std::string pdf = "%PDF-1.4\n"
                       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
@@ -28,7 +28,7 @@ inline void writeSamplePdf(const fp::fs::path& path, int rotate = 0)
 // A one-page PDF with a line of text and a red 2x2 image drawn as a 100x100 pt
 // square with its lower-left corner at (72, 500). With `clipped`, only the left half
 // of the image is visible.
-inline void writeImagePdf(const fp::fs::path& path, bool clipped = false)
+inline void writeImagePdf(const on::fs::path& path, bool clipped = false)
 {
     std::string content = "BT /F1 24 Tf 72 700 Td (Text above a picture) Tj ET\n";
     content += clipped ? "q 72 500 50 100 re W n q 100 0 0 100 72 500 cm /Im1 Do Q Q\n" : "q 100 0 0 100 72 500 cm /Im1 Do Q\n";

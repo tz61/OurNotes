@@ -11,14 +11,14 @@ class Server;
 struct Response;
 }
 
-namespace fp::sync {
+namespace on::sync {
 
 struct ServerOptions {
     int64_t maxUploadBytes = 1LL << 30;
-    std::string serverName = "freepend";
+    std::string serverName = "ournotesd";
 };
 
-// The freepend HTTP API under /api/v1 (see docs/sync-protocol.md).
+// The ournotesd HTTP API under /api/v1 (see docs/sync-protocol.md).
 //
 // mount() registers the routes plus a JSON error handler, a pre-routing
 // request-size guard and the server's payload limit. The Store must outlive the
@@ -38,4 +38,4 @@ private:
     std::shared_ptr<State> state_;
 };
 
-} // namespace fp::sync
+} // namespace on::sync

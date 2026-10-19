@@ -7,7 +7,7 @@
 #include "core/json.h"
 #include "core/util.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 struct PdfMetadataMatch {
     Json item;           // Zotero-form item data (may carry "_notes")
@@ -26,4 +26,4 @@ std::optional<PdfMetadataMatch> retrieveMetadataForPdf(const fs::path& path,
 // The title guess used above (exposed for tests).
 std::string guessPdfTitle(const fs::path& path);
 
-} // namespace fp::formats
+} // namespace on::formats

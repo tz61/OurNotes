@@ -4,7 +4,7 @@
 #include <QVariantAnimation>
 #include <QWidget>
 
-namespace fp::gui {
+namespace on::gui {
 
 // Rounded progress bar with a gradient fill that eases to new values, animated
 // stripes while running, a glossy highlight and a glow at the leading edge.
@@ -41,4 +41,4 @@ private:
     QTimer tick_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

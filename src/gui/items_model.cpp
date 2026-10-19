@@ -17,7 +17,7 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 ItemsModel::ItemsModel(QObject* parent) : QAbstractItemModel(parent) {}
 
@@ -502,4 +502,4 @@ bool ItemsModel::dropMimeData(const QMimeData* data, Qt::DropAction, int, int, c
     return true;
 }
 
-} // namespace fp::gui
+} // namespace on::gui

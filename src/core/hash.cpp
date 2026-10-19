@@ -13,7 +13,7 @@
 #pragma comment(lib, "bcrypt.lib")
 #endif
 
-namespace fp {
+namespace on {
 
 static inline uint32_t rotl(uint32_t x, int c) { return (x << c) | (x >> (32 - c)); }
 static inline uint32_t rotr(uint32_t x, int c) { return (x >> c) | (x << (32 - c)); }
@@ -332,4 +332,4 @@ bool constantTimeEquals(std::string_view a, std::string_view b)
     return diff == 0;
 }
 
-} // namespace fp
+} // namespace on

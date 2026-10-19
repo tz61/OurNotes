@@ -1,6 +1,6 @@
-add_executable(freepen-cli
+add_executable(ournotes-cli
     main.cpp
     extra_commands.cpp
 )
-target_link_libraries(freepen-cli PRIVATE freepen_core freepen_sync freepen_pdf freepen_formats)
-install(TARGETS freepen-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+target_link_libraries(ournotes-cli PRIVATE ournotes_core ournotes_sync ournotes_pdf ournotes_formats)
+install(TARGETS ournotes-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

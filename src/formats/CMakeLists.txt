@@ -1,4 +1,4 @@
-add_library(freepen_formats STATIC
+add_library(ournotes_formats STATIC
     bibtex.cpp
     citation.cpp
     common.cpp
@@ -8,4 +8,4 @@ add_library(freepen_formats STATIC
     pdf_metadata.cpp
     ris.cpp
 )
-target_link_libraries(freepen_formats PUBLIC freepen_core freepen_pdf PRIVATE fp_httplib)
+target_link_libraries(ournotes_formats PUBLIC ournotes_core ournotes_pdf PRIVATE on_httplib)

@@ -6,7 +6,7 @@
 #include "core/util.h"
 #include "formats/common.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 namespace {
 
@@ -258,4 +258,4 @@ std::vector<Json> importCslJson(const std::string& text)
     return out;
 }
 
-} // namespace fp::formats
+} // namespace on::formats

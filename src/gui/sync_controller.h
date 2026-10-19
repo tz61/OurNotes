@@ -7,7 +7,7 @@
 #include <memory>
 #include <thread>
 
-namespace fp::gui {
+namespace on::gui {
 
 // Runs synchronisation with the active sync target on a background thread
 // (with its own database connection) and schedules automatic syncs.
@@ -44,4 +44,4 @@ private:
     bool pendingAfterRun_ = false;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

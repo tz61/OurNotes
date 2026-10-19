@@ -15,9 +15,9 @@
 #include "sync/store.h"
 #include "sync_test_util.h"
 
-using namespace fp;
-using namespace fp::sync;
-using namespace fp::test;
+using namespace on;
+using namespace on::sync;
+using namespace on::test;
 
 namespace {
 
@@ -56,7 +56,7 @@ SyncReport run(Library& lib, Transport& t, const std::string& target)
 
 } // namespace
 
-TEST_CASE("e2e: two clients through freepend over HTTP")
+TEST_CASE("e2e: two clients through ournotesd over HTTP")
 {
     Server srv;
     srv.store.createUser("alice", "secret");
@@ -119,11 +119,11 @@ TEST_CASE("e2e: sync through a local folder")
     auto la = a.defaultLibrary();
     auto key = jstr(a.createItem(la, Json{{"itemType", "book"}, {"title", "Folder sync"}}), "key");
     {
-        LocalTransport t(tmp / "usb-drive" / "freepen");
+        LocalTransport t(tmp / "usb-drive" / "ournotes");
         CHECK(run(a, t, "usb").errors.empty());
     }
     {
-        LocalTransport t(tmp / "usb-drive" / "freepen");
+        LocalTransport t(tmp / "usb-drive" / "ournotes");
         CHECK(run(b, t, "usb").errors.empty());
     }
     auto lb = b.libraries()[0].id;

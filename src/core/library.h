@@ -13,7 +13,7 @@
 #include "core/sqlite.h"
 #include "core/util.h"
 
-namespace fp {
+namespace on {
 
 class FulltextIndex;
 
@@ -101,7 +101,7 @@ struct Conflict {
     std::string created;
 };
 
-// The local library database: <dataDir>/freepen.sqlite plus attachment files in
+// The local library database: <dataDir>/ournotes.sqlite plus attachment files in
 // <dataDir>/storage/<KEY>/. Item data uses the Zotero Web API JSON shape.
 //
 // An instance must only be used from one thread; other threads (sync, indexing)
@@ -271,4 +271,4 @@ private:
 // Whether an item key reference in `relations` (bare key or Zotero URI) points at `key`.
 std::string relationTargetKey(const std::string& value);
 
-} // namespace fp
+} // namespace on

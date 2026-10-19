@@ -31,11 +31,11 @@
 #include "gui/ui_scale.h"
 #include "sync/http_transport.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 PreferencesDialog::PreferencesDialog(SyncController* sync, QWidget* parent) : QDialog(parent), sync_(sync)
 {
-    setWindowTitle(tr("freePen Preferences"));
+    setWindowTitle(tr("OurNotes Preferences"));
     resize(620, 520);
     auto* v = new QVBoxLayout(this);
     tabs_ = new QTabWidget(this);
@@ -76,7 +76,7 @@ QWidget* PreferencesDialog::generalPage()
         AppContext::get().config().save();
         dataDir->setText(dir);
         QMessageBox::information(this, tr("Data Directory"),
-                                 tr("freePen will use the new data directory after a restart. Existing data is not "
+                                 tr("OurNotes will use the new data directory after a restart. Existing data is not "
                                     "moved; copy the folder yourself if you want to keep it."));
     });
     // interface scale (applied at startup, so changes need a restart)
@@ -103,7 +103,7 @@ QWidget* PreferencesDialog::generalPage()
     }
     connect(scale_, &QComboBox::currentIndexChanged, this, [this, restart, current] {
         bool changed = scale_->currentData().toInt() != current;
-        scaleHint_->setText(changed ? tr("Takes effect after restarting freePen.") : QString());
+        scaleHint_->setText(changed ? tr("Takes effect after restarting OurNotes.") : QString());
         restart->setVisible(changed);
         AppContext::get().config().set("/ui/scale", scale_->currentData().toInt());
     });
@@ -140,7 +140,7 @@ QWidget* PreferencesDialog::generalPage()
     form->addRow(tr("Formula colour:"), formulaColorRow(page));
 
     openPdf_ = new QComboBox(page);
-    openPdf_->addItem(tr("in freePen"), "tab");
+    openPdf_->addItem(tr("in OurNotes"), "tab");
     openPdf_->addItem(tr("with the system PDF viewer"), "external");
     openPdf_->setCurrentIndex(openPdf_->findData(qs(cfg.get("/ui/openPdfIn", "tab").get<std::string>())));
     form->addRow(tr("Open PDFs:"), openPdf_);
@@ -216,7 +216,7 @@ QWidget* PreferencesDialog::syncPage()
     auto& cfg = AppContext::get().config();
     auto* page = new QWidget;
     auto* v = new QVBoxLayout(page);
-    auto* intro = new QLabel(tr("Sync your libraries with a <b>freepend</b> server (run it on any machine you "
+    auto* intro = new QLabel(tr("Sync your libraries with a <b>ournotesd</b> server (run it on any machine you "
                                 "control) or with a <b>folder</b> such as a USB drive or a network share. "
                                 "The active target is used by the Sync button."),
                              page);
@@ -353,7 +353,7 @@ void PreferencesDialog::reloadTargets()
 void PreferencesDialog::addServer()
 {
     QDialog dlg(this);
-    dlg.setWindowTitle(tr("Add freepend Server"));
+    dlg.setWindowTitle(tr("Add ournotesd Server"));
     auto* form = new QFormLayout(&dlg);
     auto* name = new QLineEdit(&dlg);
     auto* url = new QLineEdit(&dlg);
@@ -363,7 +363,7 @@ void PreferencesDialog::addServer()
     pass->setEchoMode(QLineEdit::Password);
     auto* verify = new QCheckBox(tr("Verify TLS certificate"), &dlg);
     verify->setChecked(true);
-    auto* help = new QLabel(tr("Create an account on the server with <code>freepend useradd NAME</code>. "
+    auto* help = new QLabel(tr("Create an account on the server with <code>ournotesd useradd NAME</code>. "
                                "Only a sign-in token is stored, not the password."),
                             &dlg);
     help->setWordWrap(true);
@@ -385,7 +385,7 @@ void PreferencesDialog::addServer()
             QApplication::setOverrideCursor(Qt::WaitCursor);
             auto device = QSysInfo::machineHostName();
             auto token = sync::HttpTransport::login(ss(u), ss(user->text().trimmed()), ss(pass->text()),
-                                                    ss("freePen on " + device), verify->isChecked());
+                                                    ss("OurNotes on " + device), verify->isChecked());
             QApplication::restoreOverrideCursor();
             SyncTarget t;
             t.id = randomToken(4);
@@ -445,4 +445,4 @@ void PreferencesDialog::save()
     sync_->reloadSettings();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

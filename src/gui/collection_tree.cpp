@@ -19,9 +19,9 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 
-namespace fp::gui {
+namespace on::gui {
 
-static const char* kCollectionMime = "application/x-freepen-collection";
+static const char* kCollectionMime = "application/x-ournotes-collection";
 
 CollectionTree::CollectionTree(QWidget* parent) : QTreeWidget(parent)
 {
@@ -372,4 +372,4 @@ void CollectionTree::dropEvent(QDropEvent* e)
     e->acceptProposedAction();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

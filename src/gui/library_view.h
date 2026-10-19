@@ -11,7 +11,7 @@ class QLineEdit;
 class QSplitter;
 class QTreeView;
 
-namespace fp::gui {
+namespace on::gui {
 
 class CollectionTree;
 class ItemPane;
@@ -85,4 +85,4 @@ private:
     QString pendingSelect_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

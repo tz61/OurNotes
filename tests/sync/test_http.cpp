@@ -5,14 +5,14 @@
 
 #include <httplib.h>
 
-#include "freepen/version.h"
+#include "ournotes/version.h"
 #include "sync/http_transport.h"
 #include "sync/server_api.h"
 #include "sync_test_util.h"
 
-using namespace fp;
-using namespace fp::sync;
-using namespace fp::test;
+using namespace on;
+using namespace on::sync;
+using namespace on::test;
 
 namespace {
 
@@ -51,7 +51,7 @@ std::unique_ptr<httplib::Server> makeServer(bool tls)
     return std::make_unique<httplib::Server>();
 }
 
-// An in-process freepend on 127.0.0.1 with a random port.
+// An in-process ournotesd on 127.0.0.1 with a random port.
 struct TestServer {
     TempDir dir;
     Store store;
@@ -95,9 +95,9 @@ TEST_CASE("http: full round trip")
     // Unauthenticated access.
     HttpTransport anon(srv.url, "");
     auto info = anon.info();
-    CHECK(info["server"] == "freepend");
+    CHECK(info["server"] == "ournotesd");
     CHECK(info["api"] == kApiVersion);
-    CHECK(info["version"] == FREEPEN_VERSION);
+    CHECK(info["version"] == OURNOTES_VERSION);
     CHECK(statusOf([&] { anon.libraries(); }) == 401);
     CHECK(statusOf([&] { HttpTransport(srv.url, "bogus-token").libraries(); }) == 401);
     CHECK(statusOf([&] { HttpTransport::login(srv.url, "alice", "wrong", "test"); }) == 401);
@@ -258,7 +258,7 @@ TEST_CASE("http: raw API behaviour, limits and login throttling")
     CHECK(HttpTransport(srv.url + "/api/v1/", "").info()["api"] == kApiVersion);
     CHECK(statusOf([&] { HttpTransport("ftp://127.0.0.1", ""); }) == 400);
     CHECK(statusOf([&] { HttpTransport("127.0.0.1:8642", ""); }) == 400);
-    CHECK(statusOf([&] { HttpTransport("http://127.0.0.1:1/freepen", "").info(); }) == 0);  // nothing listens
+    CHECK(statusOf([&] { HttpTransport("http://127.0.0.1:1/ournotes", "").info(); }) == 0);  // nothing listens
 
     httplib::Headers auth{{"Authorization", "Bearer " + token}};
     res = cli.Get("/api/v1/libraries/LIB1/changes?since=abc", auth);
@@ -318,7 +318,7 @@ TEST_CASE("http: TLS")
 
     // The self-signed certificate is rejected unless verification is turned off.
     CHECK(statusOf([&] { HttpTransport(srv.url, "").info(); }) == 0);
-    CHECK(HttpTransport(srv.url, "", false).info()["server"] == "freepend");
+    CHECK(HttpTransport(srv.url, "", false).info()["server"] == "ournotesd");
 
     auto token = HttpTransport::login(srv.url, "alice", "pw", "tls test", false);
     HttpTransport alice(srv.url, token, false);

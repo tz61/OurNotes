@@ -6,9 +6,9 @@
 #include "sync/store.h"
 #include "sync_test_util.h"
 
-using namespace fp;
-using namespace fp::sync;
-using namespace fp::test;
+using namespace on;
+using namespace on::sync;
+using namespace on::test;
 
 TEST_CASE("store: users, passwords and tokens")
 {

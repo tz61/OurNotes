@@ -5,7 +5,7 @@
 
 #include "core/schema.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 namespace {
 
@@ -414,4 +414,4 @@ bool SyncEngine::downloadAttachment(int64_t libraryId, const std::string& key)
     return true;
 }
 
-} // namespace fp::sync
+} // namespace on::sync

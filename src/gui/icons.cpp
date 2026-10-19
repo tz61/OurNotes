@@ -9,7 +9,7 @@
 #include <QPalette>
 #include <QSvgRenderer>
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -114,7 +114,7 @@ public:
 
     QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
     {
-        QString cacheKey = QString("fp-icon-%1-%2x%3-%4-%5")
+        QString cacheKey = QString("on-icon-%1-%2x%3-%4-%5")
                                .arg(id_)
                                .arg(size.width())
                                .arg(size.height())
@@ -140,7 +140,7 @@ public:
     }
 
     QIconEngine* clone() const override { return new SvgIconEngine(body_); }
-    QString key() const override { return QStringLiteral("freepen-svg"); }
+    QString key() const override { return QStringLiteral("ournotes-svg"); }
 
 private:
     QByteArray svg() const
@@ -239,4 +239,4 @@ QIcon colorIcon(const QString& color, int size, bool round)
     return QIcon(pm);
 }
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -9,7 +9,7 @@
 #include "core/util.h"
 
 // Helpers shared by the importers, exporters and citation styles.
-namespace fp::formats {
+namespace on::formats {
 
 struct DateParts {
     int year = 0;
@@ -64,6 +64,6 @@ bool isArxivId(std::string_view id);  // 2301.12345[v2] or hep-th/9901001[v1]
 // UTF-8 helpers
 size_t utf8Len(unsigned char lead);
 std::string firstChar(std::string_view s);  // first UTF-8 code point
-using fp::appendUtf8;
+using on::appendUtf8;
 
-} // namespace fp::formats
+} // namespace on::formats

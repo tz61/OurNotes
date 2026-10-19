@@ -7,8 +7,8 @@
 #include "formats/formats.h"
 #include "formats/ris.h"
 
-using namespace fp;
-using namespace fp::formats;
+using namespace on;
+using namespace on::formats;
 
 TEST_CASE("RIS round trip")
 {
@@ -238,7 +238,7 @@ TEST_CASE("CSL JSON round trip and import")
     CHECK(c["creators"][2]["creatorType"] == "editor");
     CHECK_FALSE(c.contains("unknown-var"));
 
-    CHECK_THROWS_AS(importCslJson("not json"), fp::Error);
+    CHECK_THROWS_AS(importCslJson("not json"), on::Error);
     CHECK(importCslJson("[]").empty());
 }
 

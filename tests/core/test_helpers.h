@@ -5,14 +5,14 @@
 
 // A temporary directory removed when the object goes out of scope.
 struct TempDir {
-    fp::fs::path path;
-    TempDir() : path(fp::fs::temp_directory_path() / ("freepen-test-" + fp::randomToken(6)))
+    on::fs::path path;
+    TempDir() : path(on::fs::temp_directory_path() / ("ournotes-test-" + on::randomToken(6)))
     {
-        fp::fs::create_directories(path);
+        on::fs::create_directories(path);
     }
     ~TempDir()
     {
         std::error_code ec;
-        fp::fs::remove_all(path, ec);
+        on::fs::remove_all(path, ec);
     }
 };

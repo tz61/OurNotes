@@ -14,7 +14,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -178,4 +178,4 @@ QColor formulaColor(const QColor& textColor)
     return textColor;
 }
 
-} // namespace fp::gui
+} // namespace on::gui

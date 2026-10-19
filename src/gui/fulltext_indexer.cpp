@@ -9,7 +9,7 @@
 #include "gui/app_context.h"
 #include "pdf/document.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 FulltextIndexer::FulltextIndexer(QObject* parent) : QObject(parent)
 {
@@ -119,4 +119,4 @@ void FulltextIndexer::run(bool clear)
     });
 }
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=freePen
+Name=OurNotes
 GenericName=Reference Manager
 Comment=Collect, read, annotate and cite research papers
-Exec=freepen %F
-Icon=freepen
+Exec=ournotes %F
+Icon=ournotes
 Terminal=false
 Categories=Office;Database;
 MimeType=application/pdf;application/x-bibtex;application/x-research-info-systems;

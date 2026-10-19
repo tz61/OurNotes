@@ -7,7 +7,7 @@
 #include "core/schema.h"
 #include "core/util.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 namespace {
 
@@ -474,4 +474,4 @@ std::string firstChar(std::string_view s)
     return std::string(s.substr(0, std::min(s.size(), utf8Len((unsigned char)s[0]))));
 }
 
-} // namespace fp::formats
+} // namespace on::formats

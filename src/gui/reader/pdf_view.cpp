@@ -26,7 +26,7 @@
 #include "gui/reader/render_worker.h"
 #include "gui/theme.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -1653,4 +1653,4 @@ void PdfView::clearFind()
     viewport()->update();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

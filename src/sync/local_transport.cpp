@@ -4,7 +4,7 @@
 
 #include "core/hash.h"
 
-namespace fp::sync {
+namespace on::sync {
 
 namespace {
 
@@ -159,4 +159,4 @@ FileInfo LocalTransport::upload(const std::string& uid, const std::string& key, 
     return info;
 }
 
-} // namespace fp::sync
+} // namespace on::sync

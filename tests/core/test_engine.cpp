@@ -7,12 +7,12 @@
 #include "core/sync/engine.h"
 #include "test_helpers.h"
 
-using namespace fp;
-using namespace fp::sync;
+using namespace on;
+using namespace on::sync;
 
 namespace {
 
-// In-memory server with the same versioning semantics as freepend's Store.
+// In-memory server with the same versioning semantics as ournotesd's Store.
 class FakeTransport : public Transport {
 public:
     struct Lib {

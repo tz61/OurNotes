@@ -39,7 +39,7 @@
 #include "gui/theme.h"
 #include "gui/wrap_toolbar.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 // --- NoteTextEdit -----------------------------------------------------------------------
 
@@ -1125,4 +1125,4 @@ void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId)
     list->installEventFilter(keys);
 }
 
-} // namespace fp::gui
+} // namespace on::gui

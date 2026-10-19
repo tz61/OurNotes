@@ -34,7 +34,7 @@
 #include "gui/reader/annotation_sidebar.h"
 #include "gui/theme.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* parent)
     : QWidget(parent), libraryId_(libraryId), key_(attachmentKey)
@@ -757,4 +757,4 @@ void ReaderTab::exportPdf()
     }
 }
 
-} // namespace fp::gui
+} // namespace on::gui

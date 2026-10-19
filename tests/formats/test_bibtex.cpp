@@ -4,8 +4,8 @@
 #include "fixtures.h"
 #include "formats/bibtex.h"
 
-using namespace fp;
-using namespace fp::formats;
+using namespace on;
+using namespace on::formats;
 
 TEST_CASE("BibTeX round trip keeps type, title, creators, date, DOI and pages")
 {
@@ -82,7 +82,7 @@ TEST_CASE("BibTeX export type mapping")
     auto master = fixtures::thesis();
     master["thesisType"] = "Master's thesis";
     auto web = fixtures::webpage();
-    Json program = Json::parse(R"({"itemType":"computerProgram","title":"freePen","creators":[
+    Json program = Json::parse(R"({"itemType":"computerProgram","title":"OurNotes","creators":[
         {"creatorType":"programmer","firstName":"A","lastName":"Dev"}],"versionNumber":"1.0","date":"2026"})");
     Json report = Json::parse(R"({"itemType":"report","title":"A report","reportNumber":"TR-7",
         "institution":"ACME Labs","date":"2001"})");
@@ -94,7 +94,7 @@ TEST_CASE("BibTeX export type mapping")
     CHECK(bib.find("howpublished = {\\url{https://www.who.int/emergencies/diseases/novel-coronavirus-2019}}") !=
           std::string::npos);
     CHECK(bib.find("urldate = {2026-10-18}") != std::string::npos);
-    CHECK(bib.find("@software{dev2026freepen,") != std::string::npos);
+    CHECK(bib.find("@software{dev2026ournotes,") != std::string::npos);
     CHECK(bib.find("@techreport{") != std::string::npos);
     CHECK(bib.find("institution = {ACME Labs}") != std::string::npos);
     CHECK(bib.find("number = {TR-7}") != std::string::npos);

@@ -9,7 +9,7 @@
 #include "core/util.h"
 #include "formats/common.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 namespace {
 
@@ -1239,4 +1239,4 @@ std::string formatCitation(const std::vector<Json>& items, const std::string& st
     return "(" + join(parts, "; ") + ")";
 }
 
-} // namespace fp::formats
+} // namespace on::formats

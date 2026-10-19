@@ -8,10 +8,10 @@
 
 #include "core/util.h"
 
-extern const unsigned char fp_schema_json[];
-extern const std::size_t fp_schema_json_size;
+extern const unsigned char on_schema_json[];
+extern const std::size_t on_schema_json_size;
 
-namespace fp::schema {
+namespace on::schema {
 
 const std::vector<Color> kAnnotationColors = {
     {"Yellow", "#ffd400"}, {"Red", "#ff6666"},     {"Green", "#5fb236"},  {"Blue", "#2ea8e5"},
@@ -39,7 +39,7 @@ const Schema& get()
     static Schema s;
     static std::once_flag once;
     std::call_once(once, [] {
-        s.raw = Json::parse(fp_schema_json, fp_schema_json + fp_schema_json_size);
+        s.raw = Json::parse(on_schema_json, on_schema_json + on_schema_json_size);
         for (auto& t : s.raw["itemTypes"]) {
             TypeInfo info;
             for (auto& f : t["fields"]) {
@@ -204,4 +204,4 @@ Json convertType(const Json& data, const std::string& newType, Json* dropped)
     return out;
 }
 
-} // namespace fp::schema
+} // namespace on::schema

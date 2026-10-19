@@ -19,7 +19,7 @@
 #include "gui/icons.h"
 #include "gui/item_pane.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -359,4 +359,4 @@ void AnnotationSidebar::applyFilter()
     }
 }
 
-} // namespace fp::gui
+} // namespace on::gui

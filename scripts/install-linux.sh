@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Build freePen and install it for the current user:
-#   - the application (with its own copy of the Qt runtime) in ~/.local/opt/freepen
-#   - freepen, freepen-cli and freepend linked into ~/.local/bin
+# Build OurNotes and install it for the current user:
+#   - the application (with its own copy of the Qt runtime) in ~/.local/opt/ournotes
+#   - ournotes, ournotes-cli and ournotesd linked into ~/.local/bin
 #   - an application-menu entry, icons, and a launcher on the desktop
 #
 # Usage: scripts/install-linux.sh [options]
 #   --qt DIR               Qt 6 prefix (default: newest ~/Qt/6.*/gcc_64, else the system Qt)
-#   --prefix DIR           install location (default: ~/.local/opt/freepen)
+#   --prefix DIR           install location (default: ~/.local/opt/ournotes)
 #   --no-desktop-shortcut  do not put a launcher on the desktop
 #   --no-build             install what was built before (in build-release/)
 #   --uninstall            remove everything a previous run installed
 #
-# Your library (~/freePen) and settings (~/.config/freepen) are never touched.
+# Your library (~/OurNotes) and settings (~/.config/ournotes) are never touched.
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$SRC_DIR/build-release"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-PREFIX="${FREEPEN_PREFIX:-$HOME/.local/opt/freepen}"
-BIN_DIR="${FREEPEN_BIN_DIR:-$HOME/.local/bin}"
+PREFIX="${OURNOTES_PREFIX:-$HOME/.local/opt/ournotes}"
+BIN_DIR="${OURNOTES_BIN_DIR:-$HOME/.local/bin}"
 APPS_DIR="$DATA_HOME/applications"
 ICONS_DIR="$DATA_HOME/icons/hicolor"
-DESKTOP_DIR="${FREEPEN_DESKTOP_DIR:-$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")}"
+DESKTOP_DIR="${OURNOTES_DESKTOP_DIR:-$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")}"
 QT_DIR="${QT_DIR:-}"
 SHORTCUT=1
 BUILD=1
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-MARKER="$PREFIX/.freepen-install"
+MARKER="$PREFIX/.ournotes-install"
 MANIFEST="$PREFIX/install-manifest.txt"
 
 refresh_caches() {
@@ -55,8 +55,8 @@ refresh_caches() {
 }
 
 uninstall() {
-    [ -f "$MARKER" ] || die "no freePen installation found in $PREFIX"
-    info "Removing freePen from $PREFIX"
+    [ -f "$MARKER" ] || die "no OurNotes installation found in $PREFIX"
+    info "Removing OurNotes from $PREFIX"
     if [ -f "$MANIFEST" ]; then
         while IFS= read -r f; do
             [ -n "$f" ] && { [ -e "$f" ] || [ -L "$f" ]; } && rm -f "$f"
@@ -78,7 +78,7 @@ if [ "$BUILD" = 1 ]; then
     if [ -z "$QT_DIR" ]; then
         QT_DIR="$(ls -d "$HOME"/Qt/6.*/gcc_64 2>/dev/null | sort -V | tail -n1 || true)"
     fi
-    args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DFREEPEN_DEPLOY_QT=ON -DFREEPEN_BUILD_TESTS=OFF)
+    args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DOURNOTES_DEPLOY_QT=ON -DOURNOTES_BUILD_TESTS=OFF)
     if [ -n "$QT_DIR" ]; then
         [ -d "$QT_DIR/lib/cmake/Qt6" ] || die "no Qt 6 found in $QT_DIR"
         info "Using Qt from $QT_DIR"
@@ -96,7 +96,7 @@ if [ "$BUILD" = 1 ]; then
     info "Building (this takes a few minutes the first time)"
     cmake --build "$BUILD_DIR" -j"$(nproc 2>/dev/null || echo 4)" -- --no-print-directory >/dev/null
 fi
-[ -x "$BUILD_DIR/src/gui/freepen" ] || die "nothing built in $BUILD_DIR (run without --no-build)"
+[ -x "$BUILD_DIR/src/gui/ournotes" ] || die "nothing built in $BUILD_DIR (run without --no-build)"
 
 # --- install ------------------------------------------------------------------------------
 if [ -f "$MARKER" ]; then
@@ -112,7 +112,7 @@ touch "$MARKER"
 record() { echo "$1" >> "$MANIFEST"; }
 
 mkdir -p "$BIN_DIR" "$APPS_DIR" "$ICONS_DIR"
-for exe in freepen freepen-cli freepend; do
+for exe in ournotes ournotes-cli ournotesd; do
     if [ -x "$PREFIX/bin/$exe" ]; then
         ln -sfn "$PREFIX/bin/$exe" "$BIN_DIR/$exe"
         record "$BIN_DIR/$exe"
@@ -125,18 +125,18 @@ while IFS= read -r icon; do
     mkdir -p "$ICONS_DIR/$(dirname "$rel")"
     cp -f "$icon" "$ICONS_DIR/$rel"
     record "$ICONS_DIR/$rel"
-done < <(find "$PREFIX/share/icons/hicolor" -type f -name 'freepen.*')
+done < <(find "$PREFIX/share/icons/hicolor" -type f -name 'ournotes.*')
 
 # application menu entry, with an absolute Exec so it works without ~/.local/bin in PATH
-entry="$APPS_DIR/freepen.desktop"
-sed -e "s|^Exec=.*|Exec=\"$PREFIX/bin/freepen\" %F|" \
-    -e "/^Exec=/a TryExec=$PREFIX/bin/freepen" \
-    "$PREFIX/share/applications/freepen.desktop" > "$entry"
+entry="$APPS_DIR/ournotes.desktop"
+sed -e "s|^Exec=.*|Exec=\"$PREFIX/bin/ournotes\" %F|" \
+    -e "/^Exec=/a TryExec=$PREFIX/bin/ournotes" \
+    "$PREFIX/share/applications/ournotes.desktop" > "$entry"
 chmod 644 "$entry"
 record "$entry"
 
 if [ "$SHORTCUT" = 1 ] && [ -d "$DESKTOP_DIR" ]; then
-    shortcut="$DESKTOP_DIR/freepen.desktop"
+    shortcut="$DESKTOP_DIR/ournotes.desktop"
     cp -f "$entry" "$shortcut"
     chmod 755 "$shortcut"  # KDE and GNOME only launch executable desktop files
     command -v gio >/dev/null && gio set "$shortcut" metadata::trusted true 2>/dev/null || true
@@ -145,7 +145,7 @@ if [ "$SHORTCUT" = 1 ] && [ -d "$DESKTOP_DIR" ]; then
 fi
 
 refresh_caches
-info "freePen $(grep -m1 'FREEPEN_VERSION ' "$BUILD_DIR/generated/freepen/version.h" | cut -d'"' -f2) installed."
-echo "    Start it from the application menu or the desktop, or run: freepen"
-case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "    (add $BIN_DIR to PATH to use freepen-cli and freepend)";; esac
+info "OurNotes $(grep -m1 'OURNOTES_VERSION ' "$BUILD_DIR/generated/ournotes/version.h" | cut -d'"' -f2) installed."
+echo "    Start it from the application menu or the desktop, or run: ournotes"
+case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "    (add $BIN_DIR to PATH to use ournotes-cli and ournotesd)";; esac
 echo "    Uninstall with: $SRC_DIR/scripts/install-linux.sh --uninstall"

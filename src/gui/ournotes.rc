@@ -1,2 +1,2 @@
 // Windows resources: application icon shown by Explorer, the taskbar and shortcuts.
-IDI_ICON1 ICON "../../resources/icons/freepen.ico"
+IDI_ICON1 ICON "../../resources/icons/ournotes.ico"

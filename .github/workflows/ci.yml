@@ -6,7 +6,7 @@ on:
 
 env:
   QT_VERSION: "6.8.3"
-  FREEPEN_NO_NETWORK: "1"   # skip tests that call Crossref/arXiv/OpenLibrary
+  OURNOTES_NO_NETWORK: "1"   # skip tests that call Crossref/arXiv/OpenLibrary
 
 jobs:
   linux:
@@ -32,9 +32,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build freepend without Qt or MuPDF
+      - name: Build ournotesd without Qt or MuPDF
         run: |
-          cmake -S . -B build -DFREEPEN_BUILD_GUI=OFF -DFREEPEN_BUILD_CLI=OFF
+          cmake -S . -B build -DOURNOTES_BUILD_GUI=OFF -DOURNOTES_BUILD_CLI=OFF
           cmake --build build -j4
           ctest --test-dir build --output-on-failure
 

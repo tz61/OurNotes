@@ -1,12 +1,14 @@
 #include <doctest.h>
 
+#include <cstdlib>
 #include <fstream>
 
+#include "core/config.h"
 #include "core/fulltext.h"
 #include "core/library.h"
 #include "test_helpers.h"
 
-using namespace fp;
+using namespace on;
 
 TEST_CASE("items: create, edit, derived columns, search")
 {
@@ -180,3 +182,64 @@ TEST_CASE("reader state is kept next to the attachment, like Zotero's")
     CHECK(!fs::exists(tmp.path / "evil"));
     CHECK(lib.readerState("../evil").empty());
 }
+
+#ifndef _WIN32
+TEST_CASE("settings and library from freePen, the name before OurNotes, are taken over")
+{
+    // a home directory of its own, so the real one is never touched
+    TempDir home;
+    std::string oldHome = std::getenv("HOME") ? std::getenv("HOME") : "";
+    const char* oldXdg = std::getenv("XDG_CONFIG_HOME");
+    std::string savedXdg = oldXdg ? oldXdg : "";
+    const char* oldData = std::getenv("OURNOTES_DATA_DIR");
+    std::string savedData = oldData ? oldData : "";
+    setenv("HOME", pathString(home.path).c_str(), 1);
+    unsetenv("XDG_CONFIG_HOME");
+    unsetenv("OURNOTES_DATA_DIR");
+
+    std::string key;
+    {
+        Library old(home.path / "freePen");
+        key = jstr(old.createItem(old.defaultLibrary(), Json{{"itemType", "book"}, {"title", "Kept"}}), "key");
+    }
+    fs::rename(home.path / "freePen" / "ournotes.sqlite", home.path / "freePen" / "freepen.sqlite");
+    fs::create_directories(home.path / ".config" / "freepen");
+    writeFileAtomic(home.path / ".config" / "freepen" / "config.json", R"({"ui": {"scale": 175}, "dataDir": null})");
+
+    migrateFromFreePen();
+    CHECK(fs::exists(home.path / ".config" / "ournotes" / "config.json"));
+    CHECK(fs::exists(home.path / ".config" / "freepen" / "config.json"));  // the old settings stay as they were
+    CHECK(Config(home.path / ".config" / "ournotes" / "config.json").get("/ui/scale").get<int>() == 175);
+    CHECK(!fs::exists(home.path / "freePen"));
+    REQUIRE(fs::exists(home.path / "OurNotes" / "freepen.sqlite"));
+    {
+        Library lib(Config(home.path / ".config" / "ournotes" / "config.json").dataDir());
+        CHECK(fs::exists(home.path / "OurNotes" / "ournotes.sqlite"));
+        CHECK(!fs::exists(home.path / "OurNotes" / "freepen.sqlite"));
+        auto libs = lib.libraries();
+        REQUIRE(!libs.empty());
+        REQUIRE(lib.item(libs[0].id, key));
+        CHECK(jstr(*lib.item(libs[0].id, key), "title") == "Kept");
+    }
+    // a second start changes nothing
+    migrateFromFreePen();
+    CHECK(fs::exists(home.path / "OurNotes" / "ournotes.sqlite"));
+
+    // a data directory chosen in the settings is left where it is
+    TempDir home2;
+    setenv("HOME", pathString(home2.path).c_str(), 1);
+    fs::create_directories(home2.path / "freePen");
+    fs::create_directories(home2.path / ".config" / "freepen");
+    writeFileAtomic(home2.path / ".config" / "freepen" / "config.json",
+                    Json{{"dataDir", pathString(home2.path / "papers")}}.dump());
+    migrateFromFreePen();
+    CHECK(fs::exists(home2.path / "freePen"));
+    CHECK(!fs::exists(home2.path / "OurNotes"));
+
+    setenv("HOME", oldHome.c_str(), 1);
+    if (oldXdg)
+        setenv("XDG_CONFIG_HOME", savedXdg.c_str(), 1);
+    if (oldData)
+        setenv("OURNOTES_DATA_DIR", savedData.c_str(), 1);
+}
+#endif

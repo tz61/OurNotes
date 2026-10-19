@@ -1,6 +1,6 @@
 #include "core/fulltext.h"
 
-namespace fp {
+namespace on {
 
 FulltextIndex::FulltextIndex(const fs::path& dbPath)
 {
@@ -101,4 +101,4 @@ std::set<std::string> FulltextIndex::search(int64_t lib, const std::vector<std::
     return out;
 }
 
-} // namespace fp
+} // namespace on

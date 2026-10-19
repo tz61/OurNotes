@@ -15,7 +15,7 @@
 
 #include "gui/math_render.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 namespace {
 
@@ -136,4 +136,4 @@ void FittedImageHandler::drawObject(QPainter* painter, const QRectF& rect, QText
     painter->restore();
 }
 
-} // namespace fp::gui
+} // namespace on::gui

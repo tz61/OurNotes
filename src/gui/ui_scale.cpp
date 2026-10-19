@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-namespace fp::gui {
+namespace on::gui {
 
 static bool g_fromEnvironment = false;
 
@@ -29,4 +29,4 @@ void applyInterfaceScale(const Config& config)
 
 bool interfaceScaleFromEnvironment() { return g_fromEnvironment; }
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -5,8 +5,8 @@
 #include "../core/test_helpers.h"
 #include "pdf/document.h"
 
-using namespace fp;
-using namespace fp::pdf;
+using namespace on;
+using namespace on::pdf;
 
 #include "sample_pdf.h"
 
@@ -25,7 +25,7 @@ TEST_CASE("open, text, hit testing, search")
 
     auto& text = doc->text(0);
     CHECK(text.lines.size() == 2);
-    CHECK(text.utf8() == "Hello World from freePen\nsecond line of text");
+    CHECK(text.utf8() == "Hello World from OurNotes\nsecond line of text");
 
     // "Hello" baseline is at y=700 in PDF space → ~92 in page space
     auto hit = text.hitTest({80, 85});
@@ -34,7 +34,7 @@ TEST_CASE("open, text, hit testing, search")
     CHECK(text.textOf(word.first, word.second) == "Hello");
     auto rects = text.rectsOf(0, (int)text.chars.size() - 1);
     CHECK(rects.size() == 2);
-    CHECK(text.textOf(0, (int)text.chars.size() - 1) == "Hello World from freePen second line of text");
+    CHECK(text.textOf(0, (int)text.chars.size() - 1) == "Hello World from OurNotes second line of text");
 
     auto hits = doc->search(0, "line of");
     REQUIRE(hits.size() == 1);

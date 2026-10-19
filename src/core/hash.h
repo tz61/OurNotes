@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace fp {
+namespace on {
 
 // Incremental MD5 (file checksums, compatible with Zotero's storageHash).
 class Md5 {
@@ -46,4 +46,4 @@ std::string randomBytes(size_t n);
 std::string randomToken(size_t bytes = 32);  // hex
 bool constantTimeEquals(std::string_view a, std::string_view b);
 
-} // namespace fp
+} // namespace on

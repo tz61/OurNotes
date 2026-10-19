@@ -13,7 +13,7 @@ class QListWidget;
 class QLabel;
 class QToolBar;
 
-namespace fp::gui {
+namespace on::gui {
 
 class WrapToolBar;
 
@@ -135,4 +135,4 @@ private:
 // the context menu or with Delete, after asking.
 void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId);
 
-} // namespace fp::gui
+} // namespace on::gui

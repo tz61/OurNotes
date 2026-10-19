@@ -6,7 +6,7 @@
 
 #include "core/json.h"
 
-namespace fp::formats {
+namespace on::formats {
 
 struct Format {
     std::string id;         // "bibtex", "ris", "csljson"
@@ -22,4 +22,4 @@ const Format* findFormat(const std::string& id);
 // Guesses the format of import data: "bibtex", "ris", "csljson" or "".
 std::string detectFormat(const std::string& text);
 
-} // namespace fp::formats
+} // namespace on::formats

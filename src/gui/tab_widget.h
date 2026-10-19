@@ -2,7 +2,7 @@
 
 #include <QTabWidget>
 
-namespace fp::gui {
+namespace on::gui {
 
 class TabStrip;
 
@@ -26,4 +26,4 @@ private:
     TabStrip* strip_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -6,13 +6,13 @@
 #include "core/sync/protocol.h"
 #include "core/util.h"
 
-namespace fp::test {
+namespace on::test {
 
 // A fresh directory under the system temp dir, removed with its contents.
 struct TempDir {
     fs::path path;
 
-    TempDir() : path(fs::temp_directory_path() / ("freepen-sync-test-" + randomToken(8)))
+    TempDir() : path(fs::temp_directory_path() / ("ournotes-sync-test-" + randomToken(8)))
     {
         fs::create_directories(path);
     }
@@ -81,4 +81,4 @@ int statusOf(F&& fn)
     return -1;
 }
 
-} // namespace fp::test
+} // namespace on::test

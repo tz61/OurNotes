@@ -1,10 +1,10 @@
-# fp_embed_file(<target> <file> <symbol>)
+# on_embed_file(<target> <file> <symbol>)
 #
 # Compiles <file> into <target> as `extern const unsigned char <symbol>[]` with
 # `extern const std::size_t <symbol>_size`. Used for schema.json so the core
 # library does not depend on Qt resources.
 
-function(fp_embed_file target file symbol)
+function(on_embed_file target file symbol)
     get_filename_component(_abs "${file}" ABSOLUTE)
     set(_out "${CMAKE_CURRENT_BINARY_DIR}/embedded_${symbol}.cpp")
     add_custom_command(

@@ -5,7 +5,7 @@
 #include "gui/theme.h"
 #include "pdf/document.h"
 
-namespace fp::gui {
+namespace on::gui {
 
 RenderWorker::RenderWorker(const fs::path& path, QObject* parent) : QObject(parent), path_(path)
 {
@@ -80,4 +80,4 @@ void RenderWorker::run()
     }
 }
 
-} // namespace fp::gui
+} // namespace on::gui

@@ -8,7 +8,7 @@
 
 class QTextDocument;
 
-namespace fp::gui {
+namespace on::gui {
 
 // Lays out images in rich text (notes): pictures wider than the text area are
 // scaled down to fit, so there is never horizontal scrolling, and "math:" images
@@ -40,4 +40,4 @@ private:
     std::function<QColor()> colorSource_;
 };
 
-} // namespace fp::gui
+} // namespace on::gui
