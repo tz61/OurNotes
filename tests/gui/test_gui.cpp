@@ -29,6 +29,7 @@
 #include <QTest>
 #include <QTextDocument>
 #include <QMimeData>
+#include <QClipboard>
 #include <QDropEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -1182,6 +1183,96 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
     CHECK(bubble->isVisible());
     CHECK(!bubble->isEditing());
+}
+
+TEST_CASE("notes: Markdown typed or pasted becomes formatting")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    edit->setFocus();
+    auto* doc = edit->document();
+
+    QTest::keyClicks(edit, "# Title");
+    CHECK(doc->begin().blockFormat().headingLevel() == 1);
+    CHECK(doc->begin().text() == "Title");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "- first");
+    CHECK(edit->textCursor().currentList());
+    CHECK(edit->textCursor().block().text() == "first");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClick(edit, Qt::Key_Return);  // out of the list
+    QTest::keyClicks(edit, "> quoted");
+    CHECK(edit->textCursor().blockFormat().leftMargin() >= 20);
+    QTest::keyClick(edit, Qt::Key_Return);
+    auto quote = edit->textCursor().blockFormat();
+    quote.setLeftMargin(0);
+    quote.setRightMargin(0);
+    edit->textCursor().setBlockFormat(quote);
+
+    QTest::keyClicks(edit, "a **bold** and *slanted* and `code` and ~~gone~~ and snake_case_name");
+    auto block = edit->textCursor().block();
+    CHECK(block.text() == "a bold and slanted and code and gone and snake_case_name");
+    auto formatAt = [&](const QString& word) {
+        QTextCursor c(doc);
+        c.setPosition(block.position() + block.text().indexOf(word) + 1);
+        return c.charFormat();
+    };
+    CHECK(formatAt("bold").fontWeight() == QFont::Bold);
+    CHECK(formatAt("slanted").fontItalic());
+    CHECK(formatAt("code").fontFixedPitch());
+    CHECK(formatAt("gone").fontStrikeOut());
+    CHECK(formatAt("and").fontWeight() != QFont::Bold);
+    CHECK(!formatAt("snake").fontItalic());
+
+    // a link, and Ctrl+Z gives back what was typed
+    QTest::keyClicks(edit, " [site](https://example.org)");
+    CHECK(edit->textCursor().block().text().endsWith(" site"));
+    CHECK(formatAt("site").anchorHref() == "https://example.org");
+    QTest::keyClick(edit, Qt::Key_Z, Qt::ControlModifier);
+    CHECK(edit->textCursor().block().text().endsWith(" [site](https://example.org)"));
+    QTest::keyClick(edit, Qt::Key_Y, Qt::ControlModifier);
+    CHECK(edit->textCursor().block().text().endsWith(" site"));
+
+    editor.flush();
+    auto html = jstr(*env.library.item(env.lib, jstr(note, "key")), "note");
+    CHECK(html.find("<h1>Title</h1>") != std::string::npos);
+    CHECK(html.find("<li>") != std::string::npos);
+    CHECK(html.find("bold</") != std::string::npos);
+    CHECK(html.find("**") == std::string::npos);
+    CHECK(html.find("href=\"https://example.org\"") != std::string::npos);
+
+    // pasted as plain text
+    edit->moveCursor(QTextCursor::End);
+    QTest::keyClick(edit, Qt::Key_Return);
+    QApplication::clipboard()->setText("## Pasted\n\n- one\n- **two** with $x_y$\n\n$$E=mc^2$$\n");
+    int blocksBefore = doc->blockCount();
+    edit->paste();
+    CHECK(doc->blockCount() > blocksBefore + 2);
+    bool heading = false, bold = false;
+    for (auto b = doc->begin(); b.isValid(); b = b.next()) {
+        heading |= b.text() == "Pasted" && b.blockFormat().headingLevel() == 2;
+        for (auto it = b.begin(); !it.atEnd(); ++it)
+            bold |= it.fragment().text() == "two" && it.fragment().charFormat().fontWeight() == QFont::Bold;
+    }
+    CHECK(heading);
+    CHECK(bold);
+    QStringList latex;
+    CHECK(countMath(doc, &latex) == 2);
+    CHECK(latex.contains("x_y"));
+    CHECK(latex.contains("E=mc^2"));
+
+    // comments stay as typed
+    NoteTextEdit comment;
+    comment.show();
+    QTest::keyClicks(&comment, "# not a heading **nor bold**");
+    CHECK(comment.toPlainText() == "# not a heading **nor bold**");
 }
 
 TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")

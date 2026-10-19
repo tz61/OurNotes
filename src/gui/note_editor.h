@@ -13,6 +13,7 @@ class QListWidget;
 class QLabel;
 class QToolBar;
 class QToolButton;
+class QTextDocument;
 
 namespace on::gui {
 
@@ -29,6 +30,12 @@ public:
     std::function<QString(const QImage&)> storeImage;  // returns a resource name
     // Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0: +1 larger text, -1 smaller, 0 the default
     std::function<void(int)> zoomBy;
+    // Markdown typed becomes formatting (# heading, - list, **bold**, `code`, [a](url)),
+    // and so does Markdown pasted as plain text; Ctrl+Shift+V pastes text as it is.
+    void setMarkdownShortcuts(bool on) { markdown_ = on; }
+    // Formats the cursor's paragraph for a typed "# ", "- ", "1. " or "> ": kind is
+    // "heading1".."heading3", "bullet", "numbered" or "quote".
+    std::function<void(const QString& kind)> markdownBlock;
 
     // Starts an empty formula (or one made of the selected text) at the cursor, in place.
     void insertMath(bool display);
@@ -55,6 +62,9 @@ protected:
 
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
+    bool convertTypedMarkdown(const QString& typed);
+    void markdownDocument(const QString& markdown, QTextDocument* out) const;
+    bool markdown_ = false;
     int wheelZoom_ = 0;  // Ctrl+wheel turned less than a notch
     struct MathRun {
         int start = 0, end = 0;

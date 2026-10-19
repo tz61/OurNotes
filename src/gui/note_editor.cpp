@@ -519,6 +519,147 @@ bool NoteTextEdit::convertTypedMath()
     return false;
 }
 
+// --- Markdown -------------------------------------------------------------------------------
+//
+// As in Zotero's note editor: a block marker typed at the start of a paragraph, or the
+// closing delimiter of an inline one, turns into formatting. It is a step of its own,
+// so Ctrl+Z gives back the typed markup.
+
+bool NoteTextEdit::convertTypedMarkdown(const QString& typed)
+{
+    auto cursor = textCursor();
+    if (cursor.hasSelection())
+        return false;
+    auto block = cursor.block();
+    QString before = block.text().left(cursor.positionInBlock());
+
+    static const QRegularExpression blockRe(R"(^(#{1,3}|[-*+]|\d{1,3}[.)]|>) $)");
+    if (typed == " " && markdownBlock)
+        if (auto m = blockRe.match(before); m.hasMatch()) {
+            auto marker = m.captured(1);
+            QString kind = marker.startsWith('#')  ? QString("heading%1").arg(marker.size())
+                           : marker == ">"         ? QString("quote")
+                           : marker[0].isDigit()   ? QString("numbered")
+                                                   : QString("bullet");
+            if ((kind == "bullet" || kind == "numbered") && block.textList())
+                return false;  // already a list item
+            QTextCursor marked = cursor;
+            marked.beginEditBlock();
+            marked.setPosition(block.position(), QTextCursor::KeepAnchor);
+            marked.removeSelectedText();
+            markdownBlock(kind);
+            marked.endEditBlock();
+            return true;
+        }
+
+    // the closing delimiter was just typed: nothing but a space or punctuation before the
+    // opening one, no space just inside either
+    struct Inline {
+        QRegularExpression re;
+        int delimiter;
+        std::function<void(QTextCharFormat&, bool on)> style;
+    };
+    static const std::vector<Inline> rules = {
+        {QRegularExpression(R"((?:^|[^\w*])\*\*([^*\s](?:[^*]*[^*\s])?)\*\*$)"), 2,
+         [](QTextCharFormat& f, bool on) { f.setFontWeight(on ? QFont::Bold : QFont::Normal); }},
+        {QRegularExpression(R"((?:^|[^\w_])__([^_\s](?:[^_]*[^_\s])?)__$)"), 2,
+         [](QTextCharFormat& f, bool on) { f.setFontWeight(on ? QFont::Bold : QFont::Normal); }},
+        {QRegularExpression(R"((?:^|[^\w*])\*([^*\s](?:[^*]*[^*\s])?)\*$)"), 1,
+         [](QTextCharFormat& f, bool on) { f.setFontItalic(on); }},
+        {QRegularExpression(R"((?:^|[^\w_])_([^_\s](?:[^_]*[^_\s])?)_$)"), 1,
+         [](QTextCharFormat& f, bool on) { f.setFontItalic(on); }},
+        {QRegularExpression(R"((?:^|[^~])~~([^~\s](?:[^~]*[^~\s])?)~~$)"), 2,
+         [](QTextCharFormat& f, bool on) { f.setFontStrikeOut(on); }},
+        {QRegularExpression(R"((?:^|[^`])`([^`]+)`$)"), 1,
+         [](QTextCharFormat& f, bool on) {
+             f.setFontFamilies(on ? QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()}
+                                  : QStringList{});
+             f.setFontFixedPitch(on);
+         }},
+    };
+    for (auto& rule : rules) {
+        auto m = rule.re.match(before);
+        if (!m.hasMatch())
+            continue;
+        int start = block.position() + int(m.capturedStart(1)), end = block.position() + int(m.capturedEnd(1));
+        QTextCursor c = cursor;  // undo puts the cursor back where the step began
+        c.beginEditBlock();
+        c.setPosition(end);
+        c.setPosition(end + rule.delimiter, QTextCursor::KeepAnchor);
+        c.removeSelectedText();
+        c.setPosition(start - rule.delimiter);
+        c.setPosition(start, QTextCursor::KeepAnchor);
+        c.removeSelectedText();
+        c.setPosition(start - rule.delimiter);
+        c.setPosition(end - rule.delimiter, QTextCursor::KeepAnchor);
+        QTextCharFormat on;
+        rule.style(on, true);
+        c.mergeCharFormat(on);
+        c.endEditBlock();
+        QTextCharFormat off;  // what is typed next is plain again
+        rule.style(off, false);
+        mergeCurrentCharFormat(off);
+        return true;
+    }
+    static const QRegularExpression linkRe(R"(\[([^\]]+)\]\(([^)\s]+)\)$)");
+    if (auto m = linkRe.match(before); m.hasMatch()) {
+        QTextCursor c = cursor;
+        c.beginEditBlock();
+        c.setPosition(block.position() + int(m.capturedStart(0)));
+        c.setPosition(block.position() + int(m.capturedEnd(0)), QTextCursor::KeepAnchor);
+        QTextCharFormat f = c.charFormat();
+        f.setAnchor(true);
+        f.setAnchorHref(m.captured(2));
+        f.setFontUnderline(true);
+        f.setForeground(palette().link());
+        c.insertText(m.captured(1), f);
+        c.endEditBlock();
+        QTextCharFormat plain = f;
+        plain.setAnchor(false);
+        plain.setAnchorHref({});
+        plain.setFontUnderline(false);
+        plain.clearForeground();
+        setCurrentCharFormat(plain);
+        return true;
+    }
+    return false;
+}
+
+// Markdown text as rich text in `out`; formulas ($…$, $$…$$) become formulas.
+void NoteTextEdit::markdownDocument(const QString& markdown, QTextDocument* out) const
+{
+    // set aside first: Markdown would read the _ and * in them as emphasis
+    static const QRegularExpression math(
+        R"re(\$\$([^$]*\S[^$]*)\$\$|(?<![\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?!\d))re");
+    std::vector<std::pair<QString, bool>> formulas;
+    QString text;
+    qsizetype last = 0;
+    for (auto it = math.globalMatch(markdown); it.hasNext();) {
+        auto m = it.next();
+        bool display = m.capturedLength(1) > 0;
+        text += markdown.mid(last, m.capturedStart() - last);
+        text += QChar(0xE000) + QString::number(formulas.size()) + QChar(0xE001);
+        formulas.push_back({(display ? m.captured(1) : m.captured(2)).trimmed(), display});
+        last = m.capturedEnd();
+    }
+    text += markdown.mid(last);
+    out->setMarkdown(text, QTextDocument::MarkdownDialectGitHub);
+    static const QRegularExpression token(QString(QChar(0xE000)) + "(\\d+)" + QChar(0xE001));
+    for (auto c = out->find(token); !c.isNull(); c = out->find(token, c)) {
+        size_t i = c.selectedText().mid(1).chopped(1).toULong();
+        if (i >= formulas.size())
+            continue;
+        auto [latex, display] = formulas[i];
+        bool alone = c.block().text().trimmed() == c.selectedText();
+        c.insertImage(mathFormat(latex, display));
+        if (display && alone) {
+            auto bf = c.blockFormat();
+            bf.setAlignment(Qt::AlignHCenter);
+            c.setBlockFormat(bf);
+        }
+    }
+}
+
 void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool display)
 {
     QTextCharFormat textFormat = selection.charFormat();
@@ -603,9 +744,16 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
             }
         }
     }
+    if (e->key() == Qt::Key_V && e->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && !isReadOnly()) {
+        insertPlainText(QApplication::clipboard()->text());  // as it is, Markdown or not
+        return;
+    }
     QTextEdit::keyPressEvent(e);
     if (e->text() == "$" && !isReadOnly() && !runAtCursor())
         convertTypedMath();
+    else if (markdown_ && !e->text().isEmpty() && e->text()[0].isPrint() &&
+             !(e->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) && !isReadOnly() && !runAtCursor())
+        convertTypedMarkdown(e->text());  // typed text only: after Ctrl+Z the markup stays
 }
 
 // Moves the cursor past a formula being edited, which renders it; after a display
@@ -724,6 +872,26 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         }
         return;
     }
+    static const QRegularExpression markdownRe(
+        R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
+        QRegularExpression::MultilineOption);
+    if (markdown_ && !source->hasHtml() && source->hasText() && markdownRe.match(source->text()).hasMatch()) {
+        QTextDocument pasted;
+        markdownDocument(source->text(), &pasted);
+        auto cursor = textCursor();
+        bool emptyLine = cursor.block().length() <= 1;
+        int at = cursor.position();
+        cursor.beginEditBlock();
+        cursor.insertFragment(QTextDocumentFragment(&pasted));
+        if (emptyLine) {  // the first paragraph went into this one, which kept its own format
+            QTextCursor first(document());
+            first.setPosition(at);
+            first.setBlockFormat(pasted.begin().blockFormat());
+        }
+        cursor.endEditBlock();
+        setTextCursor(cursor);
+        return;
+    }
     // keep pasted rich text but not foreign fonts and sizes; relative sizes (headings)
     // follow the note's text size
     if (source->hasHtml()) {
@@ -787,6 +955,16 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     edit_->setAcceptRichText(true);
     edit_->setPlaceholderText(tr("Write a note…"));
     edit_->storeImage = [this](const QImage& img) { return storeImage(img); };
+    edit_->setMarkdownShortcuts(true);
+    edit_->markdownBlock = [this](const QString& kind) {
+        if (kind.startsWith("heading"))
+            setHeading(kind.mid(7).toInt());
+        else if (kind == "bullet" || kind == "numbered")
+            toggleList(kind == "numbered");
+        else if (kind == "quote" && edit_->textCursor().blockFormat().leftMargin() < 20)
+            toggleQuote();
+        updateToolbar();
+    };
     edit_->document()->setDocumentMargin(10);
     layout->addWidget(toolbar_);
     layout->addWidget(edit_, 1);
