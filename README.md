@@ -18,13 +18,16 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   read. Re-running the import picks up items changed in Zotero since.
 - **PDF reader** — continuous scrolling, zoom/fit, thumbnails, outline, links, find.
   Annotation tools: highlight, underline, sticky note, text box, area (image), ink and
-  eraser, eight colours, comments, move/resize. Annotations are stored like Zotero's
+  eraser, eight colours, comments, move/resize. A comment shows over the page while the
+  mouse rests on its annotation and is edited right there after a click, with `$…$`
+  formulas as in notes. Annotations are stored like Zotero's
   (PDF user-space coordinates) and imported Zotero annotations line up exactly.
   Annotations already inside a PDF are shown read-only; *File → Export PDF with
   Annotations* writes yours into a copy of the file. Each document reopens where it was
   left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
   like Zotero), and the open tabs and the library's selection come back after a
-  restart; restored tabs load when first shown.
+  restart; restored tabs load when first shown. The paper's top note opens next to the
+  PDF. Shift+wheel scrolls sideways.
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display
@@ -33,7 +36,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   closing `$`) renders it again. Rendered with MicroTeX in the text colour (or a colour
   set in Preferences; `\textcolor{red}{…}` for single formulas) and stored like
   Zotero's math. Images are scaled to fit the note width. Selecting a paper shows its
-  notes in a tab next to Info.
+  notes in a tab next to Info. Markdown typed or pasted becomes formatting (`# `, `- `,
+  `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the
+  markup). Each note view has its own text size (− / +, Ctrl+wheel), starting at the
+  size set in Preferences.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
   dropping PDFs (metadata is found from the identifiers or title in the file, with a
   progress window), or by importing BibTeX / RIS / CSL JSON. PDF text is read locally;
@@ -44,8 +50,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Search** — title/creator/year, all fields and tags, or everything including the
   full text of PDFs (indexed in the background with SQLite FTS5).
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing
-  version is kept in *Tools → Sync Conflicts*. Works with a `ournotesd` server (HTTP/HTTPS,
-  multiple users, shared libraries) or with a folder.
+  version is kept in *Tools → Sync Conflicts*. *Tools → Sync History* lists what the last
+  syncs brought in and sent out. Library names are synced, and deleting an (empty)
+  library deletes it everywhere. Works with a `ournotesd` server (HTTP/HTTPS, multiple
+  users, shared libraries) or with a folder.
 - **Command line** — `ournotes-cli` for import/export, citing, adding items, indexing and
   syncing on headless machines.
 
