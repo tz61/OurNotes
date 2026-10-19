@@ -2883,19 +2883,9 @@ TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")
     CHECK(tabs->currentIndex() == 1);
 }
 
-TEST_CASE("library: the band picture shows through every stripe below the items, as between them")
+TEST_CASE("library: with a band picture the list has no stripes, in light and dark mode")
 {
     app();
-    applyAppearance(Appearance::Light);  // its alternate row colour is opaque, like macOS's light one
-    Env env;
-    auto bands = env.library.dataDir() / "backgrounds" / "bands";
-    fs::create_directories(bands);
-    QImage picture(100, 2000, QImage::Format_RGB32);  // fitted and centred: the whole height, mid-list
-    picture.fill(Qt::red);
-    REQUIRE(picture.save(qpath(bands / "band.png")));
-    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "One"}});
-    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Two"}});
-
     // macOS's style also paints alternating rows into the empty area below the items, as
     // Finder does; Fusion does not, so make it
     struct EmptyAreaStripes : QProxyStyle {
@@ -2906,31 +2896,50 @@ TEST_CASE("library: the band picture shows through every stripe below the items,
                        ? 1
                        : QProxyStyle::styleHint(hint, option, widget, data);
         }
-    } style;
-    LibraryView view;
-    view.itemsView()->setStyle(&style);
-    view.resize(1200, 700);
-    view.show();
-    QApplication::processEvents();
-    auto* items = view.itemsView();
-    REQUIRE(items->model()->rowCount() == 2);
-    QRect last = items->visualRect(items->model()->index(1, 0));
-    QImage shot = items->viewport()->grab().toImage();
-    int x = items->viewport()->width() / 2;
-    double dpr = shot.devicePixelRatio();
-    auto reddish = [&](int y) {
-        QColor c = shot.pixelColor(int(x * dpr), int(y * dpr));
-        return c.red() - c.green() > 8;
     };
-    CHECK(reddish(items->visualRect(items->model()->index(0, 0)).center().y()));
-    CHECK(reddish(last.center().y()));  // the alternate row
-    for (int band = 1; band <= 4; ++band) {
-        int y = last.center().y() + band * last.height();
-        REQUIRE(y < items->viewport()->height());
-        INFO("stripe " << band << " below the items");
-        CHECK(reddish(y));  // an opaque alternate stripe hid the picture
+    for (auto appearance : {Appearance::Light, Appearance::Dark}) {
+        INFO((appearance == Appearance::Light ? "light" : "dark") << " mode");
+        applyAppearance(appearance);
+        Env env;
+        auto bands = env.library.dataDir() / "backgrounds" / "bands";
+        fs::create_directories(bands);
+        QImage picture(100, 2000, QImage::Format_RGB32);  // fitted and centred: the whole height, mid-list
+        picture.fill(Qt::red);
+        REQUIRE(picture.save(qpath(bands / "band.png")));
+        env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "One"}});
+        env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Two"}});
+        EmptyAreaStripes style;
+        LibraryView view;
+        view.itemsView()->setStyle(&style);
+        view.resize(1200, 700);
+        view.show();
+        QApplication::processEvents();
+        auto* items = view.itemsView();
+        REQUIRE(items->model()->rowCount() == 2);
+        CHECK(!items->alternatingRowColors());
+
+        QRect first = items->visualRect(items->model()->index(0, 0));
+        QRect second = items->visualRect(items->model()->index(1, 0));
+        QImage shot = items->viewport()->grab().toImage();
+        int x = items->viewport()->width() / 2;
+        double dpr = shot.devicePixelRatio();
+        auto at = [&](int y) { return shot.pixelColor(int(x * dpr), int(y * dpr)); };
+        QColor row = at(first.center().y());
+        CHECK(row.red() - row.green() > 8);  // the picture, faintly
+        CHECK(at(second.center().y()) == row);
+        for (int band = 1; band <= 4; ++band) {
+            int y = second.center().y() + band * second.height();
+            REQUIRE(y < items->viewport()->height());
+            INFO("stripe " << band << " below the items");
+            CHECK(at(y) == row);
+        }
+
+        // without a picture the rows alternate again
+        env.config.set("/ui/bandBackground", false);
+        emit AppContext::get().appearanceChanged();
+        CHECK(items->alternatingRowColors());
+        items->setStyle(nullptr);
     }
-    view.itemsView()->setStyle(nullptr);
     applyAppearance(Appearance::System);
 }
 

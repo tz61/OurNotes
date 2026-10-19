@@ -43,11 +43,14 @@ public:
     std::function<void(bool permanently)> onDelete;  // Delete; with Shift, not to the trash
     std::function<void()> onOpen;
 
-    // Drawn faintly behind the rows, whole and centred; a null image shows none.
+    // Drawn faintly behind the rows, whole and centred; a null image shows none. Over a
+    // picture the rows do not alternate, in light and dark mode and on every platform: the
+    // stripes (macOS's style also paints them below the last item) cut it into bands.
     void setBackgroundImage(const QImage& image)
     {
         background_ = image;
         scaled_ = QPixmap();
+        setAlternatingRowColors(image.isNull());
         viewport()->update();
     }
 
@@ -78,29 +81,12 @@ protected:
         if (!background_.isNull())
             viewport()->update();
     }
-    // The rows and the stripes macOS's style paints below them (as Finder does) take their
-    // colours from here: alternate ones let the picture through. The light theme's grey is
-    // opaque and hid it in every other stripe; the dark theme's is faint already.
-    void initViewItemOption(QStyleOptionViewItem* option) const override
-    {
-        QTreeView::initViewItemOption(option);
-        if (!background_.isNull()) {
-            QColor alternate = option->palette.color(QPalette::AlternateBase);
-            alternate.setAlphaF(std::min(alternate.alphaF(), 0.5f));
-            option->palette.setColor(QPalette::AlternateBase, alternate);
-        }
-    }
     void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         QStyleOptionViewItem o(option);
         // the item a drag would go into stands out, as if selected
         if (dropTarget_.isValid() && index.siblingAtColumn(0) == dropTarget_)
             o.state |= QStyle::State_Selected;
-        if (!background_.isNull()) {  // alternate rows let the picture through too
-            QColor alternate = o.palette.color(QPalette::AlternateBase);
-            alternate.setAlphaF(0.5);
-            o.palette.setColor(QPalette::AlternateBase, alternate);
-        }
         QTreeView::drawRow(painter, o, index);
     }
 
