@@ -4,6 +4,9 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QTreeWidget>
+
+#include <atomic>
 #include <QTest>
 #include <QTextDocument>
 
@@ -13,7 +16,9 @@
 #include "core/library.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
+#include "gui/fancy_progress.h"
 #include "gui/items_model.h"
+#include "gui/metadata_progress.h"
 #include "gui/note_html.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
@@ -222,4 +227,59 @@ TEST_CASE("interface scale: defaults to 150% and is editable in preferences")
     CHECK(interfaceScale(env.config) == 125);
     if (qEnvironmentVariableIsSet("FREEPEN_TEST_SNAPSHOT_DIR"))
         dlg.grab().save(qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR") + "/preferences.png");
+}
+
+TEST_CASE("retrieve metadata window: progress, results and parent items")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    std::vector<MetadataProgressDialog::Job> jobs;
+    for (auto name : {"found.pdf", "unknown.pdf", "slow.pdf"}) {
+        auto file = tmp.path / name;
+        writeSamplePdf(file);
+        auto att = env.library.importAttachment(env.lib, file);
+        jobs.push_back({qs(jstr(att, "key")), name, env.library.attachmentFile(env.lib, att)});
+    }
+    std::atomic<bool> release{false};
+    auto retriever = [&](const fs::path& p, const std::function<void(const std::string&)>& stage)
+        -> std::optional<formats::PdfMetadataMatch> {
+        stage("Looking up DOI 10.1234/test");
+        auto name = pathString(p.filename());
+        if (name == "unknown.pdf")
+            return std::nullopt;
+        if (name == "slow.pdf")
+            while (!release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return formats::PdfMetadataMatch{
+            Json{{"itemType", "journalArticle"}, {"title", "Paper for " + name}, {"DOI", "10.1234/test"}},
+            "DOI 10.1234/test \u00b7 Crossref"};
+    };
+    MetadataProgressDialog dlg(env.lib, jobs, nullptr, retriever);
+    dlg.show();
+    dlg.start();
+    REQUIRE(QTest::qWaitFor([&] { return dlg.foundCount() + dlg.notFoundCount() == 2; }, 5000));
+    QTest::qWait(500);  // let the bar animation settle
+    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    if (!snapshots.isEmpty())
+        dlg.grab().save(snapshots + "/metadata-progress.png");
+    CHECK(!dlg.isFinished());
+    release = true;
+    REQUIRE(QTest::qWaitFor([&] { return dlg.isFinished(); }, 5000));
+    QTest::qWait(500);
+    if (!snapshots.isEmpty())
+        dlg.grab().save(snapshots + "/metadata-done.png");
+    CHECK(dlg.foundCount() == 2);
+    CHECK(dlg.notFoundCount() == 1);
+    for (auto& job : jobs) {
+        auto att = *env.library.item(env.lib, ss(job.key));
+        bool shouldHaveParent = job.name != "unknown.pdf";
+        CHECK(jstr(att, "parentItem").empty() != shouldHaveParent);
+        if (shouldHaveParent) {
+            auto parent = env.library.item(env.lib, jstr(att, "parentItem"));
+            REQUIRE(parent);
+            CHECK(jstr(*parent, "title") == "Paper for " + ss(job.name));
+            CHECK(jstr(att, "title") == "PDF");
+        }
+    }
 }

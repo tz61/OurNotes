@@ -4,6 +4,7 @@ set(FREEPEN_QT_VERSION ${Qt6_VERSION} PARENT_SCOPE)
 set(FREEPEN_GUI_SOURCES
     app_context.cpp
     collection_tree.cpp
+    fancy_progress.cpp
     flow_layout.cpp
     formats_actions.cpp
     fulltext_indexer.cpp
@@ -12,6 +13,7 @@ set(FREEPEN_GUI_SOURCES
     items_model.cpp
     library_view.cpp
     main_window.cpp
+    metadata_progress.cpp
     note_editor.cpp
     note_html.cpp
     preferences.cpp

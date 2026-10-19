@@ -25,8 +25,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
-  dropping PDFs (metadata is found from the identifiers or title in the file), or by
-  importing BibTeX / RIS / CSL JSON.
+  dropping PDFs (metadata is found from the identifiers or title in the file, with a
+  progress window), or by importing BibTeX / RIS / CSL JSON. PDF text is read locally;
+  only the identifier or title is sent to the public Crossref, arXiv, Open Library or
+  PubMed APIs (no account or API key needed).
 - **Citing** — export BibTeX, RIS, CSL JSON; bibliographies and in-text citations in
   APA, Chicago (author-date), IEEE, MLA, Harvard, Nature and Vancouver.
 - **Search** — title/creator/year, all fields and tags, or everything including the

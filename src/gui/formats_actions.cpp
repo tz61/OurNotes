@@ -12,7 +12,6 @@
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QMimeData>
-#include <QPointer>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QTextBrowser>
@@ -26,10 +25,10 @@
 #include "formats/citation.h"
 #include "formats/formats.h"
 #include "formats/metadata.h"
-#include "formats/pdf_metadata.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/items_model.h"
+#include "gui/metadata_progress.h"
 
 namespace fp::gui {
 
@@ -373,72 +372,47 @@ void addByIdentifierDialog(QWidget* parent, int64_t libraryId, const std::string
 }
 
 
-void retrieveMetadata(QWidget* parent, int64_t libraryId, const QStringList& attachmentKeys)
+QString applyMetadataMatch(int64_t libraryId, const QString& attachmentKey, const Json& item)
 {
     auto& lib = AppContext::get().library();
-    struct Job {
-        std::string key;
-        fs::path path;
-        Json found;
-    };
-    auto jobs = std::make_shared<std::vector<Job>>();
+    auto att = lib.item(libraryId, ss(attachmentKey));
+    if (!att || !jstr(*att, "parentItem").empty())
+        return {};
+    // the new parent takes over the attachment's collections
+    auto collections = att->value("collections", Json::array());
+    Library::BatchGuard batch(lib);
+    auto parent = createFromImport(libraryId, item, {});
+    if (!collections.empty())
+        lib.updateItem(libraryId, jstr(parent, "key"), [&](Json& d) { d["collections"] = collections; });
+    lib.updateItem(libraryId, ss(attachmentKey), [&](Json& d) {
+        d["parentItem"] = jstr(parent, "key");
+        d["title"] = "PDF";
+        d.erase("collections");
+    });
+    return jqs(parent, "key");
+}
+
+MetadataProgressDialog* retrieveMetadata(QWidget* parent, int64_t libraryId, const QStringList& attachmentKeys)
+{
+    auto& lib = AppContext::get().library();
+    std::vector<MetadataProgressDialog::Job> jobs;
     for (auto& k : attachmentKeys) {
         auto att = lib.item(libraryId, ss(k));
         if (!att || jstr(*att, "itemType") != "attachment" || !jstr(*att, "parentItem").empty() ||
             jstr(*att, "contentType") != "application/pdf")
             continue;
         auto path = lib.attachmentFile(libraryId, *att);
-        if (!path.empty())
-            jobs->push_back({ss(k), path, nullptr});
+        std::error_code ec;
+        if (!path.empty() && fs::is_regular_file(path, ec))
+            jobs.push_back({k, qpath(path.filename()), path});
     }
-    if (jobs->empty())
-        return;
-    QPointer<QWidget> guard(parent);
-    std::thread([jobs, libraryId, guard] {
-        for (auto& job : *jobs) {
-            try {
-                if (auto found = formats::retrieveMetadataForPdf(job.path))
-                    job.found = *found;
-            } catch (const std::exception&) {
-            }
-        }
-        QMetaObject::invokeMethod(
-            qApp,
-            [jobs, libraryId, guard] {
-                auto& lib = AppContext::get().library();
-                QStringList missed;
-                for (auto& job : *jobs) {
-                    auto att = lib.item(libraryId, job.key);
-                    if (!att || !jstr(*att, "parentItem").empty())
-                        continue;
-                    if (job.found.is_null()) {
-                        missed << qs(jstr(*att, "title"));
-                        continue;
-                    }
-                    // the new parent takes over the attachment's collections
-                    Json data = job.found;
-                    auto collections = att->value("collections", Json::array());
-                    auto parent = createFromImport(libraryId, data, {});
-                    if (!collections.empty())
-                        lib.updateItem(libraryId, jstr(parent, "key"), [&](Json& d) { d["collections"] = collections; });
-                    lib.updateItem(libraryId, job.key, [&](Json& d) {
-                        d["parentItem"] = jstr(parent, "key");
-                        d["title"] = "PDF";
-                        d.erase("collections");
-                    });
-                }
-                if (!missed.isEmpty() && guard) {
-                    auto* box = new QMessageBox(QMessageBox::Information, QObject::tr("Retrieve Metadata"),
-                                                QObject::tr("No metadata was found for:\n\n%1\n\nYou can create a "
-                                                            "parent item manually and drag the PDF onto it.")
-                                                    .arg(missed.join("\n")),
-                                                QMessageBox::Ok, guard);
-                    box->setAttribute(Qt::WA_DeleteOnClose);
-                    box->show();
-                }
-            },
-            Qt::QueuedConnection);
-    }).detach();
+    if (jobs.empty())
+        return nullptr;
+    auto* dlg = new MetadataProgressDialog(libraryId, std::move(jobs), parent);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->show();
+    dlg->start();
+    return dlg;
 }
 
 } // namespace fp::gui

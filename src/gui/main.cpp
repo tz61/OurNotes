@@ -122,11 +122,21 @@ int main(int argc, char** argv)
                     break;
                 }
         });
-    if (parser.isSet(screenshotOpt))
-        QTimer::singleShot(2500, &window, [&] {
-            window.grab().save(parser.value(screenshotOpt));
+    if (parser.isSet(screenshotOpt)) {
+        // FILE gets the main window; other open windows go to FILE-1.png, FILE-2.png, ...
+        int delay = qEnvironmentVariableIsSet("FREEPEN_SCREENSHOT_DELAY")
+                        ? qEnvironmentVariableIntValue("FREEPEN_SCREENSHOT_DELAY")
+                        : 2500;
+        QTimer::singleShot(delay, &window, [&] {
+            auto file = parser.value(screenshotOpt);
+            window.grab().save(file);
+            int n = 0;
+            for (auto* w : QApplication::topLevelWidgets())
+                if (w != &window && w->isVisible() && w->isWindow())
+                    w->grab().save(QString(file).replace(".png", QString("-%1.png").arg(++n)));
             app.quit();
         });
+    }
     QStringList files;
     for (auto& f : parser.positionalArguments())
         if (QFileInfo(f).isFile())

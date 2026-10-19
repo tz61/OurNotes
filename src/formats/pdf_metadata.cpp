@@ -1,5 +1,6 @@
 #include "formats/pdf_metadata.h"
 
+#include <cctype>
 #include <cmath>
 
 #include "formats/metadata.h"
@@ -44,22 +45,60 @@ std::string guessPdfTitle(const fs::path& path)
     return titleFromDocument(*doc);
 }
 
-std::optional<Json> retrieveMetadataForPdf(const fs::path& path)
+static std::string serviceFor(const std::string& kind)
 {
+    if (kind == "doi")
+        return "Crossref";
+    if (kind == "arxiv")
+        return "arXiv";
+    if (kind == "isbn")
+        return "Open Library";
+    if (kind == "pmid")
+        return "PubMed";
+    return kind;
+}
+
+static std::string kindLabel(const std::string& kind)
+{
+    if (kind == "doi")
+        return "DOI";
+    if (kind == "arxiv")
+        return "arXiv";
+    std::string upper = kind;
+    for (auto& c : upper)
+        c = (char)std::toupper((unsigned char)c);
+    return upper;
+}
+
+std::optional<PdfMetadataMatch> retrieveMetadataForPdf(const fs::path& path,
+                                                       const std::function<void(const std::string&)>& stage)
+{
+    auto report = [&](const std::string& s) {
+        if (stage)
+            stage(s);
+    };
+    report("Reading PDF");
     auto doc = pdf::Document::open(path);
     std::string text;
     for (int i = 0; i < std::min(2, doc->pageCount()); ++i)
         text += doc->pageText(i) + "\n";
     text += doc->metadata("info:Subject") + "\n" + doc->metadata("info:Keywords");
     for (auto& id : findIdentifiersInText(text)) {
+        report("Looking up " + kindLabel(id.kind) + " " + id.value);
         try {
-            return lookup(id);
+            auto item = lookup(id);
+            // DOIs of arXiv papers are answered by arXiv
+            auto service = jstr(item, "libraryCatalog") == "arXiv.org" ? "arXiv" : serviceFor(id.kind);
+            return PdfMetadataMatch{item, kindLabel(id.kind) + " " + id.value + " \u00b7 " + service};
         } catch (const MetadataError&) {
         }
     }
     auto title = titleFromDocument(*doc);
-    if (title.size() > 10)
-        return lookupByTitle(title);
+    if (title.size() > 10) {
+        report("Searching Crossref for the title");
+        if (auto hit = lookupByTitle(title))
+            return PdfMetadataMatch{*hit, "title search \u00b7 Crossref"};
+    }
     return std::nullopt;
 }
 

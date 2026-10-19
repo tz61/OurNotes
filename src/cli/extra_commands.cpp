@@ -176,7 +176,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
                 auto att = lib.importAttachment(id, path);
                 if (!collection.empty())
                     lib.addToCollection(id, collection, {jstr(att, "key")});
-                std::optional<Json> found;
+                std::optional<formats::PdfMetadataMatch> found;
                 if (jstr(att, "contentType") == "application/pdf") {
                     try {
                         found = formats::retrieveMetadataForPdf(path);
@@ -185,13 +185,13 @@ void registerExtraCommands(CommandMap& commands, Config& config)
                     }
                 }
                 if (found) {
-                    auto item = addItem(lib, id, *found, collection);
+                    auto item = addItem(lib, id, found->item, collection);
                     lib.updateItem(id, jstr(att, "key"), [&](Json& d) {
                         d["parentItem"] = jstr(item, "key");
                         d["title"] = "PDF";
                         d.erase("collections");
                     });
-                    std::cout << jstr(item, "key") << "  " << jstr(item, "title") << "\n";
+                    std::cout << jstr(item, "key") << "  " << jstr(item, "title") << "  [" << found->source << "]\n";
                 } else {
                     std::cout << jstr(att, "key") << "  " << arg << " (no metadata found)\n";
                 }

@@ -1,4 +1,5 @@
 #include "gui/main_window.h"
+#include "gui/metadata_progress.h"
 
 #include <QAction>
 #include <QApplication>
@@ -564,7 +565,9 @@ void MainWindow::addByIdentifier()
 
 void MainWindow::retrieveMetadata(int64_t libraryId, const QStringList& keys)
 {
-    fp::gui::retrieveMetadata(this, libraryId, keys);
+    if (auto* dlg = fp::gui::retrieveMetadata(this, libraryId, keys))
+        connect(dlg, &MetadataProgressDialog::itemActivated, this,
+                [this](qint64, const QString& key) { selectItem(key); });
 }
 
 void MainWindow::closeEvent(QCloseEvent* e)
