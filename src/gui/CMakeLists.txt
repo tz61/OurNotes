@@ -17,6 +17,7 @@ set(FREEPEN_GUI_SOURCES
     preferences.cpp
     sync_controller.cpp
     tag_selector.cpp
+    ui_scale.cpp
     reader/annotation_sidebar.cpp
     reader/pdf_view.cpp
     reader/reader_tab.cpp

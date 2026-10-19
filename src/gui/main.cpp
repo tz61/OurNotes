@@ -14,12 +14,34 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/main_window.h"
+#include "gui/ui_scale.h"
 
 using namespace fp;
 using namespace fp::gui;
 
+// The --config option has to be known before the QApplication exists (for the scale).
+static fs::path configPathFromArgs(int argc, char** argv)
+{
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--config" && i + 1 < argc)
+            return u8path(argv[i + 1]);
+        if (startsWith(a, "--config="))
+            return u8path(a.substr(9));
+    }
+    return {};
+}
+
 int main(int argc, char** argv)
 {
+    std::unique_ptr<Config> config;
+    try {
+        config = std::make_unique<Config>(configPathFromArgs(argc, argv));
+    } catch (const std::exception&) {
+        config = std::make_unique<Config>(fs::path());
+    }
+    applyInterfaceScale(*config);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName("freePen");
     QApplication::setOrganizationName("freePen");
@@ -49,10 +71,15 @@ int main(int argc, char** argv)
     parser.addPositionalArgument("files", "PDF or other files to add to the library.", "[files...]");
     parser.process(app);
 
-    std::unique_ptr<Config> config;
+    // arguments kept when the application restarts itself (e.g. after changing the scale)
+    QStringList restartArgs;
+    for (auto* o : {&dataDirOpt, &configOpt})
+        if (parser.isSet(*o))
+            restartArgs << "--" + o->names().first() << parser.value(*o);
+    app.setProperty("restartArguments", restartArgs);
+
     std::unique_ptr<Library> library;
     try {
-        config = std::make_unique<Config>(parser.isSet(configOpt) ? fspath(parser.value(configOpt)) : fs::path());
         auto dataDir = parser.isSet(dataDirOpt) ? fspath(parser.value(dataDirOpt)) : config->dataDir();
         library = std::make_unique<Library>(dataDir);
     } catch (const std::exception& e) {

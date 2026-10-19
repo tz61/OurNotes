@@ -3,6 +3,7 @@
 #include <doctest.h>
 
 #include <QApplication>
+#include <QComboBox>
 #include <QTest>
 #include <QTextDocument>
 
@@ -14,6 +15,9 @@
 #include "gui/common.h"
 #include "gui/items_model.h"
 #include "gui/note_html.h"
+#include "gui/preferences.h"
+#include "gui/sync_controller.h"
+#include "gui/ui_scale.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
 
@@ -197,4 +201,25 @@ TEST_CASE("items model: scopes, search and trash")
     CHECK(model.rowCount() == 1);
     model.setScope({env.lib, ScopeKind::Trash, {}});
     CHECK(model.rowCount() == 1);
+}
+
+TEST_CASE("interface scale: defaults to 150% and is editable in preferences")
+{
+    app();
+    Env env;
+    CHECK(interfaceScale(env.config) == 150);
+    env.config.set("/ui/scale", 1000);
+    CHECK(interfaceScale(env.config) == 300);  // clamped
+    env.config.set("/ui/scale", 150);
+
+    SyncController sync;
+    PreferencesDialog dlg(&sync);
+    auto* combo = dlg.findChild<QComboBox*>("interfaceScale");
+    REQUIRE(combo);
+    REQUIRE(combo->currentData().toInt() == 150);
+    combo->setCurrentIndex(combo->findData(125));
+    CHECK(env.config.get("/ui/scale").get<int>() == 125);
+    CHECK(interfaceScale(env.config) == 125);
+    if (qEnvironmentVariableIsSet("FREEPEN_TEST_SNAPSHOT_DIR"))
+        dlg.grab().save(qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR") + "/preferences.png");
 }

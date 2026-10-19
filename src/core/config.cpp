@@ -82,7 +82,7 @@ static Json defaults()
         {"dataDir", nullptr},
         {"sync", {{"targets", Json::array()}, {"active", nullptr}, {"auto", true}, {"intervalMinutes", 15},
                   {"files", "on_sync"}}},
-        {"ui", {{"openPdfIn", "tab"}, {"citationStyle", "apa"}, {"readerZoom", "fit_width"}}},
+        {"ui", {{"openPdfIn", "tab"}, {"citationStyle", "apa"}, {"readerZoom", "fit_width"}, {"scale", 150}}},
         {"fulltext", {{"enabled", true}}},
     };
 }

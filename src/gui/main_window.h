@@ -36,6 +36,7 @@ private:
     ReaderTab* findReader(int64_t libraryId, const QString& key) const;
     void updateTabActions();
     void showPreferences(int page = 0);
+    void restartApplication();
     void showAbout();
     void exportItems(const Scope& scope, const QStringList& keys);
     void importFile();

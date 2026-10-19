@@ -18,6 +18,7 @@ class PreferencesDialog : public QDialog {
 public:
     PreferencesDialog(SyncController* sync, QWidget* parent = nullptr);
     void showPage(int index);
+    bool restartRequested() const { return restart_; }
 
 signals:
     void importZoteroRequested();
@@ -42,7 +43,10 @@ private:
     QComboBox* openPdf_;
     QCheckBox* subcollections_;
     QCheckBox* fulltext_;
+    QComboBox* scale_;
+    QLabel* scaleHint_;
     QLabel* syncStatus_;
+    bool restart_ = false;
 };
 
 } // namespace fp::gui

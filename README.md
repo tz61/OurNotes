@@ -105,6 +105,10 @@ On first start freePen offers to import an existing Zotero library (it looks for
 freepen-cli import-zotero ~/Zotero
 ```
 
+The interface is scaled to 150% by default; change it in *Preferences → General →
+Interface scale* (100–300%, applied on restart). A `QT_SCALE_FACTOR` set in the
+environment takes precedence.
+
 Data lives in `~/freePen` (database `freepen.sqlite`, files in `storage/<KEY>/`), like
 Zotero's data directory; change it in *Preferences → General* or with
 `FREEPEN_DATA_DIR`. Settings and sync tokens are in `~/.config/freepen/config.json`

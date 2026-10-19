@@ -26,6 +26,7 @@
 #include "gui/common.h"
 #include "gui/icons.h"
 #include "gui/sync_controller.h"
+#include "gui/ui_scale.h"
 #include "sync/http_transport.h"
 
 namespace fp::gui {
@@ -76,6 +77,39 @@ QWidget* PreferencesDialog::generalPage()
                                  tr("freePen will use the new data directory after a restart. Existing data is not "
                                     "moved; copy the folder yourself if you want to keep it."));
     });
+    // interface scale (applied at startup, so changes need a restart)
+    scale_ = new QComboBox(page);
+    scale_->setObjectName("interfaceScale");
+    int current = interfaceScale(cfg);
+    for (int percent : {100, 110, 125, 150, 175, 200, 250, 300})
+        scale_->addItem(QString("%1%").arg(percent), percent);
+    if (scale_->findData(current) < 0)
+        scale_->addItem(QString("%1%").arg(current), current);
+    scale_->setCurrentIndex(scale_->findData(current));
+    auto* scaleRow = new QHBoxLayout;
+    scaleRow->addWidget(scale_);
+    scaleHint_ = new QLabel(page);
+    scaleHint_->setWordWrap(true);
+    scaleRow->addWidget(scaleHint_, 1);
+    auto* restart = new QPushButton(tr("Restart Now"), page);
+    restart->setVisible(false);
+    scaleRow->addWidget(restart);
+    form->addRow(tr("Interface scale:"), scaleRow);
+    if (interfaceScaleFromEnvironment()) {
+        scale_->setEnabled(false);
+        scaleHint_->setText(tr("Set by the QT_SCALE_FACTOR environment variable."));
+    }
+    connect(scale_, &QComboBox::currentIndexChanged, this, [this, restart, current] {
+        bool changed = scale_->currentData().toInt() != current;
+        scaleHint_->setText(changed ? tr("Takes effect after restarting freePen.") : QString());
+        restart->setVisible(changed);
+        AppContext::get().config().set("/ui/scale", scale_->currentData().toInt());
+    });
+    connect(restart, &QPushButton::clicked, this, [this] {
+        restart_ = true;
+        accept();
+    });
+
     openPdf_ = new QComboBox(page);
     openPdf_->addItem(tr("in freePen"), "tab");
     openPdf_->addItem(tr("with the system PDF viewer"), "external");
@@ -313,6 +347,7 @@ void PreferencesDialog::addFolder()
 void PreferencesDialog::save()
 {
     auto& cfg = AppContext::get().config();
+    cfg.set("/ui/scale", scale_->currentData().toInt());
     cfg.set("/ui/openPdfIn", ss(openPdf_->currentData().toString()));
     cfg.set("/ui/showSubcollectionItems", subcollections_->isChecked());
     cfg.set("/fulltext/enabled", fulltext_->isChecked());

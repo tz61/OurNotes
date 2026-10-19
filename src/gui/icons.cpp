@@ -2,6 +2,8 @@
 
 #include <QApplication>
 #include <QHash>
+#include <QIconEngine>
+#include <QPixmapCache>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
@@ -91,27 +93,58 @@ const QHash<QString, QString>& sources()
 
 QColor textColor() { return QApplication::palette().color(QPalette::WindowText); }
 
+// Renders the SVG at exactly the size requested, so icons stay sharp at any
+// interface scale or screen density.
+class SvgIconEngine : public QIconEngine {
+public:
+    explicit SvgIconEngine(QByteArray svg) : svg_(std::move(svg)), id_(qHash(svg_)) {}
+
+    void paint(QPainter* p, const QRect& rect, QIcon::Mode mode, QIcon::State) override
+    {
+        QSvgRenderer renderer(svg_);
+        p->save();
+        p->setRenderHint(QPainter::Antialiasing);
+        if (mode == QIcon::Disabled)
+            p->setOpacity(0.35);
+        renderer.render(p, rect);
+        p->restore();
+    }
+
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
+    {
+        QString cacheKey = QString("fp-icon-%1-%2x%3-%4").arg(id_).arg(size.width()).arg(size.height()).arg(int(mode));
+        QPixmap pm;
+        if (QPixmapCache::find(cacheKey, &pm))
+            return pm;
+        pm = QPixmap(size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        paint(&p, QRect(QPoint(0, 0), size), mode, state);
+        p.end();
+        QPixmapCache::insert(cacheKey, pm);
+        return pm;
+    }
+
+    QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State state, qreal scale) override
+    {
+        QPixmap pm = pixmap(QSize(qRound(size.width() * scale), qRound(size.height() * scale)), mode, state);
+        pm.setDevicePixelRatio(scale);
+        return pm;
+    }
+
+    QIconEngine* clone() const override { return new SvgIconEngine(svg_); }
+    QString key() const override { return QStringLiteral("freepen-svg"); }
+
+private:
+    QByteArray svg_;
+    size_t id_;
+};
+
 QIcon render(const QString& svgBody)
 {
     QString svg = QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")
                       .arg(QString(svgBody).replace("CUR", textColor().name()));
-    QSvgRenderer renderer(svg.toUtf8());
-    QIcon out;
-    for (int size : {16, 20, 24, 32, 48}) {
-        QPixmap pm(size, size);
-        pm.fill(Qt::transparent);
-        QPainter p(&pm);
-        p.setRenderHint(QPainter::Antialiasing);
-        renderer.render(&p);
-        out.addPixmap(pm);
-        QPixmap disabled(size, size);
-        disabled.fill(Qt::transparent);
-        QPainter pd(&disabled);
-        pd.setOpacity(0.35);
-        pd.drawPixmap(0, 0, pm);
-        out.addPixmap(disabled, QIcon::Disabled);
-    }
-    return out;
+    return QIcon(new SvgIconEngine(svg.toUtf8()));
 }
 
 } // namespace
@@ -187,8 +220,8 @@ QIcon itemTypeIcon(const QString& t, const QString& contentType, const QString& 
 
 QIcon colorIcon(const QString& color, int size, bool round)
 {
-    QPixmap pm(size * 2, size * 2);
-    pm.setDevicePixelRatio(2);
+    QPixmap pm(size * 3, size * 3);
+    pm.setDevicePixelRatio(3);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);

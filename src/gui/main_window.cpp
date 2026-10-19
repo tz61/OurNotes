@@ -12,6 +12,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QProcess>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QStatusBar>
@@ -387,6 +388,15 @@ void MainWindow::showPreferences(int page)
     connect(&dlg, &PreferencesDialog::rebuildIndexRequested, indexer_, &FulltextIndexer::rebuild);
     connect(&dlg, &PreferencesDialog::conflictsRequested, this, &MainWindow::showConflicts);
     dlg.exec();
+    if (dlg.restartRequested())
+        QTimer::singleShot(0, this, &MainWindow::restartApplication);
+}
+
+void MainWindow::restartApplication()
+{
+    auto args = qApp->property("restartArguments").toStringList();
+    if (close())
+        QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
 }
 
 void MainWindow::showAbout()
