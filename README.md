@@ -90,6 +90,11 @@ cmake --build build -j
 open build/src/gui/ournotes.app
 ```
 
+`scripts/build-dmg.sh` builds a self-contained `OurNotes.app` (with Qt, OpenSSL, and
+`ournotes-cli` and `ournotesd` in `OurNotes.app/Contents/MacOS`) and packs it into
+`dist/OurNotes-<version>-macos-<arch>.dmg`. Options: `--qt DIR`, `--no-build`; it signs
+ad hoc unless `CODESIGN_IDENTITY` (and `NOTARY_PROFILE` for notarization) is set.
+
 ### Windows (Visual Studio 2022)
 
 ```powershell
@@ -103,9 +108,22 @@ Other build options: `-DMUPDF_ROOT=<prefix>` uses an existing MuPDF build;
 `-DOURNOTES_BUILD_GUI=OFF -DOURNOTES_BUILD_CLI=OFF` builds only the sync server (no Qt, no
 MuPDF); `-DOURNOTES_WITH_OPENSSL=OFF` builds without HTTPS.
 
-> Status: developed and tested on Linux (Ubuntu 22.04, GCC 11, Qt 6.11). The macOS and
-> Windows builds are set up (code paths, CMake, CI workflow in `.github/workflows`) but
-> have not been run yet.
+### Packages and releases
+
+| System | Script | Creates |
+|---|---|---|
+| macOS | `scripts/build-dmg.sh` | `dist/OurNotes-<version>-macos-<arch>.dmg` |
+| Linux | `scripts/package-linux.sh` | `dist/OurNotes-<version>-<arch>.AppImage` and `dist/ournotes-<version>-linux-<arch>.tar.gz` |
+| Windows | `scripts\package-windows.ps1` | `dist\OurNotes-<version>-windows-x64.zip` |
+
+Each bundles the Qt runtime. Pushing a tag `v<version>` (the version in `CMakeLists.txt`;
+`v<version>-rc1` and the like make a pre-release) runs `.github/workflows/release.yml`,
+which builds all of them on GitHub (macOS for Apple silicon and Intel) and publishes them
+as a release. Running that workflow by hand builds the packages without publishing them.
+
+> Status: developed and tested on Linux (Ubuntu 22.04, GCC 11, Qt 6.11) and macOS 26
+> (Apple silicon, Homebrew Qt 6.12). The Windows build is set up (code paths, CMake, CI
+> workflow in `.github/workflows`) but has not been run yet.
 
 ## Getting started
 

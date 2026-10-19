@@ -39,7 +39,7 @@ jobs:
           ctest --test-dir build --output-on-failure
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4

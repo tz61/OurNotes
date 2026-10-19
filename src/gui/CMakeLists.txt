@@ -56,6 +56,7 @@ set_target_properties(ournotes PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER org.ournotes.OurNotes
     MACOSX_BUNDLE_ICON_FILE ournotes.icns
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 target_link_libraries(ournotes PRIVATE ournotes_gui)
 
@@ -73,4 +74,9 @@ if(OURNOTES_DEPLOY_QT)
     qt_generate_deploy_app_script(TARGET ournotes OUTPUT_SCRIPT ournotes_deploy_script
         NO_UNSUPPORTED_PLATFORM_ERROR NO_TRANSLATIONS)
     install(SCRIPT "${ournotes_deploy_script}")
+    if(WIN32)
+        # the Visual C++ runtime, for computers without its redistributable
+        set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+        include(InstallRequiredSystemLibraries)
+    endif()
 endif()
