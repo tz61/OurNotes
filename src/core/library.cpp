@@ -1,5 +1,7 @@
 #include "core/library.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <algorithm>
 #include <chrono>
 #include <numeric>

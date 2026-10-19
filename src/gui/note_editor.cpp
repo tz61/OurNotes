@@ -156,7 +156,7 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     toolbar_->addAction("•", this, [this] { toggleList(false); })->setToolTip(tr("Bulleted list"));
     toolbar_->addAction("1.", this, [this] { toggleList(true); })->setToolTip(tr("Numbered list"));
     toolbar_->addAction("❝", this, [this] { toggleQuote(); })->setToolTip(tr("Block quote"));
-    toolbar_->addAction("🔗", this, [this] { insertLink(); })->setToolTip(tr("Insert link (Ctrl+K)"));
+    toolbar_->addAction(tr("Link"), this, [this] { insertLink(); })->setToolTip(tr("Insert link (Ctrl+K)"));
     auto* link = new QAction(this);
     link->setShortcut(QKeySequence("Ctrl+K"));
     link->setShortcutContext(Qt::WidgetWithChildrenShortcut);

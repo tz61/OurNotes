@@ -1,5 +1,7 @@
 #include "pdf/document.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

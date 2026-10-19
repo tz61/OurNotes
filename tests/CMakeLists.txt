@@ -10,8 +10,9 @@ function(fp_add_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
+# Each suite is added only when its module is part of this build configuration.
 foreach(dir core sync formats pdf gui)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt" AND TARGET freepen_${dir})
         add_subdirectory(${dir})
     endif()
 endforeach()

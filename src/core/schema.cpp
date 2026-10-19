@@ -1,5 +1,7 @@
 #include "core/schema.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <algorithm>
 #include <mutex>
 #include <set>

@@ -1,5 +1,7 @@
 #include "core/util.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <algorithm>
 #include <chrono>
 #include <cstring>

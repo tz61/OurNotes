@@ -25,7 +25,15 @@ find_library(MUPDF_THIRD_LIBRARY NAMES mupdf-third libmupdf-third libthirdparty 
 
 add_library(MuPDF::MuPDF INTERFACE IMPORTED GLOBAL)
 
-if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
+# vcpkg's port (Windows) exports a CMake package with all dependencies.
+if(NOT MUPDF_ROOT)
+    find_package(unofficial-mupdf CONFIG QUIET)
+endif()
+
+if(TARGET unofficial::mupdf::mupdf)
+    message(STATUS "freePen: using MuPDF from vcpkg")
+    target_link_libraries(MuPDF::MuPDF INTERFACE unofficial::mupdf::mupdf)
+elseif(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
     message(STATUS "freePen: using MuPDF from ${MUPDF_LIBRARY}")
     target_include_directories(MuPDF::MuPDF INTERFACE "${MUPDF_INCLUDE_DIR}")
     target_link_libraries(MuPDF::MuPDF INTERFACE "${MUPDF_LIBRARY}")
@@ -49,7 +57,7 @@ elseif(FREEPEN_BUNDLE_MUPDF)
     ExternalProject_Add(mupdf_ext
         URL "https://mupdf.com/downloads/archive/mupdf-${FREEPEN_MUPDF_VERSION}-source.tar.gz"
         URL_HASH SHA256=${FREEPEN_MUPDF_SHA256}
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        ${FREEPEN_EXTRACT_TIMESTAMP}
         PREFIX "${_prefix}"
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND ""

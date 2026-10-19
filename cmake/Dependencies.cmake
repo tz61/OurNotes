@@ -9,6 +9,12 @@
 include(FetchContent)
 find_package(Threads REQUIRED)
 
+# DOWNLOAD_EXTRACT_TIMESTAMP only exists since CMake 3.24.
+set(FREEPEN_EXTRACT_TIMESTAMP)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    set(FREEPEN_EXTRACT_TIMESTAMP DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+endif()
+
 set(FREEPEN_THIRD_PARTY "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
 
 add_library(fp_json INTERFACE)
@@ -21,7 +27,7 @@ target_include_directories(fp_doctest SYSTEM INTERFACE "${FREEPEN_THIRD_PARTY}/d
 FetchContent_Declare(sqlite
     URL https://sqlite.org/2026/sqlite-amalgamation-3540100.zip
     URL_HASH SHA256=0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    ${FREEPEN_EXTRACT_TIMESTAMP})
 FetchContent_MakeAvailable(sqlite)
 add_library(fp_sqlite3 STATIC "${sqlite_SOURCE_DIR}/sqlite3.c")
 target_include_directories(fp_sqlite3 SYSTEM PUBLIC "${sqlite_SOURCE_DIR}")
