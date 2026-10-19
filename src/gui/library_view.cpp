@@ -224,17 +224,27 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     connect(header, &QHeaderView::sectionResized, this, [this, header](int section, int oldSize, int newSize) {
         if (fitting_)
             return;
-        if (section == ItemsModel::Title && newSize > 0 && oldSize > 0) {
-            // dragging the title's edge trades width with the column next to it
-            for (int v = header->visualIndex(section) + 1; v < header->count(); ++v) {
+        if (newSize > 0 && oldSize > 0) {
+            // The dragged edge follows the mouse: the columns after it give the width (the
+            // next one first, down to its minimum) or take it, so the list stays filled.
+            // Left to the title, which is before it, the edge stood still and the columns
+            // before it moved the other way.
+            int left = newSize - oldSize;
+            bool after = false;
+            fitting_ = true;
+            for (int v = header->visualIndex(section) + 1; v < header->count() && left != 0; ++v) {
                 int next = header->logicalIndex(v);
                 if (header->isSectionHidden(next))
                     continue;
-                fitting_ = true;
-                header->resizeSection(next, std::max(header->minimumSectionSize(), header->sectionSize(next) - (newSize - oldSize)));
-                fitting_ = false;
-                break;
+                after = true;
+                int size = header->sectionSize(next);
+                int fitted = std::max(header->minimumSectionSize(), size - left);
+                left -= size - fitted;
+                header->resizeSection(next, fitted);
             }
+            if (after && left > 0)  // all after it at their minimum: no wider
+                header->resizeSection(section, newSize - left);
+            fitting_ = false;
         }
         fitColumns();
     });
@@ -543,8 +553,11 @@ void LibraryView::restoreState(const QByteArray& state)
         splitter_->restoreState(a);
     if (!b.isEmpty())
         leftSplitter_->restoreState(b);
-    if (!c.isEmpty())
+    if (!c.isEmpty()) {
+        fitting_ = true;  // the saved widths as they are, not traded between columns
         items_->header()->restoreState(c);
+        fitting_ = false;
+    }
     items_->header()->setStretchLastSection(false);
     setItemPaneVisible(paneToggle_->isChecked());  // not part of the splitter's state
     fitColumns();

@@ -1222,6 +1222,55 @@ TEST_CASE("notes: Ctrl+B, Ctrl+I and Ctrl+U format the text")
     CHECK(formatOf("slanted").fontUnderline());
 }
 
+TEST_CASE("library: a column's edge follows the mouse, the columns after it make room")
+{
+    app();
+    Env env;
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Book"}});
+    LibraryView view;
+    view.resize(1400, 700);
+    view.show();
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : view.findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* header = items->header();
+    header->showSection(ItemsModel::Date);
+    QApplication::processEvents();
+    auto rightEdge = [&](int c) { return header->sectionViewportPosition(c) + header->sectionSize(c); };
+    auto lastEnd = [&] {
+        int end = 0;
+        for (int c = 0; c < header->count(); ++c)
+            if (!header->isSectionHidden(c))
+                end = std::max(end, rightEdge(c));
+        return end;
+    };
+    REQUIRE(lastEnd() == items->viewport()->width());
+    int title = header->sectionSize(ItemsModel::Title), creator = header->sectionSize(ItemsModel::Creator);
+    int edge = rightEdge(ItemsModel::Creator);
+    int y = header->height() / 2;
+    QTest::mousePress(header->viewport(), Qt::LeftButton, {}, QPoint(edge - 1, y));
+    for (int dx = 5; dx <= 40; dx += 5)
+        QTest::mouseMove(header->viewport(), QPoint(edge - 1 + dx, y));
+    QTest::mouseRelease(header->viewport(), Qt::LeftButton, {}, QPoint(edge - 1 + 40, y));
+    CHECK(std::abs(rightEdge(ItemsModel::Creator) - (edge + 40)) <= 1);  // where the mouse let go
+    CHECK(header->sectionSize(ItemsModel::Creator) == creator + 40);
+    CHECK(header->sectionSize(ItemsModel::Title) == title);  // the columns before it stay
+    CHECK(lastEnd() == items->viewport()->width());
+
+    // and back, narrower
+    edge = rightEdge(ItemsModel::Creator);
+    QTest::mousePress(header->viewport(), Qt::LeftButton, {}, QPoint(edge - 1, y));
+    for (int dx = 5; dx <= 60; dx += 5)
+        QTest::mouseMove(header->viewport(), QPoint(edge - 1 - dx, y));
+    QTest::mouseRelease(header->viewport(), Qt::LeftButton, {}, QPoint(edge - 1 - 60, y));
+    CHECK(std::abs(rightEdge(ItemsModel::Creator) - (edge - 60)) <= 1);
+    CHECK(header->sectionSize(ItemsModel::Title) == title);
+    CHECK(lastEnd() == items->viewport()->width());
+}
+
 TEST_CASE("notes: Markdown typed or pasted becomes formatting")
 {
     app();
