@@ -321,11 +321,15 @@ void MainWindow::buildActions()
 
     auto* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Library Tab"), QKeySequence("Ctrl+1"), this, [this] { tabs_->setCurrentIndex(0); });
-    [[maybe_unused]] auto* nextTab = view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
+    auto* nextTab = view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
                                     [this] { tabs_->setCurrentIndex((tabs_->currentIndex() + 1) % tabs_->count()); });
-    [[maybe_unused]] auto* previousTab = view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
+    auto* previousTab = view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
         tabs_->setCurrentIndex((tabs_->currentIndex() + tabs_->count() - 1) % tabs_->count());
     });
+    // Ctrl+Shift+Tab comes as Backtab or as Tab, by keyboard; missed, it went to the
+    // nearest tab widget and switched Info and Notes instead
+    previousTab->setShortcuts(QList<QKeySequence>{Qt::CTRL | Qt::SHIFT | Qt::Key_Tab} + previousTab->shortcuts());
+    Q_UNUSED(nextTab);
 #ifdef Q_OS_MACOS
     // Qt's Ctrl is the Command key on macOS, and Command-Tab switches applications; the
     // Control key (Qt's Meta) with Tab switches tabs, as in Safari and Finder

@@ -2893,6 +2893,41 @@ TEST_CASE("library: moving between items does not change the window's minimum he
     CHECK(view->findChild<LocationBox*>());
 }
 
+TEST_CASE("main window: Ctrl+Shift+Tab goes to the previous tab, also from a note")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>A note</p>", jstr(paper, "key"));
+    auto att = env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    window.openAttachment(env.lib, qs(jstr(att, "key")));
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    auto* side = reader->findChild<QTabWidget*>("readerContextTabs");
+    REQUIRE(side);
+    // as Backtab or as Tab with Shift, whichever the keyboard sends
+    for (auto key : {Qt::Key_Backtab, Qt::Key_Tab}) {
+        tabs->setCurrentWidget(reader);
+        side->setCurrentIndex(1);
+        auto* note = side->widget(1)->findChild<NoteTextEdit*>();
+        REQUIRE(note);
+        note->setFocus();
+        QApplication::processEvents();
+        QTest::keyClick(note, key, Qt::ControlModifier | Qt::ShiftModifier);
+        QApplication::processEvents();
+        CHECK(tabs->currentIndex() == 0);  // the library, the tab before
+        CHECK(side->currentIndex() == 1);  // still Notes
+    }
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();
