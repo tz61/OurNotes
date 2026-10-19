@@ -86,6 +86,7 @@ private:
     QWidget* middle_;
     QToolButton* paneToggle_;
     bool fitting_ = false;
+    int leftMinimum_ = 0;  // the collections pane's own minimum, while it is pinned
     int tools_ = 0;
     QTreeView* items_;
     ItemsModel* model_;

@@ -151,6 +151,8 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     splitter_->setStretchFactor(1, 1);
     splitter_->setStretchFactor(2, 0);
     splitter_->setSizes({240, 760, 380});
+    // dragging the item pane's edge squeezes the item list, never the collections
+    splitter_->handle(2)->installEventFilter(this);
     connect(paneToggle_, &QToolButton::toggled, this, [this](bool on) {
         setItemPaneVisible(on);
         AppContext::get().config().set("/ui/itemPaneVisible", on);
@@ -465,6 +467,15 @@ bool LibraryView::eventFilter(QObject* watched, QEvent* e)
 {
     if (watched == items_->viewport() && e->type() == QEvent::Resize)
         fitColumns();
+    if (watched == splitter_->handle(2)) {
+        // pin the collections pane at its width while the item pane's edge is dragged
+        if (e->type() == QEvent::MouseButtonPress) {
+            leftMinimum_ = leftSplitter_->minimumWidth();
+            leftSplitter_->setMinimumWidth(leftSplitter_->width());
+        } else if (e->type() == QEvent::MouseButtonRelease) {
+            leftSplitter_->setMinimumWidth(leftMinimum_);
+        }
+    }
     return QWidget::eventFilter(watched, e);
 }
 

@@ -1390,6 +1390,26 @@ TEST_CASE("library: columns fill the list, the title column gives way, the item 
     splitter->setSizes({240, 760, 500});
     QApplication::processEvents();
 
+    // dragging the item pane's edge far to the left stops at the list's minimum and
+    // leaves the collections alone
+    {
+        int left = splitter->sizes()[0];
+        auto* handle = splitter->handle(2);
+        QPoint start(handle->width() / 2, handle->height() / 2);
+        QTest::mousePress(handle, Qt::LeftButton, {}, start);
+        QTest::mouseMove(handle, start - QPoint(300, 0));
+        QTest::mouseMove(handle, start - QPoint(1200, 0));
+        QTest::mouseRelease(handle, Qt::LeftButton, {}, start - QPoint(1200, 0));
+        QApplication::processEvents();
+        CHECK(splitter->sizes()[0] == left);
+        CHECK(header->sectionSize(ItemsModel::Title) >= 180);
+        CHECK(total() == items->viewport()->width());
+        // and the collections can still be resized with their own edge
+        CHECK(splitter->widget(0)->minimumWidth() < left);
+        splitter->setSizes({240, 760, 500});
+        QApplication::processEvents();
+    }
+
     // dragging the title's edge trades width with the next column
     int creator = header->sectionSize(ItemsModel::Creator);
     header->resizeSection(ItemsModel::Title, header->sectionSize(ItemsModel::Title) + 40);
