@@ -1774,6 +1774,17 @@ void PdfView::keyPressEvent(QKeyEvent* e)
         emit libraryRequested();
         return;
     }
+    // F: fit the width; F again within 10 s, the whole page, and so on. After a while
+    // the first F is the width again.
+    if (e->key() == Qt::Key_F && e->modifiers() == Qt::NoModifier) {
+        bool again = fitKey_.isValid() && fitKey_.elapsed() < 10000;
+        if (again && fit_ == Fit::Width)
+            fitPage();
+        else
+            fitWidth();
+        fitKey_.start();
+        return;
+    }
     if (e->matches(QKeySequence::Copy)) {
         copySelection();
         return;

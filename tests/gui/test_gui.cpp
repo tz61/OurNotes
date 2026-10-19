@@ -2645,6 +2645,34 @@ TEST_CASE("reader: keys 1 to 8 pick the tools, but not while typing")
     CHECK(view->tool() == ReaderTool::Select);
 }
 
+TEST_CASE("reader: F fits the width, F again the page")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(900, 600);  // wide: the whole page is smaller than the width
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    view.fitPage();
+    double pageZoom = view.zoom();
+    view.fitWidth();
+    double widthZoom = view.zoom();
+    REQUIRE(pageZoom < widthZoom);
+    view.setZoom(1.0);
+    view.setFocus();
+    QTest::keyClick(&view, Qt::Key_F);
+    CHECK(view.isFitWidth());
+    CHECK(view.zoom() == doctest::Approx(widthZoom));
+    QTest::keyClick(&view, Qt::Key_F);
+    CHECK(!view.isFitWidth());
+    CHECK(view.zoom() == doctest::Approx(pageZoom));
+    QTest::keyClick(&view, Qt::Key_F);
+    CHECK(view.isFitWidth());
+}
+
 TEST_CASE("reader: in select mode a drag from beside the text selects it")
 {
     app();
@@ -2937,6 +2965,7 @@ TEST_CASE("library: with a band picture the list has no stripes, in light and da
         INFO((appearance == Appearance::Light ? "light" : "dark") << " mode");
         applyAppearance(appearance);
         Env env;
+        env.config.set("/ui/bandBackground", true);  // off unless asked for
         auto bands = env.library.dataDir() / "backgrounds" / "bands";
         fs::create_directories(bands);
         QImage picture(100, 2000, QImage::Format_RGB32);  // fitted and centred: the whole height, mid-list

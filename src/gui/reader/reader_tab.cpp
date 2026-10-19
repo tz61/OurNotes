@@ -330,8 +330,8 @@ void ReaderTab::buildToolbar()
     zoomLabel_->setAlignment(Qt::AlignCenter);
     tb->addWidget(zoomLabel_);
     tb->addAction(icon("zoom-in"), tr("Zoom in (Ctrl++)"), view_, &PdfView::zoomIn);
-    tb->addAction(icon("fit-width"), tr("Fit width"), view_, &PdfView::fitWidth);
-    tb->addAction(icon("fit-page"), tr("Fit page"), view_, &PdfView::fitPage);
+    tb->addAction(icon("fit-width"), tr("Fit width (F)"), view_, &PdfView::fitWidth);
+    tb->addAction(icon("fit-page"), tr("Fit page (F twice)"), view_, &PdfView::fitPage);
     tb->addSeparator();
     tb->addAction(icon("prev"), tr("Previous page"), this, [this] { view_->goToPage(view_->currentPage() - 1); });
     pageEdit_ = new QLineEdit(tb);

@@ -165,6 +165,7 @@ private:
     void requestRenders();
     void scrolled();
     int settling_ = 0;  // a layout or zoom is placing the view; scrolling meanwhile does not count
+    QElapsedTimer fitKey_;  // since F was last pressed
     // A view not shown for a while gives back its rendered pages, render thread and
     // MuPDF caches; they come back when it is shown again.
     void releaseMemory();
