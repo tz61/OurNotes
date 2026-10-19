@@ -36,6 +36,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/fancy_progress.h"
+#include "gui/flow_layout.h"
 #include "gui/item_pane.h"
 #include "gui/library_view.h"
 #include "gui/main_window.h"
@@ -1424,15 +1425,25 @@ TEST_CASE("main window: many tabs wrap onto more rows")
         CHECK(b->geometry().right() < strip->width());
     }
     CHECK(rows.size() >= 2);  // wrapped, not squeezed into one row
-    // rows reach the edge (their tabs share the space; the last one is nearly full here)
+    // rows that wrap reach the edge (their tabs share the space). The last one does too
+    // when it is mostly full, else its tabs keep their natural widths; which it is
+    // depends on the platform's font (on Linux it is nearly full here, on macOS and
+    // Windows about half).
     {
         auto* area = buttons.first()->parentWidget();
+        int lastRow = *std::max_element(rows.begin(), rows.end());
         for (int row : rows) {
             int right = 0;
+            bool natural = true;
             for (auto* b : buttons)
-                if (b->y() == row)
+                if (b->y() == row) {
                     right = std::max(right, b->geometry().right());
-            CHECK(right == area->width() - 1);
+                    natural = natural && b->width() == b->sizeHint().width();
+                }
+            if (row != lastRow)
+                CHECK(right == area->width() - 1);
+            else
+                CHECK((right == area->width() - 1 || natural));
         }
     }
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
@@ -1780,6 +1791,52 @@ TEST_CASE("main window: Enter on several items opens them top to bottom")
     CHECK(tabs->tabText(2) == "B second");
     CHECK(tabs->tabText(3) == "C third");
     CHECK(tabs->currentIndex() == 1);  // the first is shown
+}
+
+namespace {
+
+// A widget with a given preferred size, free to grow sideways (like a tab).
+struct Box : QWidget {
+    QSize hint;
+    explicit Box(QSize h, QWidget* parent) : QWidget(parent), hint(h)
+    {
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    }
+    QSize sizeHint() const override { return hint; }
+};
+
+} // namespace
+
+TEST_CASE("flow layout: justified rows reach the edge; a short last row keeps its widths")
+{
+    app();
+    auto layout = [](std::vector<int> widths) {
+        auto* w = new QWidget;
+        auto* flow = new FlowLayout(w, 0);
+        flow->setJustified(true);
+        std::vector<Box*> boxes;
+        for (int width : widths) {
+            boxes.push_back(new Box(QSize(width, 20), w));
+            flow->addWidget(boxes.back());
+        }
+        flow->setGeometry(QRect(0, 0, 300, flow->heightForWidth(300)));
+        return std::pair{std::unique_ptr<QWidget>(w), boxes};
+    };
+    {
+        // 120 + 120 fill a row of 300 (the third does not fit): shared to 150 each; the
+        // third alone is a 40 % last row and keeps its 120
+        auto [w, b] = layout({120, 120, 120});
+        CHECK(b[0]->geometry() == QRect(0, 0, 150, 20));
+        CHECK(b[1]->geometry() == QRect(150, 0, 150, 20));
+        CHECK(b[2]->geometry() == QRect(0, 20, 120, 20));
+    }
+    {
+        // a last row 73 % full (120 + 100) is filled too, in proportion to the widths
+        auto [w, b] = layout({120, 120, 120, 100});
+        CHECK(b[2]->geometry().left() == 0);
+        CHECK(b[3]->geometry().right() == 299);
+        CHECK(b[2]->width() > b[3]->width());
+    }
 }
 
 int main(int argc, char** argv)
