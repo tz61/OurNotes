@@ -262,6 +262,7 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
             batch.push_back(pending[i].obj);
         auto result = transport_.push(lib.uid, batch);
         bool batchConflict = false;
+        bool wroteCurrentVersion = false;
         {
             Library::BatchGuard guard(library_);
             sql::Transaction tx(library_.db());
@@ -269,6 +270,7 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
                 auto& e = result.results[i];
                 auto& p = pending[start + i];
                 if (e.status == "ok") {
+                    wroteCurrentVersion = wroteCurrentVersion || e.version == result.version;
                     if (p.obj.deleted)
                         library_.clearTombstone(lib.id, p.obj.type, p.obj.key);
                     else
@@ -284,8 +286,9 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
             }
             tx.commit();
         }
-        // If nobody else wrote in between, our batch is the only change: skip re-pulling it.
-        if (!batchConflict && result.version == lib.syncVersion + 1) {
+        // If our batch produced the only change since the last pull, skip re-pulling it.
+        // (An "ok" for a no-op, e.g. re-deleting a tombstone, does not create a version.)
+        if (!batchConflict && wroteCurrentVersion && result.version == lib.syncVersion + 1) {
             lib.syncVersion = result.version;
             library_.setSyncState(lib.id, targetId_, lib.syncVersion);
         } else if (result.version != lib.syncVersion) {

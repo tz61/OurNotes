@@ -981,10 +981,12 @@ fs::path Library::attachmentFile(int64_t lib, const Json& att)
 {
     auto mode = jstr(att, "linkMode");
     if (schema::isStoredLinkMode(mode)) {
+        // Item data may come from other clients: never let it address files outside storage/<KEY>/.
         auto filename = jstr(att, "filename");
-        if (filename.empty())
+        auto key = jstr(att, "key");
+        if (filename.empty() || !isValidKey(key))
             return {};
-        return storageDir() / jstr(att, "key") / u8path(filename);
+        return storageDir() / key / u8path(safeFilename(filename));
     }
     if (mode == "linked_file") {
         auto path = jstr(att, "path");
