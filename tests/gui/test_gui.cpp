@@ -2657,6 +2657,12 @@ TEST_CASE("main window: Ctrl+Shift+T reopens closed tabs, last closed first, whe
             t << tabs->tabText(i);
         return t;
     };
+    // H on the page goes back to the library
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    reader->view()->setFocus();
+    QTest::keyClick(reader->view(), Qt::Key_H);
+    CHECK(tabs->currentIndex() == 0);
     auto before = titles();
     emit tabs->tabCloseRequested(2);  // the middle one
     emit tabs->tabCloseRequested(2);  // then the last

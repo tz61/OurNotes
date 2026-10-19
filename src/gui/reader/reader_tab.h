@@ -50,6 +50,7 @@ public:
 signals:
     void titleChanged(const QString& title);
     void showInLibrary(qint64 libraryId, const QString& key);
+    void libraryRequested();
 
 protected:
     void changeEvent(QEvent* e) override;

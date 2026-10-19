@@ -79,6 +79,7 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
             sidebar_->setCurrentWidget(annotations_);
     });
     connect(view_, &PdfView::toolChangeRequested, this, &ReaderTab::setTool);
+    connect(view_, &PdfView::libraryRequested, this, &ReaderTab::libraryRequested);
     connect(view_, &PdfView::addToNote, this, &ReaderTab::addToNote);
     connect(view_, &PdfView::pageChanged, this, [this](int page) {
         updatePageLabel(page);

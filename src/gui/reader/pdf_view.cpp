@@ -1755,6 +1755,10 @@ void PdfView::keyPressEvent(QKeyEvent* e)
             emit toolChangeRequested(tool);
         return;
     }
+    if (e->key() == Qt::Key_H && e->modifiers() == Qt::NoModifier) {  // likewise only here
+        emit libraryRequested();
+        return;
+    }
     if (e->matches(QKeySequence::Copy)) {
         copySelection();
         return;

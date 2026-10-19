@@ -27,7 +27,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
   like Zotero), and the open tabs and the library's selection come back after a
   restart; restored tabs load when first shown. The paper's top note opens next to the
-  PDF. Shift+wheel scrolls sideways.
+  PDF. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools and H goes back
+  to the library; Ctrl+Shift+T reopens a closed tab.
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display

@@ -109,6 +109,7 @@ signals:
     void thumbnailRendered(int page, const QImage& image);
     void addToNote(const QString& html);
     void toolChangeRequested(on::gui::ReaderTool tool);
+    void libraryRequested();  // H: back to the library
 
 protected:
     void paintEvent(QPaintEvent* e) override;
