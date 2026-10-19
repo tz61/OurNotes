@@ -1,6 +1,9 @@
 #include <doctest.h>
 
 #include <fstream>
+#include <vector>
+#include <thread>
+#include <atomic>
 
 #include "../core/test_helpers.h"
 #include "pdf/document.h"
@@ -135,4 +138,33 @@ TEST_CASE("image areas of a page, within their clipping")
     TempDir tmp2;
     writeSamplePdf(tmp2.path / "text.pdf");
     CHECK(Document::open(tmp2.path / "text.pdf")->imageRects(0).empty());
+}
+
+TEST_CASE("documents can be used on several threads at once")
+{
+    // HTML layout shapes text with HarfBuzz, whose allocator context MuPDF keeps for the
+    // whole process; without shared locks, threads clear it under each other and crash
+    TempDir tmp;
+    auto file = tmp.path / "page.xhtml";
+    std::string body;
+    for (int i = 0; i < 200; ++i)
+        body += "<p>Paragraph " + std::to_string(i) + " with some text to shape and lay out, "
+                "including ligatures ffi fl and numbers 12345.</p>\n";
+    std::ofstream(file) << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                           "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>"
+                        << body << "</body></html>\n";
+    std::atomic<int> finished{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 4; ++t)
+        threads.emplace_back([&] {
+            for (int i = 0; i < 15; ++i) {
+                auto doc = Document::open(file);
+                doc->fullText(2);
+                doc->render(0, 0.5f);
+            }
+            ++finished;
+        });
+    for (auto& t : threads)
+        t.join();
+    CHECK(finished == 4);
 }

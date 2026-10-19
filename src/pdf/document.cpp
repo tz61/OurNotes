@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <list>
+#include <mutex>
 
 extern "C" {
 #include <mupdf/fitz.h>
@@ -33,6 +34,17 @@ bool isWordChar(uint32_t c)
 }
 
 void silence(void*, const char*) {}
+
+// MuPDF keeps some state for the whole process, e.g. the allocator context HarfBuzz uses
+// while shaping text for HTML and EPUB layout, which is set and cleared around each call.
+// It guards that with these locks, which only work if every context shares them:
+// documents are used on several threads at once (the window, page rendering, the
+// full-text indexer). Without them, one thread cleared the context under another and
+// MuPDF crashed in fz_free.
+std::mutex g_mupdfLocks[FZ_LOCK_MAX];
+void lockMupdf(void*, int lock) { g_mupdfLocks[lock].lock(); }
+void unlockMupdf(void*, int lock) { g_mupdfLocks[lock].unlock(); }
+fz_locks_context g_mupdfLockContext{nullptr, lockMupdf, unlockMupdf};
 
 // Map Unicode mathematical alphanumerics (𝑧, 𝜙, ℰ, 𝟙 ...) to plain letters, as
 // NFKC does in pdf.js, so selections and searches read like the visible text.
@@ -275,7 +287,7 @@ std::unique_ptr<Document> Document::open(const fs::path& path)
     d->path_ = path;
     d->d_ = std::make_unique<Impl>();
     auto& im = *d->d_;
-    im.ctx = fz_new_context(nullptr, nullptr, 128 << 20);
+    im.ctx = fz_new_context(nullptr, &g_mupdfLockContext, 128 << 20);
     if (!im.ctx)
         throw Error("cannot initialise MuPDF");
     fz_set_warning_callback(im.ctx, silence, nullptr);
