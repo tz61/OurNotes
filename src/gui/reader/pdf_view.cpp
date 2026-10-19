@@ -40,6 +40,32 @@ const double kZoomSteps[] = {0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.
 
 double r3(double v) { return std::round(v * 1000) / 1000; }
 
+// The badge on an annotation that has a comment: a speech bubble in the annotation's
+// colour, just outside its top-right corner, the same size at every zoom.
+constexpr double kBadgeWidth = 16;
+constexpr double kBadgeHeight = 13;
+
+void paintCommentBadge(QPainter& p, const QRectF& r, const QColor& color)
+{
+    QPainterPath bubble;
+    bubble.addRoundedRect(r, 3, 3);
+    QPainterPath tail;  // pointing down-left, at the annotation's corner
+    tail.moveTo(r.left() + 2, r.bottom() - 2);
+    tail.lineTo(r.left() - 3, r.bottom() + 4);
+    tail.lineTo(r.left() + 7, r.bottom());
+    tail.closeSubpath();
+    p.setPen(QPen(color.darker(170), 1));
+    p.setBrush(color);
+    p.drawPath(bubble.united(tail));
+    // two lines of "text": dark on bright colours (yellow), light on darker ones (blue)
+    double luminance = 0.299 * color.redF() + 0.587 * color.greenF() + 0.114 * color.blueF();
+    QColor ink = luminance > 0.6 ? QColor(0, 0, 0, 160) : QColor(255, 255, 255, 230);
+    p.setPen(QPen(ink, 1.4, Qt::SolidLine, Qt::RoundCap));
+    double y = r.center().y();
+    p.drawLine(QPointF(r.left() + 4, y - 2), QPointF(r.right() - 4, y - 2));
+    p.drawLine(QPointF(r.left() + 4, y + 2), QPointF(r.right() - 6, y + 2));
+}
+
 QRectF toQ(const pdf::Rect& r) { return QRectF(QPointF(r.x0, r.y0), QPointF(r.x1, r.y1)); }
 pdf::Rect toP(const QRectF& r) { return {(float)r.left(), (float)r.top(), (float)r.right(), (float)r.bottom()}; }
 
@@ -701,6 +727,12 @@ void PdfView::paintAnnotations(QPainter& p, int page)
             }
         }
     }
+    for (auto& a : anns_)
+        if (a.page == page && hasCommentBadge(a)) {
+            bool selected = a.key == selectedAnn_;
+            QRectF b = selected && resizing ? resizedBounds(a) : a.bounds.translated(selected ? delta : QPointF());
+            paintCommentBadge(p, commentBadge(a, b), a.color);
+        }
     p.restore();
 }
 
@@ -813,6 +845,36 @@ const PdfView::AnnView* PdfView::annotationAt(int page, QPointF pt) const
         }
     }
     return found;
+}
+
+bool PdfView::hasCommentBadge(const AnnView& a) const
+{
+    // a sticky note's or a text box's comment is what it shows
+    return a.type != "note" && a.type != "text" && !a.comment.trimmed().isEmpty();
+}
+
+QRectF PdfView::commentBadge(const AnnView& a, const QRectF& bounds) const
+{
+    QRectF v = toView(a.page, bounds);
+    return QRectF(v.right() + 3, v.top() - kBadgeHeight - 1, kBadgeWidth, kBadgeHeight);
+}
+
+const PdfView::AnnView* PdfView::commentBadgeAt(QPointF viewPos) const
+{
+    auto [first, last] = visiblePages(kBadgeHeight);
+    for (auto it = anns_.rbegin(); it != anns_.rend(); ++it)
+        if (it->page >= first && it->page <= last && hasCommentBadge(*it) &&
+            commentBadge(*it, it->bounds).adjusted(-3, -2, 2, 4).contains(viewPos))
+            return &*it;
+    return nullptr;
+}
+
+QRectF PdfView::commentBadgeRect(const QString& key) const
+{
+    for (auto& a : anns_)
+        if (a.key == key)
+            return hasCommentBadge(a) ? commentBadge(a, a.bounds) : QRectF();
+    return {};
 }
 
 void PdfView::selectAnnotation(const QString& key, bool scrollTo)
@@ -1202,6 +1264,10 @@ void PdfView::updateCursor(QPointF pos)
 {
     if (pageRects_.empty())
         return;
+    if (commentBadgeAt(pos)) {
+        viewport()->setCursor(Qt::PointingHandCursor);
+        return;
+    }
     QPointF content = pos + scrollOffset();
     int page = pageAt(content, false);
     Qt::CursorShape shape = Qt::ArrowCursor;
@@ -1252,6 +1318,15 @@ void PdfView::mousePressEvent(QMouseEvent* e)
     setFocus();
     hidePopup();
     closeTextEditor(true);
+    if (auto* a = commentBadgeAt(e->position())) {
+        // with any tool, the badge selects its annotation (and the sidebar shows the comment)
+        QString key = a->key;
+        selectedAnn_ = key;
+        clearTextSelection();
+        emit annotationSelected(key);
+        viewport()->update();
+        return;
+    }
     QPointF content = e->position() + scrollOffset();
     int page = pageAt(content, false);
     if (page < 0) {
@@ -1498,7 +1573,7 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
 
 void PdfView::mouseDoubleClickEvent(QMouseEvent* e)
 {
-    if (e->button() != Qt::LeftButton || pageRects_.empty())
+    if (e->button() != Qt::LeftButton || pageRects_.empty() || commentBadgeAt(e->position()))
         return;
     QPointF content = e->position() + scrollOffset();
     int page = pageAt(content, false);
@@ -1646,6 +1721,10 @@ bool PdfView::viewportEvent(QEvent* e)
     }
     if (e->type() == QEvent::ToolTip && !pageRects_.empty()) {
         auto* he = static_cast<QHelpEvent*>(e);
+        if (auto* a = commentBadgeAt(he->pos())) {
+            QToolTip::showText(he->globalPos(), a->comment, viewport());
+            return true;
+        }
         QPointF content = QPointF(he->pos()) + scrollOffset();
         int page = pageAt(content, false);
         if (page >= 0)

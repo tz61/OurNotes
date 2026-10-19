@@ -71,6 +71,9 @@ public:
 
     // Viewport position of a point in page space (points).
     QPointF pageToViewport(int page, QPointF pagePoint) const { return toView(page, pagePoint); }
+    // Where the badge of an annotation with a comment is drawn (viewport coordinates);
+    // empty when the annotation has none.
+    QRectF commentBadgeRect(const QString& key) const;
 
     void find(const QString& text, bool backwards);
     void clearFind();
@@ -161,6 +164,9 @@ private:
     // annotations
     AnnView makeView(const Json& data) const;
     const AnnView* annotationAt(int page, QPointF pt) const;
+    bool hasCommentBadge(const AnnView& a) const;
+    QRectF commentBadge(const AnnView& a, const QRectF& bounds) const;  // bounds in page space
+    const AnnView* commentBadgeAt(QPointF viewPos) const;
     AnnView* findAnn(const QString& key);
     Json positionFromRects(int page, const std::vector<QRectF>& rects) const;
     Json baseAnnotation(const QString& type, int page, int charOffset, double top) const;

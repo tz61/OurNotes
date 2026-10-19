@@ -126,6 +126,61 @@ TEST_CASE("pdf view: highlight, note and ink tools create Zotero-style annotatio
     CHECK(created[2]["annotationPosition"]["paths"][0].size() >= 4);
 }
 
+TEST_CASE("pdf view: an annotation with a comment shows a badge, and clicking it selects the annotation")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 1000);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+
+    auto annotation = [](const char* key, const char* type, const char* color, const char* comment, Json rect) {
+        return Json{{"key", key},
+                    {"annotationType", type},
+                    {"annotationColor", color},
+                    {"annotationComment", comment},
+                    {"annotationPosition", Json{{"pageIndex", 0}, {"rects", Json::array({rect})}}}};
+    };
+    auto withComments = [&](bool comments) {
+        auto c = [&](const char* text) { return comments ? text : ""; };
+        return std::vector<Json>{annotation("HIGHLIT1", "highlight", "#ffd400", c("Why?"), {72, 690, 160, 710}),
+                                 annotation("PLAINHL1", "highlight", "#ffd400", "", {72, 600, 160, 620}),
+                                 annotation("AREABOX1", "image", "#2ea8e5", c("A figure"), {300, 300, 400, 400}),
+                                 annotation("STICKYN1", "note", "#ff6666", c("A note"), {300, 500, 322, 522})};
+    };
+    view.setAnnotations(withComments(true));
+    QApplication::processEvents();
+    QRectF badge = view.commentBadgeRect("HIGHLIT1");
+    REQUIRE(!badge.isEmpty());
+    CHECK(!view.commentBadgeRect("AREABOX1").isEmpty());
+    CHECK(view.commentBadgeRect("PLAINHL1").isEmpty());  // no comment
+    CHECK(view.commentBadgeRect("STICKYN1").isEmpty());  // a sticky note shows its comment already
+    CHECK(view.viewport()->rect().contains(badge.toRect()));
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view.viewport()->grab().save(dir + "/comment-badges.png");
+
+    // the badge is drawn: the spot looks different without the comment
+    QImage shown = view.viewport()->grab(badge.toAlignedRect()).toImage();
+    view.setAnnotations(withComments(false));
+    QApplication::processEvents();
+    CHECK(view.commentBadgeRect("HIGHLIT1").isEmpty());
+    QImage hidden = view.viewport()->grab(badge.toAlignedRect()).toImage();
+    CHECK(shown != hidden);
+
+    view.setAnnotations(withComments(true));
+    QStringList selected;
+    QObject::connect(&view, &PdfView::annotationSelected, [&](const QString& key) { selected << key; });
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, view.commentBadgeRect("AREABOX1").center().toPoint());
+    CHECK(selected == QStringList{"AREABOX1"});
+    CHECK(view.selectedAnnotation() == "AREABOX1");
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, badge.center().toPoint());
+    CHECK(view.selectedAnnotation() == "HIGHLIT1");
+}
+
 TEST_CASE("pdf view: area annotations resize from any edge or corner")
 {
     app();
