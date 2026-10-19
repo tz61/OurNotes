@@ -184,6 +184,16 @@ TEST_CASE("reader state is kept next to the attachment, like Zotero's")
 }
 
 #ifndef _WIN32
+// where freePen kept its settings under the home directory $HOME names
+static fs::path freePenConfigDir(const fs::path& home)
+{
+#ifdef __APPLE__
+    return home / "Library" / "Application Support" / "freePen";
+#else
+    return home / ".config" / "freepen";
+#endif
+}
+
 TEST_CASE("settings and library from freePen, the name before OurNotes, are taken over")
 {
     // a home directory of its own, so the real one is never touched
@@ -203,17 +213,18 @@ TEST_CASE("settings and library from freePen, the name before OurNotes, are take
         key = jstr(old.createItem(old.defaultLibrary(), Json{{"itemType", "book"}, {"title", "Kept"}}), "key");
     }
     fs::rename(home.path / "freePen" / "ournotes.sqlite", home.path / "freePen" / "freepen.sqlite");
-    fs::create_directories(home.path / ".config" / "freepen");
-    writeFileAtomic(home.path / ".config" / "freepen" / "config.json", R"({"ui": {"scale": 175}, "dataDir": null})");
+    fs::create_directories(freePenConfigDir(home.path));
+    writeFileAtomic(freePenConfigDir(home.path) / "config.json", R"({"ui": {"scale": 175}, "dataDir": null})");
 
     migrateFromFreePen();
-    CHECK(fs::exists(home.path / ".config" / "ournotes" / "config.json"));
-    CHECK(fs::exists(home.path / ".config" / "freepen" / "config.json"));  // the old settings stay as they were
-    CHECK(Config(home.path / ".config" / "ournotes" / "config.json").get("/ui/scale").get<int>() == 175);
+    auto config = configDir() / "config.json";
+    CHECK(fs::exists(config));
+    CHECK(fs::exists(freePenConfigDir(home.path) / "config.json"));  // the old settings stay as they were
+    CHECK(Config(config).get("/ui/scale").get<int>() == 175);
     CHECK(!fs::exists(home.path / "freePen"));
     REQUIRE(fs::exists(home.path / "OurNotes" / "freepen.sqlite"));
     {
-        Library lib(Config(home.path / ".config" / "ournotes" / "config.json").dataDir());
+        Library lib(Config(config).dataDir());
         CHECK(fs::exists(home.path / "OurNotes" / "ournotes.sqlite"));
         CHECK(!fs::exists(home.path / "OurNotes" / "freepen.sqlite"));
         auto libs = lib.libraries();
@@ -229,8 +240,8 @@ TEST_CASE("settings and library from freePen, the name before OurNotes, are take
     TempDir home2;
     setenv("HOME", pathString(home2.path).c_str(), 1);
     fs::create_directories(home2.path / "freePen");
-    fs::create_directories(home2.path / ".config" / "freepen");
-    writeFileAtomic(home2.path / ".config" / "freepen" / "config.json",
+    fs::create_directories(freePenConfigDir(home2.path));
+    writeFileAtomic(freePenConfigDir(home2.path) / "config.json",
                     Json{{"dataDir", pathString(home2.path / "papers")}}.dump());
     migrateFromFreePen();
     CHECK(fs::exists(home2.path / "freePen"));
