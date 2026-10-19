@@ -140,6 +140,9 @@ public:
     void setItem(int64_t libraryId, const QString& key);
     int count() const { return count_; }
     NoteEditor* editor() const { return editor_; }
+    // The same with no note, one or several (the list and the editor come and go):
+    // otherwise the window's minimum height changed from item to item.
+    QSize minimumSizeHint() const override;
 
 signals:
     void countChanged(int count);

@@ -26,6 +26,7 @@
 
 #include <array>
 #include <future>
+#include <sstream>
 #include <httplib.h>
 #include <atomic>
 #include <QNativeGestureEvent>
@@ -2764,6 +2765,12 @@ TEST_CASE("library: moving between items does not change the window's minimum he
     for (auto& c : colls)  // a location line each, in the item pane
         env.library.addToCollection(env.lib, c, {jstr(many, "key")});
     env.library.addToCollection(env.lib, colls[0], {jstr(one, "key")});
+    // and no note, one, or two (the notes tab beside Info shows the list for two)
+    auto noted = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "With a note"}});
+    env.library.addToCollection(env.lib, colls[0], {jstr(noted, "key")});
+    env.library.createNote(env.lib, "<p>one</p>", jstr(noted, "key"));
+    env.library.createNote(env.lib, "<p>first</p>", jstr(many, "key"));
+    env.library.createNote(env.lib, "<p>second</p>", jstr(many, "key"));
     MainWindow window;
     window.resize(1200, 600);
     window.show();
@@ -2779,8 +2786,8 @@ TEST_CASE("library: moving between items does not change the window's minimum he
     items->setFocus();
     std::set<int> minimums{window.minimumSizeHint().height()};
     items->setCurrentIndex(items->model()->index(0, 0));
-    for (int i = 0; i < 6; ++i) {
-        QTest::keyClick(items, i % 2 ? Qt::Key_Up : Qt::Key_Down);
+    for (auto k : {Qt::Key_Down, Qt::Key_Down, Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down}) {
+        QTest::keyClick(items, k);
         QApplication::processEvents();
         minimums.insert(window.minimumSizeHint().height());
     }

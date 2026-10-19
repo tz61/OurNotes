@@ -926,6 +926,12 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
             });
 }
 
+QSize ItemNotesPanel::minimumSizeHint() const
+{
+    int head = std::max(header_->sizeHint().height(), add_->sizeHint().height());
+    return {QWidget::minimumSizeHint().width(), 6 + head + 4 + editor_->minimumSizeHint().height()};
+}
+
 void ItemNotesPanel::setItem(int64_t libraryId, const QString& key)
 {
     if (libraryId == libraryId_ && key == key_)
