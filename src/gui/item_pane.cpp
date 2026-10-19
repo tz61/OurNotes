@@ -1002,6 +1002,130 @@ static QScrollArea* scrollPage(QWidget* content, QWidget* parent)
     return area;
 }
 
+// --- LocationBox --------------------------------------------------------------------------------
+
+LocationBox::LocationBox(QWidget* parent) : QWidget(parent)
+{
+    setObjectName("itemLocation");
+    lines_ = new QVBoxLayout(this);
+    lines_->setContentsMargins(0, 0, 0, 4);
+    lines_->setSpacing(2);
+    connect(&AppContext::get(), &AppContext::changed, this,
+            [this](qint64 lib, const QString& type, const QString&, const QStringList&) {
+                if (!key_.isEmpty() && (lib == libraryId_ || lib == 0) &&
+                    (type == "item" || type == "collection" || type == "library" || type == "*"))
+                    QMetaObject::invokeMethod(this, &LocationBox::rebuild, Qt::QueuedConnection);
+            });
+}
+
+void LocationBox::setItem(int64_t libraryId, const QString& key)
+{
+    libraryId_ = libraryId;
+    key_ = key;
+    rebuild();
+}
+
+QStringList LocationBox::paths() const { return paths_; }
+
+void LocationBox::rebuild()
+{
+    // later: rebuilding can be caused by a click on one of these links
+    while (auto* item = lines_->takeAt(0)) {
+        if (auto* w = item->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete item;
+    }
+    paths_.clear();
+    auto& lib = AppContext::get().library();
+    auto item = lib.item(libraryId_, ss(key_));
+    auto info = lib.library(libraryId_);
+    if (!item || !info)
+        return;
+    // notes and attachments are filed with their parent item
+    auto top = *item;
+    if (auto parent = jstr(*item, "parentItem"); !parent.empty())
+        if (auto p = lib.item(libraryId_, parent))
+            top = *p;
+    QString sep = QString(" <span style=\"color:%1\">\u203a</span> ")
+                      .arg(palette().color(QPalette::PlaceholderText).name());
+    auto link = [](const QString& href, const QString& text) {
+        return QString("<a href=\"%1\">%2</a>").arg(href, text.toHtmlEscaped());
+    };
+    QString root = link("library", qs(info->name));
+    struct Line {
+        QString plain, html;
+    };
+    std::vector<Line> lines;
+    if (jbool(*item, "deleted") || jbool(top, "deleted")) {
+        lines.push_back({qs(info->name) + " \u203a " + tr("Trash"), root + sep + link("trash", tr("Trash"))});
+    } else {
+        for (auto& c : top.value("collections", Json::array())) {
+            if (!c.is_string())
+                continue;
+            // walk up to the top-level collection
+            QStringList names, hrefs;
+            std::string key = c.get<std::string>();
+            for (int depth = 0; !key.empty() && depth < 32; ++depth) {
+                auto coll = lib.collection(libraryId_, key);
+                if (!coll)
+                    break;
+                names.prepend(jqs(*coll, "name"));
+                hrefs.prepend("collection:" + qs(key));
+                auto parent = coll->value("parentCollection", Json());
+                key = parent.is_string() ? parent.get<std::string>() : std::string();
+            }
+            if (names.isEmpty())
+                continue;
+            QString html = root, plain = qs(info->name);
+            for (int i = 0; i < names.size(); ++i) {
+                html += sep + link(hrefs[i], names[i]);
+                plain += " \u203a " + names[i];
+            }
+            lines.push_back({plain, html});
+        }
+        if (lines.empty())
+            lines.push_back({qs(info->name) + " \u203a " + tr("Unfiled Items"), root + sep + link("unfiled", tr("Unfiled Items"))});
+    }
+    std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.plain.localeAwareCompare(b.plain) < 0; });
+    bool trashed = jbool(*item, "deleted") || jbool(top, "deleted");
+    for (auto& l : lines) {
+        auto* row = new QWidget(this);
+        auto* h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(6);
+        auto* mark = new QLabel(row);
+        int s = fontMetrics().height();
+        mark->setPixmap(icon(trashed ? "trash" : "folder").pixmap(QSize(s, s), devicePixelRatioF()));
+        mark->setAlignment(Qt::AlignTop);
+        h->addWidget(mark);
+        auto* label = new QLabel(row);
+        h->addWidget(label, 1);
+        label->setTextFormat(Qt::RichText);
+        label->setWordWrap(true);
+        label->setText(l.html);
+        label->setToolTip(l.plain);
+        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::TextSelectableByMouse);
+        connect(label, &QLabel::linkActivated, this, [this](const QString& href) {
+            Scope s{libraryId_, ScopeKind::Library, {}};
+            if (href == "trash")
+                s.kind = ScopeKind::Trash;
+            else if (href == "unfiled")
+                s.kind = ScopeKind::Unfiled;
+            else if (href.startsWith("collection:")) {
+                s.kind = ScopeKind::Collection;
+                s.collectionKey = ss(href.mid(11));
+            }
+            emit scopeRequested(s);
+        });
+        lines_->addWidget(row);
+        paths_ << l.plain;
+    }
+}
+
+// --- ItemPane ----------------------------------------------------------------------------------
+
 ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
 {
     message_ = new QLabel(this);
@@ -1024,12 +1148,21 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     iv->addStretch();
     // Info and the item's notes side by side as tabs; clicking a paper that has notes
     // shows them directly unless the user last chose the Info tab.
-    itemPage_ = new QTabWidget(this);
+    // the item's place in the library sits above both tabs
+    itemContainer_ = new QWidget(this);
+    auto* icv = new QVBoxLayout(itemContainer_);
+    icv->setContentsMargins(0, 0, 0, 0);
+    icv->setSpacing(0);
+    locations_ << new LocationBox(itemContainer_);
+    locations_.last()->setContentsMargins(10, 8, 10, 2);
+    icv->addWidget(locations_.last());
+    itemPage_ = new QTabWidget(itemContainer_);
     itemPage_->setDocumentMode(true);
     itemPage_->addTab(scrollPage(itemContent, itemPage_), tr("Info"));
     itemNotes_ = new ItemNotesPanel(itemPage_);
     itemPage_->addTab(itemNotes_, icon("type-note"), tr("Notes"));
-    addWidget(itemPage_);
+    icv->addWidget(itemPage_, 1);
+    addWidget(itemContainer_);
     connect(itemNotes_, &ItemNotesPanel::countChanged, this, [this](int n) {
         itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
     });
@@ -1043,6 +1176,9 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     notePage_ = new QWidget(this);
     auto* nv = new QVBoxLayout(notePage_);
     nv->setContentsMargins(0, 0, 0, 0);
+    locations_ << new LocationBox(notePage_);
+    locations_.last()->setContentsMargins(10, 6, 10, 0);
+    nv->addWidget(locations_.last());
     note_ = new NoteEditor(notePage_);
     nv->addWidget(note_, 1);
     auto* noteExtras = new QWidget(notePage_);
@@ -1059,6 +1195,8 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     auto* attContent = new QWidget;
     auto* av = new QVBoxLayout(attContent);
     av->setContentsMargins(10, 8, 10, 8);
+    locations_ << new LocationBox(attContent);
+    av->addWidget(locations_.last());
     attachment_ = new AttachmentBox(attContent);
     av->addWidget(attachment_);
     attachmentTags_ = new TagsBox(attContent);
@@ -1068,6 +1206,9 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     addWidget(attachmentPage_);
 
     connect(attachment_, &AttachmentBox::openRequested, this, &ItemPane::openAttachment);
+    for (auto* location : locations_)
+        connect(location, &LocationBox::scopeRequested, this,
+                [this, location](const Scope& s) { emit showScope(s, currentKey_); });
     connect(related_, &RelatedBox::itemActivated, this, &ItemPane::selectItem);
     connect(noteRelated_, &RelatedBox::itemActivated, this, &ItemPane::selectItem);
     showItems(0, {});
@@ -1086,6 +1227,9 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
         setCurrentWidget(message_);
         return;
     }
+    currentKey_ = keys[0];
+    for (auto* location : locations_)
+        location->setItem(libraryId, keys[0]);
     auto type = jstr(*d, "itemType");
     if (type == "note") {
         note_->setNote(libraryId, keys[0]);
@@ -1107,7 +1251,7 @@ void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
         itemPage_->setTabText(1, n ? tr("Notes (%1)").arg(n) : tr("Notes"));
         bool preferNotes = AppContext::get().config().get("/ui/itemPaneTab", "notes").get<std::string>() == "notes";
         itemPage_->setCurrentIndex(preferNotes && n > 0 ? 1 : 0);
-        setCurrentWidget(itemPage_);
+        setCurrentWidget(itemContainer_);
     }
 }
 

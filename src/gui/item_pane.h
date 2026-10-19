@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/json.h"
+#include "gui/items_model.h"
 
 class QComboBox;
 class QGridLayout;
@@ -157,6 +158,28 @@ private:
     NoteEditor* editor_;
 };
 
+// Where an item is filed: its library and the path of every collection it is in
+// ("My Library › Robotics › Humanoid"), or Unfiled / Trash. Each part is a link.
+// Notes and attachments show where their parent item is.
+class LocationBox : public QWidget {
+    Q_OBJECT
+public:
+    explicit LocationBox(QWidget* parent = nullptr);
+    void setItem(int64_t libraryId, const QString& key);
+    QStringList paths() const;  // the lines as plain text, e.g. for tests
+
+signals:
+    void scopeRequested(const Scope& scope);
+
+private:
+    void rebuild();
+
+    int64_t libraryId_ = 0;
+    QString key_;
+    QVBoxLayout* lines_;
+    QStringList paths_;
+};
+
 // Right pane of the library tab.
 class ItemPane : public QStackedWidget {
     Q_OBJECT
@@ -168,9 +191,14 @@ public:
 signals:
     void openAttachment(const QString& key);
     void selectItem(const QString& key);
+    // A collection (or Unfiled, Trash, the library) was chosen in the item's location.
+    void showScope(const Scope& scope, const QString& itemKey);
 
 private:
     QLabel* message_;
+    QList<LocationBox*> locations_;  // one per page
+    QString currentKey_;
+    QWidget* itemContainer_;  // location + itemPage_
     QTabWidget* itemPage_;
     ItemNotesPanel* itemNotes_;
     InfoEditor* info_;

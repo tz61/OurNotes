@@ -73,6 +73,7 @@ private:
     void onSelectionChanged();
     void reloadItems();
     void openIndex(const QModelIndex& index);
+    void openSelected();
     void showItemMenu(const QPoint& pos);
     void selectKeys(const QStringList& keys, const QString& current);
     void fitColumns();

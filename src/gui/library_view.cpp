@@ -185,7 +185,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
         else
             trashSelected();
     };
-    view->onOpen = [this] { openIndex(items_->currentIndex()); };
+    view->onOpen = [this] { openSelected(); };
 
     connect(tree_, &CollectionTree::scopeChanged, this, &LibraryView::onScopeChanged);
     connect(tree_, &CollectionTree::exportRequested, this, [this](const Scope& s) { emit exportRequested(s, {}); });
@@ -232,6 +232,14 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     connect(pane_, &ItemPane::openAttachment, this,
             [this](const QString& key) { emit openAttachmentRequested(libraryId(), key); });
     connect(pane_, &ItemPane::selectItem, this, [this](const QString& key) { selectItem(key); });
+    // a part of the item's location: show that collection, with the item selected in it
+    connect(pane_, &ItemPane::showScope, this, [this](const Scope& s, const QString& key) {
+        search_->clear();
+        tree_->selectScope(s);
+        // in a parent collection the item may not be listed (it is in a subcollection)
+        if (model_->indexOfKey(key).isValid())
+            selectItem(key, s.libraryId);
+    });
 
     reloadTimer_.setSingleShot(true);
     reloadTimer_.setInterval(60);
@@ -507,6 +515,42 @@ void LibraryView::openIndex(const QModelIndex& index)
         if (!url.isEmpty())
             QDesktopServices::openUrl(QUrl(url));
     }
+}
+
+// Enter on several items opens their files as tabs in list order (top to bottom) and
+// shows the first; notes and items without a file are skipped.
+void LibraryView::openSelected()
+{
+    auto rows = items_->selectionModel()->selectedRows(0);
+    if (rows.size() <= 1) {
+        openIndex(items_->currentIndex());
+        return;
+    }
+    auto order = [](const QModelIndex& i) {
+        return i.parent().isValid() ? std::pair(i.parent().row(), i.row() + 1) : std::pair(i.row(), 0);
+    };
+    std::sort(rows.begin(), rows.end(), [&](const QModelIndex& a, const QModelIndex& b) { return order(a) < order(b); });
+    auto& lib = AppContext::get().library();
+    QStringList files;
+    for (auto& i : rows) {
+        auto key = model_->keyAt(i);
+        auto type = model_->typeAt(i);
+        QString file;
+        if (type == "attachment")
+            file = key;
+        else if (type != "note")
+            if (auto best = lib.bestAttachment(libraryId(), ss(key)))
+                file = jqs(*best, "key");
+        if (!file.isEmpty() && !files.contains(file))
+            files << file;
+    }
+    if (files.size() > 10 &&
+        QMessageBox::question(this, tr("Open Items"), tr("Open %n items?", nullptr, files.size())) != QMessageBox::Yes)
+        return;
+    for (auto& f : files)
+        emit openAttachmentRequested(libraryId(), f);
+    if (files.size() > 1)
+        emit openAttachmentRequested(libraryId(), files.first());  // already open: shows it
 }
 
 // --- actions -----------------------------------------------------------------------------------

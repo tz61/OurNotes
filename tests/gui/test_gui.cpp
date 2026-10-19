@@ -1417,6 +1417,118 @@ TEST_CASE("library: columns fill the list, the title column gives way, the item 
         view.grab().save(dir + "/library-pane-shown.png");
 }
 
+TEST_CASE("item pane: the top shows where the item is filed, with links")
+{
+    app();
+    Env env;
+    auto& lib = env.library;
+    auto robotics = jstr(lib.createCollection(env.lib, "Robotics"), "key");
+    auto humanoid = jstr(lib.createCollection(env.lib, "Humanoid", robotics), "key");
+    auto mimic = jstr(lib.createCollection(env.lib, "MimicKit", humanoid), "key");
+    auto reading = jstr(lib.createCollection(env.lib, "Reading"), "key");
+    auto paper = jstr(lib.createItem(env.lib, Json{{"itemType", "journalArticle"},
+                                                   {"title", "Filed twice"},
+                                                   {"collections", Json::array({mimic, reading})}}),
+                      "key");
+    auto note = jstr(lib.createNote(env.lib, "<p>About it</p>", paper), "key");
+    auto loose = jstr(lib.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Unfiled"}}), "key");
+    auto gone = jstr(lib.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Gone"}}), "key");
+    lib.trashItems(env.lib, {gone});
+
+    LibraryView view;
+    view.resize(1500, 800);
+    view.show();
+    QApplication::processEvents();
+    auto location = [&]() -> LocationBox* {
+        for (auto* l : view.findChildren<LocationBox*>())
+            if (l->isVisible())
+                return l;
+        return nullptr;
+    };
+    auto pathsOf = [&](const QString& key) {
+        view.selectItem(key, env.lib);
+        QApplication::processEvents();
+        auto* l = location();
+        return l ? l->paths() : QStringList{};
+    };
+    QString sep = " › ";
+    CHECK(pathsOf(qs(paper)) == QStringList{"My Library" + sep + "Reading",
+                                            "My Library" + sep + "Robotics" + sep + "Humanoid" + sep + "MimicKit"});
+    CHECK(pathsOf(qs(note)) == pathsOf(qs(paper)));  // a note is where its item is
+    CHECK(pathsOf(qs(loose)) == QStringList{"My Library" + sep + "Unfiled Items"});
+    CHECK(pathsOf(qs(gone)) == QStringList{"My Library" + sep + "Trash"});
+
+    // renaming a collection shows at once
+    auto h = *lib.collection(env.lib, humanoid);
+    h["name"] = "Humanoids";
+    lib.saveCollection(env.lib, h);
+    auto paths = pathsOf(qs(paper));
+    CHECK(paths.contains("My Library" + sep + "Robotics" + sep + "Humanoids" + sep + "MimicKit"));
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        location()->grab().save(dir + "/item-location.png");
+
+    // a part of the path shows that collection, with the item selected in it
+    QLabel* line = nullptr;
+    for (auto* label : location()->findChildren<QLabel*>())
+        if (label->text().contains("MimicKit"))
+            line = label;
+    REQUIRE(line);
+    emit line->linkActivated("collection:" + qs(mimic));
+    QApplication::processEvents();
+    CHECK(view.scope().kind == ScopeKind::Collection);
+    CHECK(view.scope().collectionKey == mimic);
+    CHECK(view.selectedKeys() == QStringList{qs(paper)});
+    // a parent collection, where the item is not listed itself, is simply shown
+    line = nullptr;
+    for (auto* label : location()->findChildren<QLabel*>())
+        if (label->isVisible() && label->text().contains("MimicKit"))
+            line = label;
+    REQUIRE(line);
+    emit line->linkActivated("collection:" + qs(humanoid));
+    QApplication::processEvents();
+    CHECK(view.scope().kind == ScopeKind::Collection);
+    CHECK(view.scope().collectionKey == humanoid);
+}
+
+TEST_CASE("main window: Enter on several items opens them top to bottom")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    QStringList papers;
+    for (auto title : {"C third", "A first", "B second"}) {  // listed sorted by title: A, B, C
+        auto file = tmp.path / (std::string(title) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", title}});
+        env.library.importAttachment(env.lib, file, jstr(parent, "key"));
+        papers << qs(jstr(parent, "key"));
+    }
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    auto* library = window.findChild<LibraryView*>();
+    REQUIRE(library);
+    auto* items = library->itemsView();
+    // selected in the order C, A, B
+    auto* model = items->selectionModel();
+    for (int i = 0; i < papers.size(); ++i) {
+        auto idx = static_cast<ItemsModel*>(items->model())->indexOfKey(papers[i]);
+        REQUIRE(idx.isValid());
+        model->select(idx, (i == 0 ? QItemSelectionModel::ClearAndSelect : QItemSelectionModel::Select) |
+                               QItemSelectionModel::Rows);
+    }
+    REQUIRE(library->selectedKeys().size() == 3);
+    QTest::keyClick(items, Qt::Key_Return);
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 4);
+    CHECK(tabs->tabText(1) == "A first");
+    CHECK(tabs->tabText(2) == "B second");
+    CHECK(tabs->tabText(3) == "C third");
+    CHECK(tabs->currentIndex() == 1);  // the first is shown
+}
+
 int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
