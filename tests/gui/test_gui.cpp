@@ -2514,6 +2514,52 @@ TEST_CASE("main window: only an empty library is deleted, after asking")
     CHECK(ask(env.lib, "libraryNotDeletable", false).contains("only library"));
 }
 
+TEST_CASE("main window: a short tab title is shown whole")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "tms.pdf";
+    writeSamplePdf(file);
+    MainWindow window;
+    window.resize(1200, 700);
+    auto* strip = window.findChild<QWidget*>("tabStrip");
+    REQUIRE(strip);
+    QFont f = strip->font();
+    f.setPointSizeF(14);  // "TMS" is 40.03 px wide here, which QFontMetrics rounds to 40
+    strip->setFont(f);
+    window.show();
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "TMS"}});
+    window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto buttons = strip->findChildren<QWidget*>("tabButton");
+    REQUIRE(buttons.size() == tabs->count());
+    int index = -1;
+    for (int i = 0; i < tabs->count(); ++i)
+        if (tabs->tabText(i) == "TMS")
+            index = i;
+    REQUIRE(index > 0);
+    QWidget* tab = nullptr;
+    for (auto* b : buttons)  // in tab order, laid out left to right in one row here
+        if (!tab || b->x() > tab->x())
+            tab = b;
+    REQUIRE(tab);
+    // the title at its own width looks as it does with room to spare
+    QImage natural = tab->grab().toImage();
+    int w = tab->width();
+    tab->resize(w + 60, tab->height());
+    QImage roomy = tab->grab().toImage();
+    tab->resize(w, tab->height());
+    int x0 = 32, x1 = std::min(natural.width(), w - 32);  // the title's space (icon and close button aside)
+    int differing = 0;
+    for (int y = 0; y < natural.height(); ++y)
+        for (int x = x0; x < x1; ++x)
+            differing += natural.pixel(x, y) != roomy.pixel(x, y);
+    CHECK(differing == 0);
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

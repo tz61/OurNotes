@@ -1,6 +1,7 @@
 #include "gui/tab_widget.h"
 
 #include <QApplication>
+#include <QFontMetricsF>
 #include <QContextMenuEvent>
 #include <QHBoxLayout>
 #include <QMenu>
@@ -8,6 +9,8 @@
 #include <QPainter>
 #include <QTabBar>
 #include <QToolTip>
+
+#include <cmath>
 
 #include "gui/flow_layout.h"
 
@@ -44,9 +47,12 @@ public:
     QSize sizeHint() const override
     {
         auto fm = fontMetrics();
-        int w = kPad + kIcon + 6 + std::min(fm.horizontalAdvance(text()), kMaxText) + (closable() ? 6 + kClose : 0) + kPad;
+        int w = kPad + kIcon + 6 + std::min(textWidth(), kMaxText) + (closable() ? 6 + kClose : 0) + kPad;
         return {w, std::max(fm.height(), kIcon) + 14};
     }
+    // The title's width, rounded up: rounded to the nearest pixel (QFontMetrics), a
+    // title that is a fraction wider (at 150 %, say) did not fit its own tab: "T…".
+    int textWidth() const { return int(std::ceil(QFontMetricsF(font()).horizontalAdvance(text()))); }
 
 protected:
     void paintEvent(QPaintEvent*) override
@@ -67,8 +73,8 @@ protected:
         x += kIcon + 6;
         int right = width() - kPad - (closable() ? kClose + 6 : 0);
         p.setPen(palette().color(current ? QPalette::Text : QPalette::WindowText));
-        p.drawText(QRect(x, 0, right - x, height()), Qt::AlignVCenter | Qt::AlignLeft,
-                   fontMetrics().elidedText(text(), Qt::ElideRight, right - x));
+        QString shown = textWidth() <= right - x ? text() : fontMetrics().elidedText(text(), Qt::ElideRight, right - x);
+        p.drawText(QRect(x, 0, right - x, height()), Qt::AlignVCenter | Qt::AlignLeft, shown);
         if (closable() && (current || underMouse())) {
             QRectF c = closeRect();
             if (closeHot_) {
