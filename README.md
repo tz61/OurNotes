@@ -27,8 +27,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
   like Zotero), and the open tabs and the library's selection come back after a
   restart; restored tabs load when first shown. The paper's top note opens next to the
-  PDF. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools and H goes back
-  to the library; Ctrl+Shift+T reopens a closed tab.
+  PDF. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
+  width (twice: the page) and H goes back to the library; Ctrl+Shift+T reopens a closed
+  tab. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display
@@ -147,6 +148,13 @@ weeks under the run's *Artifacts*.
 > (Apple silicon, Homebrew Qt 6.12). On Windows 11 (Visual Studio 2022, Qt 6.5.3) it
 > builds and its tests pass; the application itself has seen little use there yet.
 
+## Key bindings
+
+![OurNotes key bindings](docs/images/keybindings.svg)
+
+The reader's keys (1–8, F, H) work while the page has the keyboard; typed into a comment,
+a note or a field they are just text. `scripts/keybindings-figure.py` draws the figure.
+
 ## Getting started
 
 On first start OurNotes offers to import an existing Zotero library (it looks for
@@ -168,13 +176,6 @@ Data lives in `~/OurNotes` (database `ournotes.sqlite`, files in `storage/<KEY>/
 Zotero's data directory; change it in *Preferences → General* or with
 `OURNOTES_DATA_DIR`. Settings and sync tokens are in `~/.config/ournotes/config.json`
 (macOS: `~/Library/Application Support/OurNotes`, Windows: `%APPDATA%\OurNotes`).
-
-Behind the item list OurNotes shows one of the twelve BanG Dream! bands, a different
-one every two hours (Poppin'Party from midnight, Afterglow from 2:00, … Ikka Dumb Rock!
-from 22:00), faint enough to read the columns over it; *Preferences → General* turns it
-off. The pictures, from the [BanG Dream! wiki](https://bandori.miraheze.org/), are built
-in (`resources/bands`); pictures of your own in the data directory under
-`backgrounds/bands/` are shown instead, in name order.
 
 OurNotes was called freePen before. On its first start it takes over freePen's settings
 (copied from `~/.config/freepen`) and moves the library from `~/freePen` to `~/OurNotes`;
