@@ -858,7 +858,7 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
                         return;
                     }
                     if (!saveTimer_.isActive())
-                        load();  // changed elsewhere (sync, another editor)
+                        load(false);  // changed elsewhere (sync, another editor)
                 }
             });
     setEnabled(false);
@@ -887,7 +887,7 @@ void NoteEditor::clear()
     setEnabled(false);
 }
 
-void NoteEditor::load()
+void NoteEditor::load(bool force)
 {
     auto data = AppContext::get().library().item(libraryId_, ss(key_));
     if (!data) {
@@ -895,7 +895,7 @@ void NoteEditor::load()
         return;
     }
     auto html = jqs(*data, "note");
-    if (html == lastSaved_ && edit_->document()->isModified())
+    if (!force && (html == lastSaved_ || html == lastSerialized_))
         return;
     loading_ = true;
     int pos = edit_->textCursor().position();

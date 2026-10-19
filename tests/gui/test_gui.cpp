@@ -1393,6 +1393,39 @@ TEST_CASE("notes: a note can be moved to the trash from the list, after asking")
     CHECK(QTest::qWaitFor([&] { return list->count() == 0; }));
 }
 
+TEST_CASE("notes: autosaving keeps the whole undo history")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(500, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    edit->setFocus();
+    // each part is saved (as when typing pauses) before the next is typed
+    for (const char* part : {"man ", "$x_y$", " can"}) {
+        QTest::keyClicks(edit, part);
+        editor.flush();
+        QApplication::processEvents();
+    }
+    REQUIRE(countMath(edit->document()) == 1);
+    REQUIRE(jstr(*env.library.item(env.lib, jstr(note, "key")), "note").find("can") != std::string::npos);
+    auto full = edit->toPlainText();
+
+    // undo goes back past every save, to the empty note, and redo all the way forward
+    for (int i = 0; i < 40 && !edit->toPlainText().isEmpty(); ++i)
+        QTest::keyClick(edit, Qt::Key_Z, Qt::ControlModifier);
+    CHECK(edit->toPlainText().isEmpty());
+    CHECK(countMath(edit->document()) == 0);
+    for (int i = 0; i < 40 && edit->document()->isRedoAvailable(); ++i)
+        QTest::keyClick(edit, Qt::Key_Y, Qt::ControlModifier);
+    CHECK(edit->toPlainText() == full);
+    CHECK(countMath(edit->document()) == 1);
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

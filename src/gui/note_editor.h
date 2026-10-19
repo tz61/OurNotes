@@ -106,7 +106,9 @@ signals:
     void saved(const QString& key);
 
 private:
-    void load();
+    // force = false: a change notification, which is skipped when it is this editor's
+    // own save (reloading would lose the undo history)
+    void load(bool force = true);
     void save();
     void setHeading(int level);
     void toggleList(bool ordered);
