@@ -5,6 +5,7 @@ add_library(freepen_formats STATIC
     csljson.cpp
     formats.cpp
     metadata.cpp
+    pdf_metadata.cpp
     ris.cpp
 )
-target_link_libraries(freepen_formats PUBLIC freepen_core PRIVATE fp_httplib)
+target_link_libraries(freepen_formats PUBLIC freepen_core freepen_pdf PRIVATE fp_httplib)

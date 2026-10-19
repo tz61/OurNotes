@@ -31,6 +31,8 @@ int64_t nowMillis();
 
 std::string yearOf(const std::string& date);
 
+void appendUtf8(std::string& out, uint32_t codepoint);
+
 // Lowercased, accent-stripped form used for sorting and searching.
 std::string normalize(std::string_view text);
 

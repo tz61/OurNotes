@@ -38,21 +38,6 @@ QString typeName(const QString& type)
     return type;
 }
 
-QString toolIcon(const QString& type)
-{
-    if (type == "note")
-        return "tool-note";
-    if (type == "text")
-        return "tool-text";
-    if (type == "image")
-        return "tool-area";
-    if (type == "ink")
-        return "tool-ink";
-    if (type == "underline")
-        return "tool-underline";
-    return "tool-highlight";
-}
-
 } // namespace
 
 // --- AnnotationCard ----------------------------------------------------------------------

@@ -5,6 +5,7 @@ set(FREEPEN_GUI_SOURCES
     app_context.cpp
     collection_tree.cpp
     flow_layout.cpp
+    formats_actions.cpp
     fulltext_indexer.cpp
     icons.cpp
     item_pane.cpp
@@ -21,19 +22,11 @@ set(FREEPEN_GUI_SOURCES
     reader/reader_tab.cpp
     reader/render_worker.cpp
 )
-if(TARGET freepen_formats)
-    list(APPEND FREEPEN_GUI_SOURCES formats_actions.cpp)
-else()
-    list(APPEND FREEPEN_GUI_SOURCES formats_actions_stub.cpp)
-endif()
 
 # Everything but main() is a library so tests can drive the widgets.
 add_library(freepen_gui STATIC ${FREEPEN_GUI_SOURCES})
 set_target_properties(freepen_gui PROPERTIES AUTOMOC ON AUTORCC ON)
-target_link_libraries(freepen_gui PUBLIC freepen_core freepen_sync freepen_pdf Qt6::Widgets Qt6::Svg)
-if(TARGET freepen_formats)
-    target_link_libraries(freepen_gui PUBLIC freepen_formats)
-endif()
+target_link_libraries(freepen_gui PUBLIC freepen_core freepen_sync freepen_pdf freepen_formats Qt6::Widgets Qt6::Svg)
 
 qt_add_executable(freepen WIN32 MACOSX_BUNDLE main.cpp resources.qrc)
 set_target_properties(freepen PROPERTIES

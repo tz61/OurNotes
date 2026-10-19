@@ -23,25 +23,6 @@ constexpr size_t kPageCache = 12;
 Rect toRect(const fz_rect& r) { return {r.x0, r.y0, r.x1, r.y1}; }
 fz_rect toFz(const Rect& r) { return fz_make_rect(r.x0, r.y0, r.x1, r.y1); }
 
-void appendUtf8(std::string& out, uint32_t cp)
-{
-    if (cp < 0x80) {
-        out += (char)cp;
-    } else if (cp < 0x800) {
-        out += (char)(0xC0 | (cp >> 6));
-        out += (char)(0x80 | (cp & 0x3F));
-    } else if (cp < 0x10000) {
-        out += (char)(0xE0 | (cp >> 12));
-        out += (char)(0x80 | ((cp >> 6) & 0x3F));
-        out += (char)(0x80 | (cp & 0x3F));
-    } else {
-        out += (char)(0xF0 | (cp >> 18));
-        out += (char)(0x80 | ((cp >> 12) & 0x3F));
-        out += (char)(0x80 | ((cp >> 6) & 0x3F));
-        out += (char)(0x80 | (cp & 0x3F));
-    }
-}
-
 bool isWordChar(uint32_t c)
 {
     if (c < 0x80)

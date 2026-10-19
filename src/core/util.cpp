@@ -145,7 +145,7 @@ static const char* const kLatinExtAFold[128] = {
     "s", "s", "t", "t", "t", "t", "t", "t", "u", "u", "u", "u", "u", "u", "u", "u",
     "u", "u", "u", "u", "w", "w", "y", "y", "y", "z", "z", "z", "z", "z", "z", "s"};
 
-static void appendUtf8(std::string& out, uint32_t cp)
+void appendUtf8(std::string& out, uint32_t cp)
 {
     if (cp < 0x80) {
         out += (char)cp;
