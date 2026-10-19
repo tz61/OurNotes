@@ -9,3 +9,10 @@ CMakeUserPresets.json
 *.swp
 __pycache__/
 /.claude/
+.DS_Store
+# a library in the checkout itself (the default data directory ~/OurNotes, when the repository is cloned there)
+/ournotes.sqlite*
+/fulltext.sqlite*
+/freepen.sqlite*
+/storage/
+/styles/
