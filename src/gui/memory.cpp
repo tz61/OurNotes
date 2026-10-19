@@ -11,9 +11,6 @@ namespace on::gui {
 void configureAllocator()
 {
 #ifdef __GLIBC__
-    // large blocks (rendered pages, decoded images) get their own mappings, returned to
-    // the system when freed; setting the threshold also stops it from growing
-    mallopt(M_MMAP_THRESHOLD, 1 << 20);
     // a reader tab has a render thread; one arena per thread fragments memory
     mallopt(M_ARENA_MAX, 4);
 #endif
