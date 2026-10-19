@@ -158,11 +158,14 @@ std::optional<NoteTextEdit::MathRun> NoteTextEdit::runAtCursor() const
     return std::nullopt;
 }
 
-void NoteTextEdit::startMathEdit(QTextCursor cursor, const QString& latex, bool display)
+void NoteTextEdit::startMathEdit(QTextCursor cursor, const QString& latex, bool display, const QString& original)
 {
     if (isReadOnly())
         return;
     commitMathEdits(true);  // one formula at a time
+    if (document()->isUndoRedoEnabled())
+        session_ = {document()->availableUndoSteps(), cursor.selectionStart(),
+                    cursor.selectionEnd() - cursor.selectionStart(), display, original};
     auto format = sourceFormat(display, cursor.charFormat());
     QString delim = display ? "$$" : "$";
     committing_ = true;  // don't render the new formula while it is being created
@@ -201,7 +204,7 @@ void NoteTextEdit::editMathInPlace(QTextCursor selection)
     if (selection.isNull() || isReadOnly() ||
         !parseMathResourceName(selection.charFormat().toImageFormat().name(), &latex, &display))
         return;
-    startMathEdit(selection, latex, display);
+    startMathEdit(selection, latex, display, latex);
 }
 
 void NoteTextEdit::commitMathEdits(bool all)
@@ -209,9 +212,38 @@ void NoteTextEdit::commitMathEdits(bool all)
     if (committing_)
         return;
     auto runs = mathRuns();
-    if (runs.empty())
+    if (runs.empty()) {
+        session_.undoSteps = -1;
         return;
+    }
     committing_ = true;
+    if (runs.size() == 1 && session_.undoSteps >= 0) {
+        auto run = runs.front();
+        int p = textCursor().position();
+        int fromEnd = document()->characterCount() - p;  // the text after the formula does not change
+        if (all || !(p > run.start && p < run.end)) {
+            QTextCursor c(document());
+            c.setPosition(run.start);
+            c.setPosition(run.end, QTextCursor::KeepAnchor);
+            QTextCursor after;
+            if (finishMathSession(stripDelimiters(c.selectedText(), run.display), &after)) {
+                // keep the cursor where the user put it
+                QTextCursor user(document());
+                if (p <= run.start)
+                    user.setPosition(p);
+                else if (p >= run.end)
+                    user.setPosition(std::clamp(document()->characterCount() - fromEnd, 0, document()->characterCount() - 1));
+                if (p > run.start && (p < run.end || user.position() == after.position()))
+                    user = after;
+                setTextCursor(user);
+                committing_ = false;
+                if (all)
+                    editingMath_ = false;
+                updateMathPreview();
+                return;
+            }
+        }
+    }
     auto user = textCursor();
     int p = user.position();
     bool after = false;  // the user's cursor ends up right after a rendered formula
@@ -243,6 +275,57 @@ void NoteTextEdit::commitMathEdits(bool all)
     if (all)
         editingMath_ = false;
     updateMathPreview();
+}
+
+// Renders the formula of the session as one undoable edit: back to the document as it
+// was when the formula was opened, then the whole change at once. `after` gets a
+// cursor right after the formula. False when the history no longer allows it (the
+// session's steps were undone, or the history was cleared).
+bool NoteTextEdit::finishMathSession(const QString& latex, QTextCursor* after)
+{
+    auto* doc = document();
+    auto session = session_;
+    session_.undoSteps = -1;
+    // availableUndoSteps() counts commands; undo() takes back a whole edit block
+    int target = session.undoSteps;
+    if (target < 0 || doc->availableUndoSteps() <= target || !doc->isUndoRedoEnabled())
+        return false;
+    while (doc->availableUndoSteps() > target) {
+        int before = doc->availableUndoSteps();
+        doc->undo();
+        if (doc->availableUndoSteps() >= before)
+            break;
+    }
+    if (doc->availableUndoSteps() != target) {  // a block reached back past the session: leave it
+        while (doc->isRedoAvailable())
+            doc->redo();
+        return false;
+    }
+    doc->clearUndoRedoStacks(QTextDocument::RedoStack);
+    QTextCursor c(doc);
+    c.setPosition(session.start);
+    if (!session.original.isEmpty() && latex == session.original) {
+        c.setPosition(session.start + session.length);  // opened and closed unchanged: no step at all
+        *after = c;
+        return true;
+    }
+    c.setPosition(session.start + session.length, QTextCursor::KeepAnchor);
+    c.beginEditBlock();
+    c.removeSelectedText();
+    if (!latex.isEmpty()) {
+        if (session.display) {
+            if (c.positionInBlock() > 0)
+                c.insertBlock();
+            QTextBlockFormat centred = c.blockFormat();
+            centred.setAlignment(Qt::AlignHCenter);
+            c.setBlockFormat(centred);
+        }
+        c.insertImage(mathFormat(latex, session.display));
+        c.setCharFormat(outerFormat(c.block(), c.positionInBlock() - 1));
+    }
+    c.endEditBlock();
+    *after = c;
+    return true;
 }
 
 void NoteTextEdit::updateMathPreview()
@@ -461,6 +544,11 @@ void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool di
 
 void NoteTextEdit::keyPressEvent(QKeyEvent* e)
 {
+    if (e->key() == Qt::Key_Y && e->modifiers() == Qt::ControlModifier) {
+        commitMathEdits(true);
+        redo();
+        return;
+    }
     if (!isReadOnly()) {
         if (auto run = runAtCursor()) {
             auto cursor = textCursor();
@@ -504,13 +592,29 @@ void NoteTextEdit::leaveMath(const MathRun& run, bool nextLine)
         cursor.movePosition(QTextCursor::NextBlock);
     } else {
         auto textFormat = cursor.charFormat();
+        cursor.joinPreviousEditBlock();  // part of the formula's step
         cursor.insertBlock();
         QTextBlockFormat normal = cursor.blockFormat();
         normal.setAlignment(Qt::AlignLeft);
         cursor.setBlockFormat(normal);
         cursor.setCharFormat(textFormat);
+        cursor.endEditBlock();
     }
     setTextCursor(cursor);
+}
+
+// Ctrl+Y redoes (only Ctrl+Shift+Z is standard on Linux); claimed here so a
+// surrounding shortcut does not take it.
+bool NoteTextEdit::event(QEvent* e)
+{
+    if (e->type() == QEvent::ShortcutOverride) {
+        auto* k = static_cast<QKeyEvent*>(e);
+        if (k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) {
+            e->accept();
+            return true;
+        }
+    }
+    return QTextEdit::event(e);
 }
 
 void NoteTextEdit::focusOutEvent(QFocusEvent* e)

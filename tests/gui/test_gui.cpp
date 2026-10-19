@@ -1053,13 +1053,18 @@ TEST_CASE("notes: $$ starts a formula that is typed in place")
     CHECK(!f.hasProperty(QTextFormat::ImageName));
     CHECK(f.verticalAlignment() == QTextCharFormat::AlignNormal);
 
-    // undo brings back the source without rendering it again straight away
+    // a formula typed in place is one undo step: Ctrl+Z gives back the "$$" typed,
+    // Ctrl+Y the formula
     edit.clear();
     QTest::keyClicks(&edit, "a $$x$");
     REQUIRE(countMath(edit.document()) == 1);
-    edit.undo();
+    QTest::keyClick(&edit, Qt::Key_Z, Qt::ControlModifier);
     CHECK(countMath(edit.document()) == 0);
-    CHECK(edit.toPlainText().contains("$x$"));
+    CHECK(edit.toPlainText() == "a $$");
+    QTest::keyClick(&edit, Qt::Key_Y, Qt::ControlModifier);
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x"});
 
     // on an empty line, $$ starts a centred display formula; $$ ends it and moves on
     edit.clear();
@@ -1074,6 +1079,12 @@ TEST_CASE("notes: $$ starts a formula that is typed in place")
     CHECK(edit.document()->lastBlock().text() == "next");
     CHECK((edit.document()->lastBlock().blockFormat().alignment() & Qt::AlignHCenter) == 0);
     CHECK(documentToNoteHtml(edit.document()).contains("<pre class=\"math\">$$E=mc^2$$</pre>"));
+    // the display formula and the new line after it go back together
+    QTest::keyClick(&edit, Qt::Key_Z, Qt::ControlModifier);  // "next"
+    QTest::keyClick(&edit, Qt::Key_Z, Qt::ControlModifier);
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(edit.document()->blockCount() == 1);
+    CHECK(edit.toPlainText() == "$$");
 }
 
 TEST_CASE("notes: clicking a formula edits it in place with a live preview")
@@ -1114,6 +1125,16 @@ TEST_CASE("notes: clicking a formula edits it in place with a live preview")
     CHECK(countMath(edit.document()) == 0);
     QTest::keyClick(&edit, Qt::Key_End);
     CHECK(countMath(edit.document()) == 1);
+
+    // changing a formula is one undo step; opening one without changing it is none
+    QTest::keyClick(&edit, Qt::Key_Z, Qt::ControlModifier);
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x^2"});
+    QTest::keyClick(&edit, Qt::Key_Y, Qt::ControlModifier);
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x^2+1"});
 
     // a formula left empty is removed
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, formulaCenter(edit));

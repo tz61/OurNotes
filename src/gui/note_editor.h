@@ -44,6 +44,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
+    bool event(QEvent* e) override;
     void focusOutEvent(QFocusEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
@@ -58,7 +59,9 @@ private:
     QTextCursor mathAt(const QPoint& viewportPos);  // selects the formula under the point
     void editMathInPlace(QTextCursor selection);
     bool editMathInDialog(QTextCursor selection);
-    void startMathEdit(QTextCursor cursor, const QString& latex, bool display);
+    // `original`: the formula being changed (empty for a new one).
+    void startMathEdit(QTextCursor cursor, const QString& latex, bool display, const QString& original = {});
+    bool finishMathSession(const QString& latex, QTextCursor* after);
     QTextCharFormat sourceFormat(bool display, QTextCharFormat base) const;
     std::vector<MathRun> mathRuns() const;
     std::optional<MathRun> runAtCursor() const;
@@ -73,6 +76,14 @@ private:
     int internal_ = 0;
     bool committing_ = false;
     bool editingMath_ = false;  // the cursor was inside a formula's source
+    // A formula being edited is one step in the undo history: when it is rendered, the
+    // steps since it was opened are undone and the result is applied as one edit.
+    struct MathSession {
+        int undoSteps = -1;     // undo steps before it was opened; -1: no session
+        int start = 0, length = 0;  // what it replaces, in the document of that time
+        bool display = false;
+        QString original;
+    } session_;
 };
 
 // Rich-text editor for a note item. Changes are saved automatically shortly
