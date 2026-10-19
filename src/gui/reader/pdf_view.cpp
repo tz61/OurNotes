@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QHelpEvent>
 #include <QMenu>
+#include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPlainTextEdit>
@@ -1634,6 +1635,15 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
 
 bool PdfView::viewportEvent(QEvent* e)
 {
+    // a touchpad pinch on macOS and Wayland (X11 sends Ctrl+wheel instead, see wheelEvent)
+    if (e->type() == QEvent::NativeGesture) {
+        auto* g = static_cast<QNativeGestureEvent*>(e);
+        if (g->gestureType() == Qt::ZoomNativeGesture) {
+            setZoom(zoom() * (1 + g->value()), g->position());
+            g->accept();
+            return true;
+        }
+    }
     if (e->type() == QEvent::ToolTip && !pageRects_.empty()) {
         auto* he = static_cast<QHelpEvent*>(e);
         QPointF content = QPointF(he->pos()) + scrollOffset();

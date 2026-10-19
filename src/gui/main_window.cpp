@@ -274,11 +274,18 @@ void MainWindow::buildActions()
 
     auto* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Library Tab"), QKeySequence("Ctrl+1"), this, [this] { tabs_->setCurrentIndex(0); });
-    view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
-                    [this] { tabs_->setCurrentIndex((tabs_->currentIndex() + 1) % tabs_->count()); });
-    view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
+    auto* nextTab = view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
+                                    [this] { tabs_->setCurrentIndex((tabs_->currentIndex() + 1) % tabs_->count()); });
+    auto* previousTab = view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
         tabs_->setCurrentIndex((tabs_->currentIndex() + tabs_->count() - 1) % tabs_->count());
     });
+#ifdef Q_OS_MACOS
+    // Qt's Ctrl is the Command key on macOS, and Command-Tab switches applications; the
+    // Control key (Qt's Meta) with Tab switches tabs, as in Safari and Finder
+    nextTab->setShortcuts(QList<QKeySequence>{Qt::META | Qt::Key_Tab} + nextTab->shortcuts());
+    previousTab->setShortcuts(QList<QKeySequence>{Qt::META | Qt::SHIFT | Qt::Key_Backtab, Qt::META | Qt::SHIFT | Qt::Key_Tab} +
+                              previousTab->shortcuts());
+#endif
     view->addSeparator();
     view->addAction(icon("zoom-in"), tr("Zoom In"), QKeySequence::ZoomIn, this, [this] {
         if (auto* r = qobject_cast<ReaderTab*>(tabs_->currentWidget()))

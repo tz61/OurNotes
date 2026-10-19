@@ -25,6 +25,7 @@
 
 #include <array>
 #include <atomic>
+#include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
 
@@ -419,6 +420,37 @@ TEST_CASE("reader: the view state round-trips in Zotero's format")
     CHECK(a.viewState()["scale"] == "page-fit");
     b.restoreViewState(Json{{"pageIndex", 0}, {"scale", "page-width"}});
     CHECK(b.isFitWidth());
+}
+
+TEST_CASE("reader: pinching on a touchpad zooms, keeping the point under the fingers")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view, expected;
+    for (auto* v : {&view, &expected}) {
+        v->resize(800, 600);
+        v->open(file);
+        v->show();
+        QApplication::processEvents();
+        v->setZoom(1);
+    }
+    // macOS (and Wayland) deliver a touchpad pinch as a native zoom gesture, not as Ctrl+wheel
+    QPointF fingers(300, 200);
+    auto pinch = [&](double value) {
+        QNativeGestureEvent e(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, fingers, fingers,
+                              view.viewport()->mapToGlobal(fingers), value, {});
+        QApplication::sendEvent(view.viewport(), &e);
+        return e.isAccepted();
+    };
+    CHECK(pinch(0.5));
+    CHECK(view.zoom() == doctest::Approx(1.5));
+    expected.setZoom(1.5, fingers);
+    CHECK(view.horizontalScrollBar()->value() == expected.horizontalScrollBar()->value());
+    CHECK(view.verticalScrollBar()->value() == expected.verticalScrollBar()->value());
+    pinch(-0.2);
+    CHECK(view.zoom() == doctest::Approx(1.2));
 }
 
 TEST_CASE("reader: a document opens where it was left")
@@ -1442,6 +1474,40 @@ TEST_CASE("main window: Control-Command-F (F11 elsewhere) enters and leaves full
     CHECK(QTest::qWaitFor([&] { return window.isFullScreen(); }, 5000));
     QTest::keySequence(&window, key);
     CHECK(QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000));
+}
+
+TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    for (int i = 0; i < 2; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+        window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+    }
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 3);
+    tabs->setCurrentIndex(0);
+    QApplication::processEvents();
+#ifdef Q_OS_MACOS
+    auto control = Qt::MetaModifier;  // the Control key; Qt's Ctrl is Command, and Command-Tab switches applications
+#else
+    auto control = Qt::ControlModifier;
+#endif
+    QTest::keyClick(&window, Qt::Key_Tab, control);
+    CHECK(tabs->currentIndex() == 1);
+    QTest::keyClick(QApplication::focusWidget() ? QApplication::focusWidget() : &window, Qt::Key_Tab, control);
+    CHECK(tabs->currentIndex() == 2);
+    QTest::keyClick(QApplication::focusWidget() ? QApplication::focusWidget() : &window, Qt::Key_Backtab,
+                    control | Qt::ShiftModifier);
+    CHECK(tabs->currentIndex() == 1);
 }
 
 TEST_CASE("library: columns fill the list, the title column gives way, the item pane can be hidden")
