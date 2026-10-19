@@ -6,6 +6,7 @@
 #include "gui/items_model.h"
 
 class QComboBox;
+class QHBoxLayout;
 class QLineEdit;
 class QSplitter;
 class QTreeView;
@@ -28,6 +29,8 @@ public:
     QStringList selectedTopLevelKeys() const;
     void selectItem(const QString& key, int64_t libraryId = 0);
     void focusSearch();
+    // Adds a button to the row of the search field, left of it.
+    void addTool(QWidget* tool);
     QTreeView* itemsView() const { return items_; }
     CollectionTree* collectionTree() const { return tree_; }
     QByteArray saveState() const;  // layout: splitters and columns
@@ -70,6 +73,8 @@ private:
     TagSelector* tags_;
     QLineEdit* search_;
     QComboBox* searchMode_;
+    QHBoxLayout* searchRow_;
+    int tools_ = 0;
     QTreeView* items_;
     ItemsModel* model_;
     ItemPane* pane_;

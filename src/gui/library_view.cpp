@@ -81,8 +81,9 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     auto* mv = new QVBoxLayout(middle);
     mv->setContentsMargins(0, 0, 0, 0);
     mv->setSpacing(4);
-    auto* searchRow = new QHBoxLayout;
+    auto* searchRow = searchRow_ = new QHBoxLayout;
     searchRow->setContentsMargins(4, 4, 4, 0);
+    searchRow->setSpacing(2);
     searchMode_ = new QComboBox(middle);
     searchMode_->addItem(tr("Title, Creator, Year"), (int)SearchMode::TitleCreatorYear);
     searchMode_->addItem(tr("All Fields & Tags"), (int)SearchMode::AllFields);
@@ -360,6 +361,14 @@ void LibraryView::restoreViewState(const Json& state)
         if (idx.isValid())
             items_->scrollTo(idx, top.isEmpty() ? QAbstractItemView::EnsureVisible : QAbstractItemView::PositionAtTop);
     });
+}
+
+void LibraryView::addTool(QWidget* tool)
+{
+    tool->setParent(this);
+    searchRow_->insertWidget(tools_++, tool);
+    if (tools_ == 1)
+        searchRow_->insertSpacing(tools_, 0);
 }
 
 void LibraryView::focusSearch()

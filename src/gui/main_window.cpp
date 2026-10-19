@@ -169,62 +169,62 @@ void MainWindow::setStatus(const QString& text, int timeoutMs)
 
 void MainWindow::buildActions()
 {
-    auto* tb = addToolBar(tr("Main"));
-    tb->setObjectName("mainToolbar");
-    tb->setMovable(false);
-    tb->setIconSize(QSize(20, 20));
+    // The item buttons sit on the library's search row; sync is with the tabs, as it
+    // applies to everything.
+    auto toolButton = [this](const char* iconName, const QString& tip) {
+        auto* b = new QToolButton(this);
+        b->setIcon(icon(iconName));
+        b->setIconSize(QSize(18, 18));
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        return b;
+    };
+    auto withMenu = [](QToolButton* b, QMenu* menu) {
+        b->setPopupMode(QToolButton::InstantPopup);
+        b->setMenu(menu);
+        return b;
+    };
 
     // new item menu: common types first, all types in a submenu
-    auto* newItemBtn = new QToolButton(tb);
-    newItemBtn->setIcon(icon("new-item"));
-    newItemBtn->setToolTip(tr("New Item"));
-    newItemBtn->setPopupMode(QToolButton::InstantPopup);
+    auto* newItemBtn = toolButton("new-item", tr("New Item"));
     auto* newItemMenu = new QMenu(newItemBtn);
     for (auto* t : {"journalArticle", "preprint", "conferencePaper", "book", "bookSection", "thesis", "report", "webpage"})
         newItemMenu->addAction(itemTypeIcon(t), qs(schema::typeLabel(t)), this, [this, t] { library_->newItem(t); });
     auto* more = newItemMenu->addMenu(tr("More"));
     for (auto& t : schema::itemTypes())
         more->addAction(itemTypeIcon(qs(t)), qs(schema::typeLabel(t)), this, [this, t] { library_->newItem(qs(t)); });
-    newItemBtn->setMenu(newItemMenu);
-    tb->addWidget(newItemBtn);
+    library_->addTool(withMenu(newItemBtn, newItemMenu));
 
-    tb->addAction(icon("magic"), tr("Add Item by Identifier (DOI, ISBN, arXiv, PMID)"), this, &MainWindow::addByIdentifier);
+    auto* identifierBtn = toolButton("magic", tr("Add Item by Identifier (DOI, ISBN, arXiv, PMID)"));
+    connect(identifierBtn, &QToolButton::clicked, this, &MainWindow::addByIdentifier);
+    library_->addTool(identifierBtn);
 
-    auto* noteBtn = new QToolButton(tb);
-    noteBtn->setIcon(icon("new-note"));
-    noteBtn->setToolTip(tr("New Note"));
-    noteBtn->setPopupMode(QToolButton::InstantPopup);
+    auto* noteBtn = toolButton("new-note", tr("New Note"));
     auto* noteMenu = new QMenu(noteBtn);
     noteMenu->addAction(tr("New Standalone Note"), this, [this] { library_->newNote(false); });
     noteMenu->addAction(tr("New Item Note"), this, [this] { library_->newNote(true); });
-    noteBtn->setMenu(noteMenu);
-    tb->addWidget(noteBtn);
+    library_->addTool(withMenu(noteBtn, noteMenu));
 
-    auto* attachBtn = new QToolButton(tb);
-    attachBtn->setIcon(icon("attach"));
-    attachBtn->setToolTip(tr("Add Attachment"));
-    attachBtn->setPopupMode(QToolButton::InstantPopup);
+    auto* attachBtn = toolButton("attach", tr("Add Attachment"));
     auto* attachMenu = new QMenu(attachBtn);
     attachMenu->addAction(tr("Attach Stored Copy of File…"), this, [this] { library_->addAttachments(false); });
     attachMenu->addAction(tr("Attach Link to File…"), this, [this] { library_->addAttachments(true); });
     attachMenu->addAction(tr("Attach Link to URI…"), this, [this] { library_->addLinkAttachment(); });
-    attachBtn->setMenu(attachMenu);
-    tb->addWidget(attachBtn);
-    tb->addAction(icon("new-collection"), tr("New Collection"), this, [this] { library_->newCollection(); });
+    library_->addTool(withMenu(attachBtn, attachMenu));
 
-    auto* spacer = new QWidget(tb);
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    tb->addWidget(spacer);
-    syncButton_ = new QToolButton(tb);
-    syncButton_->setIcon(icon("sync"));
-    syncButton_->setToolTip(tr("Sync"));
+    auto* collectionBtn = toolButton("new-collection", tr("New Collection"));
+    connect(collectionBtn, &QToolButton::clicked, this, [this] { library_->newCollection(); });
+    library_->addTool(collectionBtn);
+
+    syncButton_ = toolButton("sync", tr("Sync"));
+    syncButton_->setObjectName("syncButton");
     connect(syncButton_, &QToolButton::clicked, this, [this] {
         if (!sync_->hasTarget())
             showPreferences(1);
         else
             sync_->syncNow();
     });
-    tb->addWidget(syncButton_);
+    static_cast<TabWidget*>(tabs_)->addStripCornerWidget(syncButton_);
 
     // --- menus ----------------------------------------------------------------------------
     auto* file = menuBar()->addMenu(tr("&File"));

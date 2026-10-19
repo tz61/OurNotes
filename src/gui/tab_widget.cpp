@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QContextMenuEvent>
+#include <QHBoxLayout>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
@@ -163,9 +164,22 @@ public:
     TabStrip(QTabWidget* tabs, QWidget* parent) : QWidget(parent), tabs_(tabs)
     {
         setObjectName("tabStrip");
-        flow_ = new FlowLayout(this, 0);
+        auto* row = new QHBoxLayout(this);
+        row->setContentsMargins(0, 0, 4, 0);
+        row->setSpacing(4);
+        area_ = new QWidget(this);
+        flow_ = new FlowLayout(area_, 0);
+        row->addWidget(area_, 1);
+        corner_ = new QHBoxLayout;
+        row->addLayout(corner_);
+        row->setAlignment(corner_, Qt::AlignTop);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        setAutoFillBackground(false);
+    }
+
+    void addCornerWidget(QWidget* w)
+    {
+        w->setParent(this);
+        corner_->addWidget(w);
     }
 
     // Coalesces the many changes of one operation (insert, then set the tooltip).
@@ -189,7 +203,7 @@ public:
                 if (b->page() == tabs_->widget(i))
                     button = b;
             if (!button)
-                button = new TabButton(tabs_, tabs_->widget(i), this);
+                button = new TabButton(tabs_, tabs_->widget(i), area_);
             ordered << button;
         }
         for (auto* b : buttons_)
@@ -217,7 +231,9 @@ protected:
 
 private:
     QTabWidget* tabs_;
+    QWidget* area_;  // the tabs, in wrapping rows
     FlowLayout* flow_;
+    QHBoxLayout* corner_;
     QList<TabButton*> buttons_;
     bool queued_ = false;
 };
@@ -231,6 +247,8 @@ TabWidget::TabWidget(QWidget* parent) : QTabWidget(parent)
 }
 
 QWidget* TabWidget::tabStrip() const { return strip_; }
+
+void TabWidget::addStripCornerWidget(QWidget* widget) { strip_->addCornerWidget(widget); }
 
 void TabWidget::tabInserted(int index)
 {

@@ -15,6 +15,8 @@ class TabWidget : public QTabWidget {
 public:
     explicit TabWidget(QWidget* parent = nullptr);
     QWidget* tabStrip() const;
+    // A widget on the right of the strip's first row, e.g. buttons that apply to all tabs.
+    void addStripCornerWidget(QWidget* widget);
 
 protected:
     void tabInserted(int index) override;
