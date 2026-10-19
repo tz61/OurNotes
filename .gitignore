@@ -16,3 +16,5 @@ __pycache__/
 /freepen.sqlite*
 /storage/
 /styles/
+/sync-history.json
+/backgrounds/
