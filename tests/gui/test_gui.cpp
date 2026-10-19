@@ -48,6 +48,7 @@
 #include "gui/note_editor.h"
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
+#include "gui/shift_wheel.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
 #include "gui/theme.h"
@@ -127,6 +128,40 @@ TEST_CASE("reader: page thumbnails stay in a grid while their pictures arrive")
         for (int j = i + 1; j < list->count(); ++j)
             CHECK_FALSE(a.intersects(list->visualRect(list->model()->index(j, 0))));
     }
+}
+
+TEST_CASE("Shift+wheel scrolls sideways")
+{
+    app();
+    ShiftWheelScrolling::install();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(500, 600);
+    view.open(file);
+    view.show();
+    view.setZoom(3);  // wider than the view
+    QApplication::processEvents();
+    auto* h = view.horizontalScrollBar();
+    auto* v = view.verticalScrollBar();
+    REQUIRE(h->maximum() > 0);
+    h->setValue(0);
+    v->setValue(0);
+    auto wheel = [&](int dy, Qt::KeyboardModifiers mods) {
+        QPointF at(200, 200);
+        QWheelEvent e(at, view.viewport()->mapToGlobal(at), {}, QPoint(0, dy), Qt::NoButton, mods, Qt::NoScrollPhase,
+                      false);
+        QApplication::sendEvent(view.viewport(), &e);
+    };
+    wheel(-120, Qt::ShiftModifier);  // down: to the right
+    CHECK(h->value() > 0);
+    CHECK(v->value() == 0);
+    int right = h->value();
+    wheel(120, Qt::ShiftModifier);
+    CHECK(h->value() < right);
+    wheel(-120, Qt::NoModifier);  // without Shift, down as before
+    CHECK(v->value() > 0);
 }
 
 TEST_CASE("pdf view: pages are drawn pixel for pixel, not resampled")

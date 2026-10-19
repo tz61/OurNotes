@@ -15,6 +15,7 @@
 #include "gui/common.h"
 #include "gui/main_window.h"
 #include "gui/memory.h"
+#include "gui/shift_wheel.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 
@@ -65,6 +66,7 @@ int main(int argc, char** argv)
     QApplication::setDesktopFileName("ournotes");
     QApplication::setWindowIcon(QIcon(":/ournotes.svg"));
     applyAppearance(appearanceFromConfig(*config));
+    ShiftWheelScrolling::install();
 
     QCommandLineParser parser;
     parser.setApplicationDescription("OurNotes reference manager");

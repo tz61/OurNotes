@@ -20,6 +20,7 @@ set(OURNOTES_GUI_SOURCES
     note_editor.cpp
     note_html.cpp
     preferences.cpp
+    shift_wheel.cpp
     sync_controller.cpp
     tab_widget.cpp
     tag_selector.cpp
