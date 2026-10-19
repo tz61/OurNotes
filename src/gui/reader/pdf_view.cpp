@@ -605,13 +605,23 @@ void PdfView::paintEvent(QPaintEvent*)
     if (first < 0)
         return;
     p.setRenderHint(QPainter::SmoothPixmapTransform);
+    double dpr = devicePixelRatioF();
     for (int i = first; i <= last; ++i) {
         QRectF r = pageRects_[i].translated(-scrollOffset());
         p.fillRect(r.adjusted(1, 2, 2, 3), QColor(0, 0, 0, 45));
         p.fillRect(r, darkPages_ ? darkPageColor() : QColor(Qt::white));
         auto it = cache_.find(i);
-        if (it != cache_.end())
-            p.drawImage(r, it->second.image);
+        if (it != cache_.end() && std::abs(it->second.scale - scale_ * dpr) < 1e-3) {
+            // pixel for pixel from a device pixel: stretched into the page's rect, which
+            // is a pixel larger or smaller and often between pixels (at 150 % always),
+            // every glyph was resampled and blurred
+            QPointF at(std::round(r.x() * dpr) / dpr, std::round(r.y() * dpr) / dpr);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+            p.drawImage(at, it->second.image);
+            p.setRenderHint(QPainter::SmoothPixmapTransform);
+        } else if (it != cache_.end()) {
+            p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
+        }
         paintAnnotations(p, i);
         paintTextSelection(p, i);
         // find hits

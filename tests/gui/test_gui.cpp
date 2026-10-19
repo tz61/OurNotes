@@ -86,6 +86,45 @@ void drag(QWidget* w, QPointF from, QPointF to)
 
 } // namespace
 
+TEST_CASE("pdf view: pages are drawn pixel for pixel, not resampled")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(801, 700);
+    view.open(file);
+    view.show();
+    QPointF origin;
+    for (double zoom : {0.71, 0.73, 0.77, 0.79, 0.83}) {  // a centred page whose edges fall between pixels
+        view.setZoom(zoom);
+        QApplication::processEvents();
+        origin = view.pageToViewport(0, {0, 0});
+        if (std::abs(origin.x() - std::round(origin.x())) > 0.2)
+            break;
+    }
+    REQUIRE(std::abs(origin.x() - std::round(origin.x())) > 0.2);
+    double scale = view.pageToViewport(0, {1, 0}).x() - origin.x();
+    double dpr = view.devicePixelRatioF();
+    auto r = view.document()->render(0, (float)(scale * dpr));
+    QImage page = QImage(r.pixels.data(), r.width, r.height, r.stride, QImage::Format_RGB888).copy();
+    QPoint at(std::lround(origin.x() * dpr), std::lround(origin.y() * dpr));
+
+    int differing = -1;
+    auto compare = [&] {
+        auto shot = view.viewport()->grab().toImage().convertToFormat(QImage::Format_RGB888);
+        int w = std::min(page.width(), shot.width() - at.x()), h = std::min(page.height(), shot.height() - at.y());
+        differing = 0;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                differing += shot.pixel(at.x() + x, at.y() + y) != page.pixel(x, y);
+        return differing == 0;
+    };
+    CHECK(QTest::qWaitFor(compare, 3000));
+    CHECK(differing == 0);
+}
+
 TEST_CASE("pdf view: highlight, note and ink tools create Zotero-style annotations")
 {
     app();
