@@ -1122,6 +1122,37 @@ void LocationBox::rebuild()
         lines_->addWidget(row);
         paths_ << l.plain;
     }
+    if (trashed && AppContext::get().editable(libraryId_)) {
+        // what is in the trash: the item, or the item it belongs to
+        auto trashedKey = jbool(*item, "deleted") ? key_ : jqs(top, "key");
+        auto title = qs(jstr(jbool(*item, "deleted") ? *item : top, "title"));
+        auto* row = new QWidget(this);
+        auto* h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 2, 0, 0);
+        auto* restore = new QPushButton(tr("Restore to Library"), row);
+        restore->setObjectName("restoreFromTrash");
+        auto* erase = new QPushButton(tr("Delete Permanently…"), row);
+        erase->setObjectName("deletePermanently");
+        h->addWidget(restore);
+        h->addWidget(erase);
+        h->addStretch();
+        connect(restore, &QPushButton::clicked, this, [this, trashedKey] {
+            AppContext::get().library().trashItems(libraryId_, {ss(trashedKey)}, false);
+        });
+        connect(erase, &QPushButton::clicked, this, [this, trashedKey, title] {
+            QMessageBox box(QMessageBox::Warning, tr("Delete Permanently"),
+                            tr("Permanently delete \"%1\", with its attachments and notes? This cannot be undone.")
+                                .arg(title),
+                            QMessageBox::NoButton, this);
+            box.setObjectName("confirmDeletePermanently");
+            auto* yes = box.addButton(tr("Delete Permanently"), QMessageBox::DestructiveRole);
+            box.setDefaultButton(box.addButton(QMessageBox::Cancel));
+            box.exec();
+            if (box.clickedButton() == static_cast<QAbstractButton*>(yes))
+                AppContext::get().library().eraseItems(libraryId_, {ss(trashedKey)});
+        });
+        lines_->addWidget(row);
+    }
 }
 
 // --- ItemPane ----------------------------------------------------------------------------------

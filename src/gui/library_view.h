@@ -53,6 +53,7 @@ public:
     void restoreSelected();
     void eraseSelected();
     void removeFromCollection();
+    void deleteInCollection();
     void duplicateSelected();
     void mergeSelected();
     void importFiles(const QStringList& files, const QString& parentKey);

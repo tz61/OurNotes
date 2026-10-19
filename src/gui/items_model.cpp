@@ -167,6 +167,8 @@ void ItemsModel::reload()
         auto node = std::make_unique<Node>();
         node->row = r;
         node->matches = !filtering || matched.count(r.key);
+        if (trashView && !topLevel)  // a trashed "PDF" alone does not say whose it is
+            node->context = qs(rowByKey.at(r.parentKey)->title);
         byKey_[r.key] = node.get();
         roots_.push_back(std::move(node));
     }
@@ -369,7 +371,10 @@ QVariant ItemsModel::data(const QModelIndex& index, int role) const
     switch (role) {
     case Qt::DisplayRole:
         switch (col) {
-        case Title: return qs(r.title.empty() && r.itemType == "note" ? std::string("(empty note)") : r.title);
+        case Title: {
+            auto title = qs(r.title.empty() && r.itemType == "note" ? std::string("(empty note)") : r.title);
+            return n->context.isEmpty() ? title : tr("%1 (of “%2”)").arg(title, n->context);
+        }
         case Creator: return qs(r.creator);
         case Year: return qs(r.year);
         case ItemType: return qs(schema::typeLabel(r.itemType));

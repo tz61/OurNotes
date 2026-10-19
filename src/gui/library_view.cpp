@@ -40,7 +40,7 @@ namespace {
 class ItemsTreeView : public QTreeView {
 public:
     using QTreeView::QTreeView;
-    std::function<void()> onDelete;
+    std::function<void(bool permanently)> onDelete;  // Delete; with Shift, not to the trash
     std::function<void()> onOpen;
 
     // Drawn faintly behind the rows, whole and centred; a null image shows none.
@@ -125,7 +125,7 @@ protected:
     void keyPressEvent(QKeyEvent* e) override
     {
         if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && onDelete) {
-            onDelete();
+            onDelete(e->modifiers() & Qt::ShiftModifier);
             return;
         }
         if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && onOpen) {
@@ -280,12 +280,12 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
         fitColumns();
     });
 
-    view->onDelete = [this] {
+    view->onDelete = [this](bool permanently) {
         auto s = scope();
-        if (s.kind == ScopeKind::Trash)
+        if (s.kind == ScopeKind::Trash || permanently)
             eraseSelected();
         else if (s.kind == ScopeKind::Collection)
-            removeFromCollection();
+            deleteInCollection();
         else
             trashSelected();
     };
@@ -846,6 +846,34 @@ void LibraryView::eraseSelected()
     AppContext::get().library().eraseItems(libraryId(), toStdVector(keys));
 }
 
+// Delete in a collection: items leave it, but a selected attachment or note goes to the
+// trash (it is not in the collection itself; removing its item instead lost the item).
+void LibraryView::deleteInCollection()
+{
+    auto s = scope();
+    QStringList items, children;
+    for (auto& i : items_->selectionModel()->selectedRows(0))
+        (i.parent().isValid() ? children : items) << model_->keyAt(i);
+    if (children.isEmpty()) {
+        removeFromCollection();
+        return;
+    }
+    if (!AppContext::get().editable(s.libraryId))
+        return;
+    auto question = items.isEmpty()
+                        ? tr("Move %n attachment(s) or note(s) to the trash?", nullptr, children.size())
+                        : tr("Remove %1 from this collection and move %2 to the trash?")
+                              .arg(tr("%n item(s)", nullptr, items.size()),
+                                   tr("%n attachment(s) or note(s)", nullptr, children.size()));
+    if (QMessageBox::question(this, tr("Delete"), question) != QMessageBox::Yes)
+        return;
+    auto& lib = AppContext::get().library();
+    Library::BatchGuard batch(lib);
+    if (!items.isEmpty())
+        lib.removeFromCollection(s.libraryId, s.collectionKey, toStdVector(items));
+    lib.trashItems(s.libraryId, toStdVector(children));
+}
+
 void LibraryView::removeFromCollection()
 {
     auto s = scope();
@@ -1033,7 +1061,13 @@ void LibraryView::showItemMenu(const QPoint& pos)
     menu.addAction(icon("export"), tr("Export Items…"), this,
                    [this] { emit exportRequested(scope(), selectedTopLevelKeys()); });
     menu.addSeparator();
-    menu.addAction(icon("trash"), tr("Move Item to Trash…"), this, &LibraryView::trashSelected)->setEnabled(editable);
+    menu.addAction(icon("trash"), tr("Move Item to Trash…") + "\t" + QKeySequence(Qt::Key_Delete).toString(QKeySequence::NativeText),
+                   this, &LibraryView::trashSelected)
+        ->setEnabled(editable);
+    menu.addAction(tr("Delete Permanently…") + "\t" +
+                       QKeySequence(Qt::SHIFT | Qt::Key_Delete).toString(QKeySequence::NativeText),
+                   this, &LibraryView::eraseSelected)
+        ->setEnabled(editable);
     menu.exec(items_->viewport()->mapToGlobal(pos));
 }
 

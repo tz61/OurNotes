@@ -84,6 +84,7 @@ private:
         QString bestLinkMode;
         bool fileMissing = false;
         bool matches = true;   // false: shown only for context (non-matching child)
+        QString context;       // in the trash, on its own: the title of the item it belongs to
     };
 
     QVariant sortValue(const Node& n, int column) const;

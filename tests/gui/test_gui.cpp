@@ -31,6 +31,9 @@
 #include <QTest>
 #include <QTextDocument>
 #include <QMimeData>
+#include <QPushButton>
+#include <QMenu>
+#include <QContextMenuEvent>
 #include <QClipboard>
 #include <QDropEvent>
 #include <QPainter>
@@ -2374,6 +2377,107 @@ TEST_CASE("connector: the browser extension saves pages, and nothing else gets i
     CHECK(env.library.collectionItemKeys(env.lib, reading).count(alone));
     CHECK(lookUp == QStringList{qs(alone)});
     server.stop();
+}
+
+// Answers the next message box (yes: its Yes / OK / destructive button), noting its text.
+void answerNextMessageBox(bool yes, QString* text)
+{
+    auto* timer = new QTimer;
+    timer->setInterval(10);
+    QObject::connect(timer, &QTimer::timeout, [timer, yes, text] {
+        for (auto* w : QApplication::topLevelWidgets()) {
+            auto* box = qobject_cast<QMessageBox*>(w);
+            if (!box || !box->isVisible())
+                continue;
+            *text = box->text();
+            for (auto* b : box->buttons()) {
+                auto role = box->buttonRole(b);
+                bool isYes = role == QMessageBox::YesRole || role == QMessageBox::AcceptRole ||
+                             role == QMessageBox::DestructiveRole;
+                if (isYes == yes) {
+                    b->click();
+                    break;
+                }
+            }
+            timer->stop();
+            timer->deleteLater();
+            return;
+        }
+    });
+    timer->start();
+}
+
+TEST_CASE("library: Delete on a PDF trashes the PDF, Shift+Delete deletes for good, the trash restores")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "tms.pdf";
+    writeSamplePdf(file);
+    auto coll = jstr(env.library.createCollection(env.lib, "Datasheet"), "key");
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "TMS"}});
+    auto pdf = env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    auto other = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Gone for good"}});
+    env.library.addToCollection(env.lib, coll, {jstr(paper, "key"), jstr(other, "key")});
+    LibraryView view;
+    view.resize(1300, 800);
+    view.show();
+    auto* tree = view.findChild<CollectionTree*>();
+    tree->selectScope({env.lib, ScopeKind::Collection, coll});
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : view.findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* model = items->model();
+    auto row = [&](const QString& title, const QModelIndex& parent = {}) {
+        for (int r = 0; r < model->rowCount(parent); ++r)
+            if (model->index(r, 0, parent).data().toString() == title)
+                return model->index(r, 0, parent);
+        return QModelIndex();
+    };
+    auto select = [&](const QModelIndex& i) {
+        REQUIRE(i.isValid());
+        items->setFocus();
+        items->selectionModel()->setCurrentIndex(i, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    };
+    auto item = [&](const Json& d) { return env.library.item(env.lib, jstr(d, "key")); };
+
+    // Delete on the PDF of an item in a collection: the PDF goes to the trash, the item stays
+    items->expand(row("TMS"));
+    select(row(jqs(pdf, "title"), row("TMS")));
+    QString asked;
+    answerNextMessageBox(true, &asked);
+    QTest::keyClick(items, Qt::Key_Delete);
+    CHECK(asked.contains("trash"));
+    CHECK(jbool(*item(pdf), "deleted"));
+    CHECK(!jbool(*item(paper), "deleted"));
+    CHECK(env.library.collectionItemKeys(env.lib, coll).count(jstr(paper, "key")));
+
+    // Shift+Delete: gone, not in the trash
+    QApplication::processEvents();
+    select(row("Gone for good"));
+    asked.clear();
+    answerNextMessageBox(true, &asked);
+    QTest::keyClick(items, Qt::Key_Delete, Qt::ShiftModifier);
+    CHECK(asked.contains("Permanently"));
+    CHECK(!item(other));
+
+    // in the trash: the PDF says whose it is, and the item pane restores it
+    tree->selectScope({env.lib, ScopeKind::Trash, {}});
+    QApplication::processEvents();
+    REQUIRE(model->rowCount() == 1);
+    CHECK(model->index(0, 0).data().toString().contains("TMS"));
+    select(model->index(0, 0));
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto* restore = view.findChild<QPushButton*>("restoreFromTrash");
+    REQUIRE(restore);
+    CHECK(view.findChild<QPushButton*>("deletePermanently"));
+    restore->click();
+    CHECK(!jbool(*item(pdf), "deleted"));
+    CHECK(QTest::qWaitFor([&] { return model->rowCount() == 0; }, 3000));
 }
 
 TEST_CASE("main window: only an empty library is deleted, after asking")
