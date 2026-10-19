@@ -33,6 +33,27 @@ jobs:
               exit 1
             fi
           fi
+          extension=$(jq -r .version browser/chrome/manifest.json)
+          if [[ "$extension" != "$version" ]]; then
+            echo "::error::browser/chrome/manifest.json has version $extension, CMakeLists.txt $version"
+            exit 1
+          fi
+
+  extension:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Zip the browser extension
+        run: |
+          version=$(jq -r .version browser/chrome/manifest.json)
+          mkdir -p dist
+          (cd browser/chrome && zip -r -X "../../dist/OurNotes-Connector-$version-chrome.zip" .)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: browser-extension
+          path: dist/*.zip
+          if-no-files-found: error
 
   linux:
     needs: version
@@ -109,7 +130,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [version, linux, macos, windows]
+    needs: [version, extension, linux, macos, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write

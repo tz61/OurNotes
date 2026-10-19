@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Save to OurNotes</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/32.png" width="20" height="20" alt="">
+    <span id="status">Saving to OurNotes…</span>
+  </header>
+  <main id="saved" hidden>
+    <p id="title"></p>
+    <p id="kind"></p>
+    <label for="target">In</label>
+    <select id="target"></select>
+    <label for="tags">Tags</label>
+    <input id="tags" type="text" placeholder="separated by commas" autocomplete="off">
+    <p id="pdf" hidden></p>
+  </main>
+  <main id="problem" hidden>
+    <p id="problemText"></p>
+    <button id="retry" type="button">Try Again</button>
+  </main>
+  <footer>
+    <button id="done" type="button">Done</button>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

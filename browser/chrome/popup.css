@@ -1,0 +1,93 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1d1d1f;
+  --muted: #6b6b70;
+  --line: #d6d6db;
+  --field: #f6f6f8;
+  --accent: #3d74d6;
+  --error: #c0392b;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #222327;
+    --fg: #ececf0;
+    --muted: #a0a0a8;
+    --line: #3b3c42;
+    --field: #2c2d32;
+    --accent: #6c9cf0;
+    --error: #ff7a6b;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  width: 340px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  font-weight: 600;
+}
+main {
+  padding: 0 14px;
+}
+#title {
+  margin: 4px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+#kind {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+label {
+  display: block;
+  margin: 8px 0 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+select,
+input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+}
+#pdf {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+#pdf.failed,
+#problemText {
+  color: var(--error);
+}
+footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 14px;
+}
+button {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+#done {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}

@@ -45,6 +45,11 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   progress window), or by importing BibTeX / RIS / CSL JSON. PDF text is read locally;
   only the identifier or title is sent to the public Crossref, arXiv, Open Library or
   PubMed APIs (no account or API key needed).
+- **Browser extension** — the OurNotes Connector (`browser/chrome`, for Chrome and other
+  Chromium browsers) saves the page you are reading to OurNotes with Alt+Shift+O or its
+  button: the item from the page's citation tags (or JSON-LD, Dublin Core, Open Graph)
+  and its PDF, as the browser fetched it, into the collection selected in OurNotes. See
+  [docs/browser-connector.md](docs/browser-connector.md).
 - **Citing** — export BibTeX, RIS, CSL JSON; bibliographies and in-text citations in
   APA, Chicago (author-date), IEEE, MLA, Harvard, Nature and Vancouver.
 - **Search** — title/creator/year, all fields and tags, or everything including the

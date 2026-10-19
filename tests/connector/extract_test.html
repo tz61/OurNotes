@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OurNotes Connector: reading pages</title>
+<script>
+window.onerror = (message, source, line) => {
+  document.addEventListener('DOMContentLoaded', () => {});
+  (document.getElementById('out') || document.body || document.documentElement).textContent =
+      `FAILED with an error: ${message} (${source.split('/').pop()}:${line})`;
+};
+</script>
+<script src="../../browser/chrome/extract.js"></script>
+</head>
+<body>
+<pre id="out">running</pre>
+<script>
+'use strict';
+// Each page is parsed as the browser would, then read as the extension reads it.
+const failures = [];
+function page(html) { return new DOMParser().parseFromString(html, 'text/html'); }
+function expect(name, got, want) {
+  const a = JSON.stringify(got), b = JSON.stringify(want);
+  if (a !== b) failures.push(`${name}: got ${a}, want ${b}`);
+}
+
+// a journal article with Google Scholar's citation_* tags
+let r = ourNotesExtract(page(`<html lang="en"><head>
+  <meta name="citation_title" content="Deep learning">
+  <meta name="citation_author" content="LeCun, Yann">
+  <meta name="citation_author" content="Bengio, Yoshua">
+  <meta name="citation_journal_title" content="Nature">
+  <meta name="citation_volume" content="521">
+  <meta name="citation_issue" content="7553">
+  <meta name="citation_firstpage" content="436">
+  <meta name="citation_lastpage" content="444">
+  <meta name="citation_doi" content="doi:10.1038/nature14539">
+  <meta name="citation_publication_date" content="2015/05/27">
+  <meta name="citation_pdf_url" content="/articles/nature14539.pdf">
+  <meta name="citation_keywords" content="deep learning; neural networks">
+  <meta property="og:site_name" content="Nature">
+  </head><body></body></html>`), 'https://www.nature.com/articles/nature14539');
+expect('article type', r.item.itemType, 'journalArticle');
+expect('article title', r.item.title, 'Deep learning');
+expect('article authors', r.item.creators, [
+  {creatorType: 'author', lastName: 'LeCun', firstName: 'Yann'},
+  {creatorType: 'author', lastName: 'Bengio', firstName: 'Yoshua'}]);
+expect('article journal', r.item.publicationTitle, 'Nature');
+expect('article pages', r.item.pages, '436-444');
+expect('article date', r.item.date, '2015-05-27');
+expect('article DOI', r.item.DOI, '10.1038/nature14539');
+expect('article PDF', r.pdfUrl, 'https://www.nature.com/articles/nature14539.pdf');
+expect('article tags', r.item.tags, ['deep learning', 'neural networks']);
+expect('article language', r.item.language, 'en');
+
+// arXiv
+r = ourNotesExtract(page(`<head>
+  <meta name="citation_title" content="Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture">
+  <meta name="citation_author" content="Assran, Mahmoud">
+  <meta name="citation_date" content="2023/01/19">
+  <meta name="citation_pdf_url" content="http://arxiv.org/pdf/2301.08243v3">
+  <meta name="citation_arxiv_id" content="2301.08243">
+  </head>`), 'https://arxiv.org/abs/2301.08243v3');
+expect('arXiv type', r.item.itemType, 'preprint');
+expect('arXiv id', r.item.archiveID, 'arXiv:2301.08243');
+expect('arXiv address', r.item.url, 'https://arxiv.org/abs/2301.08243');
+expect('arXiv DOI', r.item.DOI, '10.48550/arXiv.2301.08243');
+expect('arXiv PDF', r.pdfUrl, 'https://arxiv.org/pdf/2301.08243');
+expect('arXiv date', r.item.date, '2023-01-19');
+
+// news with JSON-LD
+r = ourNotesExtract(page(`<head><title>Robots learn | The Daily</title>
+  <meta property="og:site_name" content="The Daily">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"NewsArticle",
+    "headline":"Robots learn to fold laundry","author":[{"@type":"Person","name":"Jane Doe"}],
+    "datePublished":"2024-03-05T08:00:00Z","publisher":{"@type":"Organization","name":"The Daily"}}<\/script>
+  </head>`), 'https://daily.example/robots');
+expect('news type', r.item.itemType, 'newspaperArticle');
+expect('news title', r.item.title, 'Robots learn to fold laundry');
+expect('news author', r.item.creators, [{creatorType: 'author', firstName: 'Jane', lastName: 'Doe'}]);
+expect('news date', r.item.date, '2024-03-05');
+expect('news paper', r.item.publicationTitle, 'The Daily');
+expect('news PDF', r.pdfUrl, '');
+
+// a blog post inside a WebPage graph; an organisation as author
+r = ourNotesExtract(page(`<head><script type="application/ld+json">{"@graph":[
+    {"@type":"WebPage","name":"Blog"},
+    {"@type":"BlogPosting","headline":"Notes on diffusion","author":{"@type":"Organization","name":"Lab X"}}]}<\/script>
+  <meta property="og:site_name" content="Lab X Blog"></head>`), 'https://labx.example/notes');
+expect('blog type', r.item.itemType, 'blogPost');
+expect('blog title', r.item.title, 'Notes on diffusion');
+expect('blog author', r.item.creators, [{creatorType: 'author', name: 'Lab X'}]);
+expect('blog name', r.item.blogTitle, 'Lab X Blog');
+
+// a plain page: its title, description, language and canonical address
+r = ourNotesExtract(page(`<html lang="de"><head><title>  Some   page </title>
+  <meta name="description" content="What it is about.">
+  <link rel="canonical" href="/some-page"></head></html>`), 'https://site.example/some-page?ref=feed');
+expect('page type', r.item.itemType, 'webpage');
+expect('page title', r.item.title, 'Some page');
+expect('page abstract', r.item.abstractNote, 'What it is about.');
+expect('page language', r.item.language, 'de');
+expect('page address', r.item.url, 'https://site.example/some-page');
+expect('page creators', r.item.creators, []);
+expect('page site', r.item.websiteTitle, undefined);
+
+// a PDF tab
+r = ourNotesExtract(page('<title>paper.pdf</title>'), 'https://example.org/files/paper.pdf');
+expect('pdf tab', [r.isPdf, r.item, r.pdfUrl], [true, null, 'https://example.org/files/paper.pdf']);
+
+document.getElementById('out').textContent = failures.length ? 'FAILED\n' + failures.join('\n') : 'ALL PASSED';
+</script>
+</body>
+</html>
