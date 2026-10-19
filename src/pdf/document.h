@@ -109,6 +109,9 @@ public:
     // library database, see embeddedAnnotations()).
     Image render(int page, float scale);
     Image renderClip(int page, float scale, const Rect& clip);  // clip in page space
+    // Where raster images are drawn on a page (page space, within their clipping), e.g.
+    // to leave photos alone when recolouring a page. Images in patterns are left out.
+    std::vector<Rect> imageRects(int page);
 
     const PageText& text(int page);
     std::string pageText(int page);

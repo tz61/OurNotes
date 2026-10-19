@@ -3,6 +3,8 @@
 #include <QTimer>
 #include <QWidget>
 
+#include <optional>
+
 #include "core/json.h"
 #include "gui/reader/pdf_view.h"
 
@@ -16,6 +18,8 @@ class QToolBar;
 class QToolButton;
 class QTreeWidget;
 
+class QUndoStack;
+
 namespace fp::gui {
 
 class AnnotationSidebar;
@@ -25,6 +29,8 @@ class NoteEditor;
 // item's notes in a context pane.
 class ReaderTab : public QWidget {
     Q_OBJECT
+    friend class AnnotationEdit;
+
 public:
     ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* parent = nullptr);
     ~ReaderTab() override;
@@ -66,6 +72,9 @@ private:
     void setTool(ReaderTool tool);
     void savePosition();
     void saveViewState();
+    // Annotation changes go through the undo stack (Ctrl+Z / Ctrl+Y, 50 steps, per tab).
+    void pushAnnotationEdit(std::optional<Json> before, std::optional<Json> after, const QString& text);
+    bool forwardUndoToText(bool undo);
     QString citationFor(const Json& annotation) const;
 
     int64_t libraryId_;
@@ -95,6 +104,7 @@ private:
     QTimer positionTimer_;  // the synced last page, after page changes
     QTimer stateTimer_;     // the local view state, after scrolling or zooming
     bool restored_ = false;
+    QUndoStack* undo_;
     bool thumbnailsRequested_ = false;
     QAction* darkPages_ = nullptr;
 };

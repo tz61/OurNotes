@@ -547,7 +547,14 @@ Json Library::createItem(int64_t lib, Json data)
         data["dateAdded"] = now;
     if (jstr(data, "dateModified").empty())
         data["dateModified"] = now;
-    writeItem(lib, data, 0, false, true);
+    // Re-creating a deleted item (undoing a deletion) before the deletion was synced:
+    // as far as the server knows it was never deleted.
+    int64_t version = 0;
+    if (auto t = tombstone(lib, "item", jstr(data, "key"))) {
+        version = t->version;
+        clearTombstone(lib, "item", jstr(data, "key"));
+    }
+    writeItem(lib, data, version, false, true);
     ensureArrays(data);
     notify({lib, "item", "add", {jstr(data, "key")}});
     return data;

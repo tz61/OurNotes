@@ -24,3 +24,29 @@ inline void writeSamplePdf(const fp::fs::path& path, int rotate = 0)
                       "trailer << /Size 6 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
     std::ofstream(path, std::ios::binary) << pdf;
 }
+
+// A one-page PDF with a line of text and a red 2x2 image drawn as a 100x100 pt
+// square with its lower-left corner at (72, 500). With `clipped`, only the left half
+// of the image is visible.
+inline void writeImagePdf(const fp::fs::path& path, bool clipped = false)
+{
+    std::string content = "BT /F1 24 Tf 72 700 Td (Text above a picture) Tj ET\n";
+    content += clipped ? "q 72 500 50 100 re W n q 100 0 0 100 72 500 cm /Im1 Do Q Q\n" : "q 100 0 0 100 72 500 cm /Im1 Do Q\n";
+    std::string pixels;
+    for (int i = 0; i < 4; ++i)
+        pixels += std::string("\xff\x00\x00", 3);
+    std::string pdf = "%PDF-1.4\n"
+                      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+                      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+                      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+                      "/Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> >> endobj\n"
+                      "4 0 obj << /Length " + std::to_string(content.size()) + " >> stream\n" + content +
+                      "endstream endobj\n"
+                      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
+                      "6 0 obj << /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB "
+                      "/BitsPerComponent 8 /Length 12 >> stream\n" + pixels +
+                      "\nendstream endobj\n"
+                      "xref\n0 7\n0000000000 65535 f \n"
+                      "trailer << /Size 7 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
+    std::ofstream(path, std::ios::binary) << pdf;
+}

@@ -5,6 +5,7 @@
 #include <QStyle>
 #include <QStyleFactory>
 #include <QStyleHints>
+#include <QPainter>
 #include <QWidget>
 
 #include <algorithm>
@@ -122,6 +123,22 @@ constexpr int kInk[3] = {226, 226, 226};
 } // namespace
 
 QColor darkPageColor() { return QColor(kPaper[0], kPaper[1], kPaper[2]); }
+
+void darkenPage(QImage& image, const std::vector<pdf::Rect>& keep, double scale, pdf::Size page)
+{
+    QImage original = image;  // shares the pixels until darkenPage() writes
+    darkenPage(image);
+    QPainter p(&image);
+    p.setCompositionMode(QPainter::CompositionMode_Source);
+    double pageArea = double(page.width) * page.height;
+    for (auto& r : keep) {
+        if (double(r.width()) * r.height() > 0.75 * pageArea)
+            continue;
+        QRect px = QRectF(r.x0 * scale, r.y0 * scale, r.width() * scale, r.height() * scale).toAlignedRect() &
+                   image.rect();
+        p.drawImage(px.topLeft(), original, px);
+    }
+}
 
 void darkenPage(QImage& image)
 {

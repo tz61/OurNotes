@@ -111,3 +111,28 @@ TEST_CASE("sort index format")
 {
     CHECK(sortIndex(3, 904, 257.8f) == "00003|000904|00257");
 }
+
+TEST_CASE("image areas of a page, within their clipping")
+{
+    TempDir tmp;
+    auto file = tmp.path / "image.pdf";
+    writeImagePdf(file);
+    auto doc = Document::open(file);
+    auto rects = doc->imageRects(0);
+    REQUIRE(rects.size() == 1);
+    // page space: top-left origin, so PDF y 500..600 is 192..292
+    CHECK(rects[0].x0 == doctest::Approx(72).epsilon(0.01));
+    CHECK(rects[0].x1 == doctest::Approx(172).epsilon(0.01));
+    CHECK(rects[0].y0 == doctest::Approx(192).epsilon(0.01));
+    CHECK(rects[0].y1 == doctest::Approx(292).epsilon(0.01));
+
+    writeImagePdf(file, true);
+    auto clipped = Document::open(file);
+    rects = clipped->imageRects(0);
+    REQUIRE(rects.size() == 1);
+    CHECK(rects[0].x1 == doctest::Approx(122).epsilon(0.01));
+
+    TempDir tmp2;
+    writeSamplePdf(tmp2.path / "text.pdf");
+    CHECK(Document::open(tmp2.path / "text.pdf")->imageRects(0).empty());
+}

@@ -1,6 +1,12 @@
 #include "gui/reader/reader_tab.h"
 
 #include <QActionGroup>
+#include <QAction>
+#include <QApplication>
+#include <QElapsedTimer>
+#include <QTextEdit>
+#include <QPlainTextEdit>
+#include <QUndoStack>
 #include <QEvent>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -136,6 +142,27 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     auto lastPage = lib.setting(libraryId, "lastPageIndex_" + ss(key_));
     if (lastPage.is_number_integer() && state.value("pageIndex", Json()) != lastPage)
         state = Json{{"pageIndex", lastPage}, {"scale", state.value("scale", Json())}};
+    undo_ = new QUndoStack(this);
+    undo_->setUndoLimit(50);
+    auto* undoAct = new QAction(tr("Undo"), this);
+    undoAct->setShortcut(QKeySequence::Undo);
+    auto* redoAct = new QAction(tr("Redo"), this);
+    auto redoKeys = QKeySequence::keyBindings(QKeySequence::Redo);
+    if (!redoKeys.contains(QKeySequence(Qt::CTRL | Qt::Key_Y)))
+        redoKeys.prepend(QKeySequence(Qt::CTRL | Qt::Key_Y));
+    redoAct->setShortcuts(redoKeys);
+    for (auto* a : {undoAct, redoAct}) {
+        a->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        addAction(a);
+    }
+    connect(undoAct, &QAction::triggered, this, [this] {
+        if (!forwardUndoToText(true))
+            undo_->undo();
+    });
+    connect(redoAct, &QAction::triggered, this, [this] {
+        if (!forwardUndoToText(false))
+            undo_->redo();
+    });
     stateTimer_.setSingleShot(true);
     stateTimer_.setInterval(1000);
     connect(&stateTimer_, &QTimer::timeout, this, &ReaderTab::saveViewState);
@@ -541,20 +568,104 @@ void ReaderTab::importEmbeddedAnnotations()
         lib.setSetting(libraryId_, marker, md5);
 }
 
+// --- annotation edits and their history -------------------------------------------------------
+
+// One change to an annotation: the annotation before and after (nullopt: not there).
+// Undo puts back what was there before; the item keeps its key throughout.
+class AnnotationEdit : public QUndoCommand {
+public:
+    AnnotationEdit(ReaderTab* tab, std::optional<Json> before, std::optional<Json> after, const QString& text)
+        : QUndoCommand(text), tab_(tab), before_(std::move(before)), after_(std::move(after))
+    {
+        key_ = jstr(after_ ? *after_ : *before_, "key");
+        time_.start();
+    }
+
+    void redo() override { apply(after_); }
+    void undo() override { apply(before_); }
+    int id() const override { return 1; }
+
+    // Typing a comment changes the annotation with every key; it is one step.
+    bool mergeWith(const QUndoCommand* other) override
+    {
+        auto* o = static_cast<const AnnotationEdit*>(other);
+        if (o->key_ != key_ || !commentOnly() || !o->commentOnly() || time_.elapsed() > 3000)
+            return false;
+        after_ = o->after_;
+        time_.start();
+        return true;
+    }
+
+private:
+    bool commentOnly() const
+    {
+        if (!before_ || !after_)
+            return false;
+        Json a = *before_, b = *after_;
+        for (auto* field : {"annotationComment", "dateModified"}) {
+            a.erase(field);
+            b.erase(field);
+        }
+        return a == b;
+    }
+
+    void apply(const std::optional<Json>& state)
+    {
+        auto& lib = AppContext::get().library();
+        bool exists = lib.item(tab_->libraryId_, key_).has_value();
+        if (state && exists)
+            lib.saveItem(tab_->libraryId_, *state);
+        else if (state)
+            lib.createItem(tab_->libraryId_, *state);
+        else if (exists)
+            lib.eraseItems(tab_->libraryId_, {key_});
+        tab_->reloadAnnotations();
+    }
+
+    ReaderTab* tab_;
+    std::optional<Json> before_, after_;
+    std::string key_;
+    QElapsedTimer time_;
+};
+
+void ReaderTab::pushAnnotationEdit(std::optional<Json> before, std::optional<Json> after, const QString& text)
+{
+    undo_->push(new AnnotationEdit(this, std::move(before), std::move(after), text));
+}
+
+// Ctrl+Y reaches the tab even when a text field has the focus (only Ctrl+Z is
+// standard there); text fields keep their own history.
+bool ReaderTab::forwardUndoToText(bool undo)
+{
+    auto* w = QApplication::focusWidget();
+    if (auto* t = qobject_cast<QTextEdit*>(w))
+        undo ? t->undo() : t->redo();
+    else if (auto* p = qobject_cast<QPlainTextEdit*>(w))
+        undo ? p->undo() : p->redo();
+    else if (auto* l = qobject_cast<QLineEdit*>(w))
+        undo ? l->undo() : l->redo();
+    else
+        return false;
+    return true;
+}
+
 void ReaderTab::createAnnotation(const Json& data)
 {
     Json d = data;
     d["parentItem"] = ss(key_);
-    AppContext::get().library().createItem(libraryId_, d);
-    reloadAnnotations();
+    if (!isValidKey(jstr(d, "key")))
+        d["key"] = newKey();
+    pushAnnotationEdit(std::nullopt, d, tr("Add Annotation"));
 }
 
 void ReaderTab::saveAnnotation(const Json& data)
 {
     if (jbool(data, "annotationIsExternal") || !editable_)
         return;
-    AppContext::get().library().saveItem(libraryId_, data);
-    reloadAnnotations();
+    auto before = AppContext::get().library().item(libraryId_, jstr(data, "key"));
+    if (!before || *before == data)
+        return;
+    pushAnnotationEdit(*before, data, tr("Change Annotation"));
 }
 
 void ReaderTab::deleteAnnotation(const QString& key)
@@ -563,8 +674,7 @@ void ReaderTab::deleteAnnotation(const QString& key)
     auto d = lib.item(libraryId_, ss(key));
     if (!d || jbool(*d, "annotationIsExternal") || !editable_)
         return;
-    lib.eraseItems(libraryId_, {ss(key)});
-    reloadAnnotations();
+    pushAnnotationEdit(*d, std::nullopt, tr("Delete Annotation"));
 }
 
 QString ReaderTab::citationFor(const Json& annotation) const

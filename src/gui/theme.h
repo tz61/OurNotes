@@ -5,6 +5,9 @@
 #include <QString>
 
 #include "core/config.h"
+#include "pdf/document.h"
+
+#include <vector>
 
 namespace fp::gui {
 
@@ -29,6 +32,10 @@ bool darkPdfPages();
 // black text on white becomes light text on a dark page while colours stay recognisable.
 // Safe to call on any thread.
 void darkenPage(QImage& image);
+// The same, leaving the given areas (page space, in points) as they are: photos and
+// figures keep their colours. An image covering most of the page (a scan, or a page
+// background) is recoloured like the rest.
+void darkenPage(QImage& image, const std::vector<pdf::Rect>& keep, double scale, pdf::Size page);
 QColor darkPageColor();  // what white paper becomes
 
 } // namespace fp::gui

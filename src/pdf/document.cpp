@@ -428,6 +428,116 @@ Image Document::renderClip(int n, float scale, const Rect& clip)
 
 Image Document::render(int n, float scale) { return renderClip(n, scale, Rect{}); }
 
+namespace {
+
+// A device that records where images are drawn, cut to the clipping in effect.
+// fz_new_derived_device() hands out raw zeroed memory, so the containers live outside.
+struct ImageBoxDevice {
+    fz_device super;
+    std::vector<fz_rect>* boxes;
+    std::vector<fz_rect>* clips;  // each entry: the intersection of all clips so far
+    int tiles;                    // inside a pattern
+    int masking;                  // drawing a soft mask, not the page
+};
+
+ImageBoxDevice* ib(fz_device* dev) { return reinterpret_cast<ImageBoxDevice*>(dev); }
+fz_rect currentClip(ImageBoxDevice* d) { return d->clips->empty() ? fz_infinite_rect : d->clips->back(); }
+void pushClip(fz_device* dev, fz_rect r) { ib(dev)->clips->push_back(fz_intersect_rect(r, currentClip(ib(dev)))); }
+
+void ibClipPath(fz_context* ctx, fz_device* dev, const fz_path* path, int, fz_matrix ctm, fz_rect)
+{
+    pushClip(dev, fz_bound_path(ctx, path, nullptr, ctm));
+}
+void ibClipStrokePath(fz_context* ctx, fz_device* dev, const fz_path* path, const fz_stroke_state* stroke,
+                      fz_matrix ctm, fz_rect)
+{
+    pushClip(dev, fz_bound_path(ctx, path, stroke, ctm));
+}
+void ibClipText(fz_context* ctx, fz_device* dev, const fz_text* text, fz_matrix ctm, fz_rect)
+{
+    pushClip(dev, fz_bound_text(ctx, text, nullptr, ctm));
+}
+void ibClipStrokeText(fz_context* ctx, fz_device* dev, const fz_text* text, const fz_stroke_state* stroke,
+                      fz_matrix ctm, fz_rect)
+{
+    pushClip(dev, fz_bound_text(ctx, text, stroke, ctm));
+}
+void ibClipImageMask(fz_context*, fz_device* dev, fz_image*, fz_matrix ctm, fz_rect)
+{
+    pushClip(dev, fz_transform_rect(fz_unit_rect, ctm));
+}
+void ibPopClip(fz_context*, fz_device* dev)
+{
+    if (!ib(dev)->clips->empty())
+        ib(dev)->clips->pop_back();
+}
+void ibBeginMask(fz_context*, fz_device* dev, fz_rect area, int, fz_colorspace*, const float*, fz_color_params)
+{
+    pushClip(dev, area);  // popped by the pop_clip that ends the masked content
+    ++ib(dev)->masking;
+}
+void ibEndMask(fz_context*, fz_device* dev, fz_function*) { --ib(dev)->masking; }
+int ibBeginTile(fz_context*, fz_device* dev, fz_rect, fz_rect, float, float, fz_matrix, int, int)
+{
+    ++ib(dev)->tiles;
+    return 0;
+}
+void ibEndTile(fz_context*, fz_device* dev) { --ib(dev)->tiles; }
+void ibFillImage(fz_context*, fz_device* dev, fz_image*, fz_matrix ctm, float alpha, fz_color_params)
+{
+    auto* d = ib(dev);
+    if (d->tiles > 0 || d->masking > 0 || alpha < 0.5f)
+        return;
+    fz_rect r = fz_intersect_rect(fz_transform_rect(fz_unit_rect, ctm), currentClip(d));
+    if (!fz_is_empty_rect(r))
+        d->boxes->push_back(r);
+}
+
+} // namespace
+
+std::vector<Rect> Document::imageRects(int n)
+{
+    auto* page = (fz_page*)loadPage(n);
+    auto ctx = d_->ctx;
+    std::vector<fz_rect> boxes, clips;
+    fz_device* dev = nullptr;
+    bool failed = false;
+    fz_rect bound = fz_empty_rect;
+    fz_var(dev);
+    fz_try(ctx)
+    {
+        bound = fz_bound_page(ctx, page);
+        auto* d = fz_new_derived_device(ctx, ImageBoxDevice);
+        dev = &d->super;
+        d->boxes = &boxes;
+        d->clips = &clips;
+        dev->clip_path = ibClipPath;
+        dev->clip_stroke_path = ibClipStrokePath;
+        dev->clip_text = ibClipText;
+        dev->clip_stroke_text = ibClipStrokeText;
+        dev->clip_image_mask = ibClipImageMask;
+        dev->pop_clip = ibPopClip;
+        dev->begin_mask = ibBeginMask;
+        dev->end_mask = ibEndMask;
+        dev->begin_tile = ibBeginTile;
+        dev->end_tile = ibEndTile;
+        dev->fill_image = ibFillImage;
+        fz_run_page_contents(ctx, page, dev, fz_identity, nullptr);
+        fz_close_device(ctx, dev);
+    }
+    fz_always(ctx) { fz_drop_device(ctx, dev); }
+    fz_catch(ctx) { failed = true; }
+    std::vector<Rect> out;
+    if (failed)
+        return out;
+    for (auto& b : boxes) {
+        fz_rect r = fz_intersect_rect(b, bound);
+        if (!fz_is_empty_rect(r))
+            out.push_back({r.x0 - bound.x0, r.y0 - bound.y0, r.x1 - bound.x0, r.y1 - bound.y0});
+    }
+    return out;
+}
+
 const PageText& Document::text(int n)
 {
     auto it = d_->texts.find(n);

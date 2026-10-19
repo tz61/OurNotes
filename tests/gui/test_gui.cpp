@@ -18,6 +18,7 @@
 #include <QToolBar>
 #include <QListWidget>
 #include <QTreeView>
+#include <QUndoStack>
 #include <QTreeWidget>
 
 #include <array>
@@ -238,6 +239,25 @@ TEST_CASE("reader: PDF pages follow dark mode")
     CHECK(img.pixelColor(0, 0) == darkPageColor());
     CHECK(img.pixelColor(1, 0).lightness() > 200);
     CHECK(img.pixelColor(2, 0).red() > img.pixelColor(2, 0).green() + 80);
+
+    // pictures keep their colours on a dark page
+    {
+        TempDir pics;
+        writeImagePdf(pics.path / "image.pdf");
+        auto doc = pdf::Document::open(pics.path / "image.pdf");
+        auto rendered = doc->render(0, 1);
+        QImage page = QImage(rendered.pixels.data(), rendered.width, rendered.height, rendered.stride,
+                             QImage::Format_RGB888)
+                          .copy();
+        darkenPage(page, doc->imageRects(0), 1, doc->pageSize(0));
+        CHECK(page.pixelColor(122, 242) == QColor(255, 0, 0));  // the middle of the picture
+        CHECK(page.pixelColor(400, 400) == darkPageColor());    // paper
+        // an image as large as the page (a scan) is recoloured like text
+        QImage scan(100, 100, QImage::Format_RGB888);
+        scan.fill(Qt::white);
+        darkenPage(scan, {pdf::Rect{0, 0, 100, 100}}, 1, pdf::Size{100, 100});
+        CHECK(scan.pixelColor(50, 50) == darkPageColor());
+    }
 
     TempDir tmp;
     auto file = tmp.path / "paper.pdf";
@@ -484,6 +504,89 @@ TEST_CASE("main window: open tabs and the library view come back after a restart
     auto* library = window.findChild<LibraryView*>();
     REQUIRE(library);
     CHECK(library->selectedKeys() == QStringList{paper});
+}
+
+TEST_CASE("reader: Ctrl+Z / Ctrl+Y undo and redo annotation changes, per tab")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    tab.activateWindow();
+    CHECK(QTest::qWaitForWindowActive(&tab));
+    auto* view = tab.view();
+    view->setFocus();
+    QApplication::processEvents();
+    auto anns = [&] { return env.library.annotations(env.lib, key); };
+    auto undo = [&] { QTest::keyClick(view, Qt::Key_Z, Qt::ControlModifier); };
+    auto redo = [&] { QTest::keyClick(view, Qt::Key_Y, Qt::ControlModifier); };
+
+    view->setTool(ReaderTool::Highlight);
+    drag(view->viewport(), charCenter(*view, 0), charCenter(*view, 4));
+    view->setTool(ReaderTool::Select);
+    REQUIRE(anns().size() == 1);
+    auto annKey = jstr(anns()[0], "key");
+    undo();
+    CHECK(anns().empty());
+    redo();
+    REQUIRE(anns().size() == 1);
+    CHECK(jstr(anns()[0], "key") == annKey);  // the same annotation comes back
+
+    // a change, then undo puts the old value back
+    Json changed = anns()[0];
+    changed["annotationColor"] = "#ff6666";
+    emit view->annotationChanged(changed);
+    CHECK(jstr(anns()[0], "annotationColor") == "#ff6666");
+    undo();
+    CHECK(jstr(anns()[0], "annotationColor") == "#ffd400");
+    redo();
+    CHECK(jstr(anns()[0], "annotationColor") == "#ff6666");
+
+    // typing a comment is one step
+    for (auto text : {"n", "ni", "nic", "nice"}) {
+        Json c = anns()[0];
+        c["annotationComment"] = text;
+        emit view->annotationChanged(c);
+    }
+    CHECK(jstr(anns()[0], "annotationComment") == "nice");
+    undo();
+    CHECK(jstr(anns()[0], "annotationComment").empty());
+    CHECK(jstr(anns()[0], "annotationColor") == "#ff6666");
+    redo();
+
+    // deleting, and getting it back
+    view->selectAnnotation(qs(annKey), false);
+    QTest::keyClick(view, Qt::Key_Delete);
+    CHECK(anns().empty());
+    undo();
+    REQUIRE(anns().size() == 1);
+    CHECK(jstr(anns()[0], "key") == annKey);
+    CHECK(jstr(anns()[0], "annotationComment") == "nice");
+
+    // at most 50 steps are kept
+    for (int i = 0; i < 60; ++i) {
+        Json c = anns()[0];
+        c["annotationColor"] = i % 2 ? "#5fb236" : "#2ea8e5";
+        emit view->annotationChanged(c);
+    }
+    auto* stack = tab.findChild<QUndoStack*>();
+    REQUIRE(stack);
+    CHECK(stack->count() == 50);
+
+    // in a text field, Ctrl+Z is the field's own
+    auto* note = tab.findChild<NoteTextEdit*>();
+    REQUIRE(note);
+    note->setFocus();
+    int before = stack->index();
+    QTest::keyClick(note, Qt::Key_Z, Qt::ControlModifier);
+    QTest::keyClick(note, Qt::Key_Y, Qt::ControlModifier);
+    CHECK(stack->index() == before);
 }
 
 TEST_CASE("reader tab persists annotations in the library")
