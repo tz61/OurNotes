@@ -78,6 +78,18 @@ protected:
         if (!background_.isNull())
             viewport()->update();
     }
+    // The rows and the stripes macOS's style paints below them (as Finder does) take their
+    // colours from here: alternate ones let the picture through. The light theme's grey is
+    // opaque and hid it in every other stripe; the dark theme's is faint already.
+    void initViewItemOption(QStyleOptionViewItem* option) const override
+    {
+        QTreeView::initViewItemOption(option);
+        if (!background_.isNull()) {
+            QColor alternate = option->palette.color(QPalette::AlternateBase);
+            alternate.setAlphaF(std::min(alternate.alphaF(), 0.5f));
+            option->palette.setColor(QPalette::AlternateBase, alternate);
+        }
+    }
     void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         QStyleOptionViewItem o(option);

@@ -19,6 +19,7 @@
 #include <QTabBar>
 #include <QToolBar>
 #include <QListWidget>
+#include <QProxyStyle>
 #include <QTreeView>
 #include <QUndoStack>
 #include <QTreeWidget>
@@ -2880,6 +2881,57 @@ TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")
     QTest::keyClick(QApplication::focusWidget() ? QApplication::focusWidget() : &window, Qt::Key_Backtab,
                     control | Qt::ShiftModifier);
     CHECK(tabs->currentIndex() == 1);
+}
+
+TEST_CASE("library: the band picture shows through every stripe below the items, as between them")
+{
+    app();
+    applyAppearance(Appearance::Light);  // its alternate row colour is opaque, like macOS's light one
+    Env env;
+    auto bands = env.library.dataDir() / "backgrounds" / "bands";
+    fs::create_directories(bands);
+    QImage picture(100, 2000, QImage::Format_RGB32);  // fitted and centred: the whole height, mid-list
+    picture.fill(Qt::red);
+    REQUIRE(picture.save(qpath(bands / "band.png")));
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "One"}});
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Two"}});
+
+    // macOS's style also paints alternating rows into the empty area below the items, as
+    // Finder does; Fusion does not, so make it
+    struct EmptyAreaStripes : QProxyStyle {
+        int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget,
+                      QStyleHintReturn* data) const override
+        {
+            return hint == SH_ItemView_PaintAlternatingRowColorsForEmptyArea
+                       ? 1
+                       : QProxyStyle::styleHint(hint, option, widget, data);
+        }
+    } style;
+    LibraryView view;
+    view.itemsView()->setStyle(&style);
+    view.resize(1200, 700);
+    view.show();
+    QApplication::processEvents();
+    auto* items = view.itemsView();
+    REQUIRE(items->model()->rowCount() == 2);
+    QRect last = items->visualRect(items->model()->index(1, 0));
+    QImage shot = items->viewport()->grab().toImage();
+    int x = items->viewport()->width() / 2;
+    double dpr = shot.devicePixelRatio();
+    auto reddish = [&](int y) {
+        QColor c = shot.pixelColor(int(x * dpr), int(y * dpr));
+        return c.red() - c.green() > 8;
+    };
+    CHECK(reddish(items->visualRect(items->model()->index(0, 0)).center().y()));
+    CHECK(reddish(last.center().y()));  // the alternate row
+    for (int band = 1; band <= 4; ++band) {
+        int y = last.center().y() + band * last.height();
+        REQUIRE(y < items->viewport()->height());
+        INFO("stripe " << band << " below the items");
+        CHECK(reddish(y));  // an opaque alternate stripe hid the picture
+    }
+    view.itemsView()->setStyle(nullptr);
+    applyAppearance(Appearance::System);
 }
 
 TEST_CASE("library: columns fill the list, the title column gives way, the item pane can be hidden")
