@@ -2851,7 +2851,7 @@ TEST_CASE("item pane: an item's fields are in place when first drawn")
     CHECK(stale == 0);
 }
 
-TEST_CASE("library: moving between items does not change the window's minimum height")
+TEST_CASE("library: moving between items does not change the window's minimum size")
 {
     app();
     Env env;
@@ -2882,14 +2882,21 @@ TEST_CASE("library: moving between items does not change the window's minimum he
             items = t;
     REQUIRE(items);
     items->setFocus();
-    std::set<int> minimums{window.minimumSizeHint().height()};
-    items->setCurrentIndex(items->model()->index(0, 0));
-    for (auto k : {Qt::Key_Down, Qt::Key_Down, Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down}) {
-        QTest::keyClick(items, k);
-        QApplication::processEvents();
-        minimums.insert(window.minimumSizeHint().height());
+    // in the Info tab and in the Notes tab
+    std::set<int> heights, widths;
+    for (int tab : {0, 1}) {
+        view->findChild<ItemPane*>()->findChild<QTabWidget*>()->setCurrentIndex(tab);
+        items->setCurrentIndex(items->model()->index(0, 0));
+        for (auto k : {Qt::Key_Down, Qt::Key_Down, Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down}) {
+            QTest::keyClick(items, k);
+            QApplication::processEvents();
+            heights.insert(window.minimumSizeHint().height());
+            widths.insert(window.minimumSizeHint().width());
+        }
     }
-    CHECK(minimums.size() == 1);
+    CHECK(heights.size() == 1);
+    // (each change of the width made the window a pixel narrower at a 150% scale)
+    CHECK(widths.size() == 1);
     CHECK(view->findChild<LocationBox*>());
 }
 

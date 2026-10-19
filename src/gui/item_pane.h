@@ -145,7 +145,8 @@ public:
     int count() const { return count_; }
     NoteEditor* editor() const { return editor_; }
     // The same with no note, one or several (the list and the editor come and go):
-    // otherwise the window's minimum height changed from item to item.
+    // otherwise the window's minimum size changed from item to item, and at a
+    // fractional screen scale the window lost a pixel of width each time.
     QSize minimumSizeHint() const override;
 
 signals:

@@ -26,6 +26,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 #include "core/schema.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
@@ -920,6 +922,9 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
     add_->setText(tr("Add Note"));
     add_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     add_->setAutoRaise(true);
+    // room for "99 notes" whatever the count, like the list and the editor below (see
+    // minimumSizeHint)
+    header_->setMinimumWidth(header_->fontMetrics().horizontalAdvance(tr("%1 notes").arg(99)));
     head->addWidget(header_, 1);
     head->addWidget(add_);
     v->addLayout(head);
@@ -949,7 +954,9 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
 QSize ItemNotesPanel::minimumSizeHint() const
 {
     int head = std::max(header_->sizeHint().height(), add_->sizeHint().height());
-    return {QWidget::minimumSizeHint().width(), 6 + head + 4 + editor_->minimumSizeHint().height()};
+    int width = std::max({QWidget::minimumSizeHint().width(), list_->minimumSizeHint().width(),
+                          editor_->minimumSizeHint().width()});
+    return {width, 6 + head + 4 + editor_->minimumSizeHint().height()};
 }
 
 void ItemNotesPanel::setItem(int64_t libraryId, const QString& key)
