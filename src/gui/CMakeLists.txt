@@ -59,6 +59,7 @@ set_target_properties(ournotes PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 target_link_libraries(ournotes PRIVATE ournotes_gui)
+on_copy_runtime_dlls(ournotes)
 
 install(TARGETS ournotes RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION .)
 if(UNIX AND NOT APPLE)

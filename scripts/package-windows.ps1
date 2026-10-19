@@ -3,17 +3,20 @@
 # holding OurNotes\bin\ournotes.exe with the Qt, OpenSSL and Visual C++ runtime
 # DLLs it needs, and ournotes-cli.exe and ournotesd.exe next to it.
 #
-# Usage: scripts\package-windows.ps1 [-QtDir DIR] [-BuildDir DIR] [-OutDir DIR] [-NoBuild]
-#   -QtDir     Qt 6 for MSVC (default: $env:QT_ROOT_DIR), e.g. C:\Qt\6.8.3\msvc2022_64
-#   -BuildDir  build directory (default: build-windows\)
-#   -OutDir    where the zip is written (default: dist\)
-#   -NoBuild   package what was built before
+# Usage: scripts\package-windows.ps1 [-QtDir DIR] [-OpenSslDir DIR] [-BuildDir DIR] [-OutDir DIR] [-NoBuild]
+#   -QtDir       Qt 6 for MSVC (default: $env:QT_ROOT_DIR), e.g. C:\Qt\6.8.3\msvc2022_64
+#   -OpenSslDir  OpenSSL 3 without vcpkg, e.g. C:\Program Files\OpenSSL-Win64 or
+#                a Miniconda's Library directory
+#   -BuildDir    build directory (default: build-windows\)
+#   -OutDir      where the zip is written (default: dist\)
+#   -NoBuild     package what was built before (configured with -DOURNOTES_DEPLOY_QT=ON)
 #
-# Needs Visual Studio 2022, CMake, and vcpkg (VCPKG_ROOT) with OpenSSL (MuPDF is
-# downloaded and built with MSBuild):
+# Needs Visual Studio 2022, CMake, and OpenSSL 3, from vcpkg (VCPKG_ROOT) or -OpenSslDir
+# (MuPDF is downloaded and built with MSBuild):
 #   vcpkg install openssl --triplet x64-windows
 param(
     [string]$QtDir = $env:QT_ROOT_DIR,
+    [string]$OpenSslDir = "",
     [string]$BuildDir = "",
     [string]$OutDir = "",
     [switch]$NoBuild
@@ -23,8 +26,13 @@ $ErrorActionPreference = "Stop"
 $SrcDir = Split-Path -Parent $PSScriptRoot
 if (-not $BuildDir) { $BuildDir = Join-Path $SrcDir "build-windows" }
 if (-not $OutDir) { $OutDir = Join-Path $SrcDir "dist" }
+# Qt's deployment (windeployqt at install time) needs an absolute install prefix
+$BuildDir = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).Path, $BuildDir))
+$OutDir = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).Path, $OutDir))
 
 function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+    # warnings on stderr (windeployqt has some) are not failures; the exit code tells
+    $ErrorActionPreference = "Continue"
     & $Exe @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Exe $($Arguments -join ' ') failed (exit code $LASTEXITCODE)" }
 }
@@ -34,15 +42,21 @@ if (-not $NoBuild) {
     if (-not $QtDir -or -not (Test-Path (Join-Path $QtDir "lib\cmake\Qt6"))) {
         throw "no Qt 6 found (pass -QtDir, e.g. C:\Qt\6.8.3\msvc2022_64)"
     }
-    $vcpkg = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { $env:VCPKG_INSTALLATION_ROOT }
-    if (-not $vcpkg) { throw "set VCPKG_ROOT to your vcpkg directory" }
-    Write-Host "==> Configuring (Qt from $QtDir)"
-    Invoke-Native cmake @("-S", $SrcDir, "-B", $BuildDir,
-        "-DCMAKE_TOOLCHAIN_FILE=$vcpkg\scripts\buildsystems\vcpkg.cmake",
+    $configure = @("-S", $SrcDir, "-B", $BuildDir,
         "-DCMAKE_PREFIX_PATH=$QtDir",
         "-DOURNOTES_BUILD_TESTS=OFF",
-        "-DOURNOTES_DEPLOY_QT=ON",           # windeployqt at install time
-        "-DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON") # and vcpkg's DLLs
+        "-DOURNOTES_DEPLOY_QT=ON")  # windeployqt at install time
+    $vcpkg = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { $env:VCPKG_INSTALLATION_ROOT }
+    if ($OpenSslDir) {
+        $configure += "-DOPENSSL_ROOT_DIR=$OpenSslDir"
+    } elseif ($vcpkg) {
+        $configure += @("-DCMAKE_TOOLCHAIN_FILE=$vcpkg\scripts\buildsystems\vcpkg.cmake",
+            "-DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON")  # and vcpkg's DLLs
+    } else {
+        throw "no OpenSSL: set VCPKG_ROOT to your vcpkg directory or pass -OpenSslDir"
+    }
+    Write-Host "==> Configuring (Qt from $QtDir)"
+    Invoke-Native cmake $configure
     Write-Host "==> Building"
     Invoke-Native cmake @("--build", $BuildDir, "--config", "Release", "--parallel")
 }
@@ -56,8 +70,11 @@ $root = Join-Path $stage "OurNotes"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Write-Host "==> Installing into $root"
 Invoke-Native cmake @("--install", $BuildDir, "--config", "Release", "--prefix", $root)
-foreach ($file in "bin\ournotes.exe", "bin\ournotes-cli.exe", "bin\ournotesd.exe", "share\ournotes\microtex") {
-    if (-not (Test-Path (Join-Path $root $file))) { throw "$file is missing from the package" }
+foreach ($file in "bin\ournotes.exe", "bin\ournotes-cli.exe", "bin\ournotesd.exe", "share\ournotes\microtex",
+                  "bin\Qt6Core.dll", "*\platforms\qwindows.dll", "bin\libssl-3*.dll", "bin\libcrypto-3*.dll") {
+    if (-not (Test-Path (Join-Path $root $file))) {
+        throw "$file is missing from the package (configured without -DOURNOTES_DEPLOY_QT=ON, or without OpenSSL?)"
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

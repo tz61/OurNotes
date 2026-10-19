@@ -69,10 +69,20 @@ jobs:
       - name: OpenSSL from vcpkg (MuPDF is built from source)
         run: vcpkg install openssl
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DOURNOTES_DEPLOY_QT=ON
       - name: Build
         run: cmake --build build --config Release -j4
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+      # a zip that runs on any Windows 10/11 x64 (Qt, OpenSSL and the C++ runtime inside),
+      # attached to the run under Artifacts
+      - name: Package
+        run: ./scripts/package-windows.ps1 -BuildDir build -NoBuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ournotes-windows-x64
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14

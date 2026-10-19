@@ -66,6 +66,43 @@ if(OURNOTES_WITH_OPENSSL)
 endif()
 message(STATUS "OurNotes: HTTPS support: ${OURNOTES_HAVE_OPENSSL}")
 
+# Windows looks for DLLs next to the program, and OpenSSL's are in its own bin directory
+# (vcpkg, Miniconda, the Shining Light installer): on_copy_runtime_dlls() copies them
+# beside a program after it is linked, and they are installed with the programs.
+set(OURNOTES_RUNTIME_DLLS)
+if(WIN32 AND OURNOTES_HAVE_OPENSSL AND NOT OPENSSL_USE_STATIC_LIBS)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(_ssl_arch "")
+    elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM64")
+        set(_ssl_arch "-arm64")
+    else()
+        set(_ssl_arch "-x64")
+    endif()
+    get_filename_component(_ssl_prefix "${OPENSSL_INCLUDE_DIR}" DIRECTORY)
+    set(_ssl_hints "${_ssl_prefix}/bin" "${_ssl_prefix}")
+    if(OPENSSL_ROOT_DIR)
+        list(APPEND _ssl_hints "${OPENSSL_ROOT_DIR}/bin" "${OPENSSL_ROOT_DIR}")
+    endif()
+    find_file(OURNOTES_LIBSSL_DLL libssl-3${_ssl_arch}.dll HINTS ${_ssl_hints} NO_DEFAULT_PATH)
+    find_file(OURNOTES_LIBCRYPTO_DLL libcrypto-3${_ssl_arch}.dll HINTS ${_ssl_hints} NO_DEFAULT_PATH)
+    if(OURNOTES_LIBSSL_DLL AND OURNOTES_LIBCRYPTO_DLL)
+        set(OURNOTES_RUNTIME_DLLS "${OURNOTES_LIBSSL_DLL}" "${OURNOTES_LIBCRYPTO_DLL}")
+        install(FILES ${OURNOTES_RUNTIME_DLLS} DESTINATION ${CMAKE_INSTALL_BINDIR})
+        message(STATUS "OurNotes: OpenSSL DLLs: ${OURNOTES_RUNTIME_DLLS}")
+    else()
+        message(WARNING "libssl-3${_ssl_arch}.dll and libcrypto-3${_ssl_arch}.dll not found in ${_ssl_hints}: "
+                        "the programs will only start with them on PATH")
+    endif()
+endif()
+
+function(on_copy_runtime_dlls target)
+    if(OURNOTES_RUNTIME_DLLS)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${OURNOTES_RUNTIME_DLLS} "$<TARGET_FILE_DIR:${target}>"
+            VERBATIM)
+    endif()
+endfunction()
+
 if(OURNOTES_NEED_PDF)
     include(MuPDF)
 endif()

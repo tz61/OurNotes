@@ -7,6 +7,7 @@ function(on_add_test name)
     add_executable(${name} ${T_UNPARSED_ARGUMENTS})
     target_link_libraries(${name} PRIVATE on_test_main ${T_LIBS})
     target_compile_definitions(${name} PRIVATE OURNOTES_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    on_copy_runtime_dlls(${name})
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

@@ -102,7 +102,13 @@ vcpkg install openssl                  # MuPDF is downloaded and built with MSBu
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake ^
       -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64
 cmake --build build --config Release
+build\src\gui\Release\ournotes.exe    # with Qt's bin directory on PATH
 ```
+
+Without vcpkg, OpenSSL 3 from elsewhere (the Shining Light installer, a Miniconda's
+`Library` directory) works with `-DOPENSSL_ROOT_DIR=<dir>`. Its `libssl-3-x64.dll` and
+`libcrypto-3-x64.dll` are copied next to the programs when they are built, and installed
+with them.
 
 Other build options: `-DMUPDF_ROOT=<prefix>` uses an existing MuPDF build;
 `-DOURNOTES_BUILD_GUI=OFF -DOURNOTES_BUILD_CLI=OFF` builds only the sync server (no Qt, no
@@ -120,10 +126,12 @@ Each bundles the Qt runtime. Pushing a tag `v<version>` (the version in `CMakeLi
 `v<version>-rc1` and the like make a pre-release) runs `.github/workflows/release.yml`,
 which builds all of them on GitHub (macOS for Apple silicon and Intel) and publishes them
 as a release. Running that workflow by hand builds the packages without publishing them.
+The Windows zip is also built by every CI run (`.github/workflows/ci.yml`) and kept for two
+weeks under the run's *Artifacts*.
 
 > Status: developed and tested on Linux (Ubuntu 22.04, GCC 11, Qt 6.11) and macOS 26
-> (Apple silicon, Homebrew Qt 6.12). The Windows build is set up (code paths, CMake, CI
-> workflow in `.github/workflows`) but has not been run yet.
+> (Apple silicon, Homebrew Qt 6.12). On Windows 11 (Visual Studio 2022, Qt 6.5.3) it
+> builds and its tests pass; the application itself has seen little use there yet.
 
 ## Getting started
 
