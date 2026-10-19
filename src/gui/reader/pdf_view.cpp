@@ -545,12 +545,9 @@ void PdfView::paintAnnotations(QPainter& p, int page)
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     QPointF delta;
-    QSizeF resize;
     bool resizing = drag_ == Drag::Resizing && dragPage_ == page;
     if (drag_ == Drag::Moving && dragPage_ == page)
         delta = dragNow_ - dragStart_;
-    if (resizing)
-        resize = QSizeF(dragNow_.x() - dragStart_.x(), dragNow_.y() - dragStart_.y());
     for (auto& a : anns_) {
         if (a.page != page)
             continue;
@@ -597,9 +594,7 @@ void PdfView::paintAnnotations(QPainter& p, int page)
         } else if (a.type == "text") {
             if (a.key == editingKey_)
                 continue;
-            QRectF r = a.bounds.translated(d);
-            if (selected && resizing)
-                r.setSize(QSizeF(std::max(20.0, r.width() + resize.width()), std::max(10.0, r.height() + resize.height())));
+            QRectF r = selected && resizing ? resizedBounds(a) : a.bounds.translated(d);
             QRectF v = toView(page, r);
             QFont f = font();
             f.setPixelSize(std::max(4, int(a.fontSize * scale_)));
@@ -607,9 +602,7 @@ void PdfView::paintAnnotations(QPainter& p, int page)
             p.setPen(c);
             p.drawText(v, Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop, a.comment);
         } else if (a.type == "image") {
-            QRectF r = a.bounds.translated(d);
-            if (selected && resizing)
-                r.setSize(QSizeF(std::max(4.0, r.width() + resize.width()), std::max(4.0, r.height() + resize.height())));
+            QRectF r = selected && resizing ? resizedBounds(a) : a.bounds.translated(d);
             p.setPen(QPen(c, std::max(1.5, 2 * scale_ / kBaseScale)));
             p.setBrush(Qt::NoBrush);
             p.drawRect(toView(page, r));
@@ -623,16 +616,19 @@ void PdfView::paintAnnotations(QPainter& p, int page)
             }
         }
         if (selected) {
-            QRectF b = a.bounds.translated(d);
-            if (resizing)
-                b.setSize(QSizeF(std::max(4.0, b.width() + resize.width()), std::max(4.0, b.height() + resize.height())));
+            QRectF b = resizing ? resizedBounds(a) : a.bounds.translated(d);
             QRectF v = toView(page, b).adjusted(-3, -3, 3, 3);
             p.setPen(QPen(palette().color(QPalette::Highlight), 1.5, Qt::DashLine));
             p.setBrush(Qt::NoBrush);
             p.drawRect(v);
-            if ((a.type == "image" || a.type == "text") && !a.external && editable_) {
+            if (resizable(a)) {
+                // handles on the corners and edges, each of which can be dragged
+                p.setPen(QPen(palette().color(QPalette::Base), 1));
                 p.setBrush(palette().color(QPalette::Highlight));
-                p.drawRect(QRectF(v.bottomRight() - QPointF(4, 4), QSizeF(8, 8)));
+                QPointF c = v.center();
+                for (QPointF h : {v.topLeft(), QPointF(c.x(), v.top()), v.topRight(), QPointF(v.right(), c.y()),
+                                  v.bottomRight(), QPointF(c.x(), v.bottom()), v.bottomLeft(), QPointF(v.left(), c.y())})
+                    p.drawRect(QRectF(h - QPointF(4, 4), QSizeF(8, 8)));
             }
         }
     }
@@ -869,7 +865,72 @@ void PdfView::eraseAt(int page, QPointF pt)
     viewport()->update();
 }
 
-Json PdfView::movedData(const AnnView& a, QPointF delta, QSizeF resize) const
+bool PdfView::resizable(const AnnView& a) const
+{
+    return (a.type == "image" || a.type == "text") && !a.external && editable_;
+}
+
+// Which edges of a box are under the pointer (a corner is two edges); 0 when the
+// pointer is inside the box or away from it.
+int PdfView::edgesAt(const AnnView& a, QPointF pos) const
+{
+    if (!resizable(a))
+        return 0;
+    constexpr double t = 6;  // px around the line
+    QRectF v = toView(a.page, a.bounds);
+    if (!v.adjusted(-t, -t, t, t).contains(pos))
+        return 0;
+    double dl = std::abs(pos.x() - v.left()), dr = std::abs(pos.x() - v.right());
+    double dt = std::abs(pos.y() - v.top()), db = std::abs(pos.y() - v.bottom());
+    int edges = 0;
+    if (std::min(dl, dr) <= t)
+        edges |= dl <= dr ? EdgeLeft : EdgeRight;
+    if (std::min(dt, db) <= t)
+        edges |= dt <= db ? EdgeTop : EdgeBottom;
+    return edges;
+}
+
+// The box whose edge is under the pointer: the selected annotation's first, then area
+// annotations (whose frame is visible) from the top.
+const PdfView::AnnView* PdfView::edgeAt(int page, QPointF pos, int* edges) const
+{
+    if (auto* a = const_cast<PdfView*>(this)->findAnn(selectedAnn_); a && a->page == page)
+        if ((*edges = edgesAt(*a, pos)))
+            return a;
+    for (auto it = anns_.rbegin(); it != anns_.rend(); ++it)
+        if (it->page == page && it->type == "image")
+            if ((*edges = edgesAt(*it, pos)))
+                return &*it;
+    *edges = 0;
+    return nullptr;
+}
+
+QRectF PdfView::resizedBounds(const AnnView& a) const
+{
+    QRectF r = a.bounds;
+    QPointF d = dragNow_ - dragStart_;
+    // the dragged edges move; they never cross the opposite ones
+    double minW = a.type == "text" ? 20 : 4, minH = a.type == "text" ? 10 : 4;
+    if (resizeEdges_ & EdgeLeft)
+        r.setLeft(std::min(r.left() + d.x(), r.right() - minW));
+    if (resizeEdges_ & EdgeRight)
+        r.setRight(std::max(r.right() + d.x(), r.left() + minW));
+    if (resizeEdges_ & EdgeTop)
+        r.setTop(std::min(r.top() + d.y(), r.bottom() - minH));
+    if (resizeEdges_ & EdgeBottom)
+        r.setBottom(std::max(r.bottom() + d.y(), r.top() + minH));
+    return r;
+}
+
+static Qt::CursorShape resizeCursor(int edges)
+{
+    bool h = edges & (1 | 4), v = edges & (2 | 8);
+    if (h && v)
+        return ((edges & 1) != 0) == ((edges & 2) != 0) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+    return h ? Qt::SizeHorCursor : Qt::SizeVerCursor;
+}
+
+Json PdfView::movedData(const AnnView& a, QPointF delta, const QRectF& resized) const
 {
     Json data = a.data;
     auto& pos = data["annotationPosition"];
@@ -887,28 +948,32 @@ Json PdfView::movedData(const AnnView& a, QPointF delta, QSizeF resize) const
         pos["paths"] = paths;
     } else {
         QRectF r = a.type == "note" ? a.bounds : (a.rects.empty() ? a.bounds : a.rects[0]);
-        r.translate(delta);
-        if (resize.width() != 0 || resize.height() != 0)
-            r.setSize(QSizeF(std::max(10.0, r.width() + resize.width()), std::max(8.0, r.height() + resize.height())));
+        r = resized.isValid() ? resized : r.translated(delta);
         auto rects = positionFromRects(a.page, {r})["rects"];
         pos["rects"] = rects;
     }
-    data["annotationSortIndex"] =
-        pdf::sortIndex(a.page, 0, (float)(a.bounds.top() + delta.y()));
+    double top = resized.isValid() ? resized.top() : a.bounds.top() + delta.y();
+    data["annotationSortIndex"] = pdf::sortIndex(a.page, 0, (float)top);
     return data;
 }
 
-void PdfView::commitMoved()
+// Saves a move or resize that has just ended (drag_ is already reset).
+void PdfView::commitMoved(Drag drag)
 {
     auto* a = findAnn(selectedAnn_);
     if (!a)
         return;
-    QPointF delta = drag_ == Drag::Moving ? dragNow_ - dragStart_ : QPointF();
-    QSizeF resize = drag_ == Drag::Resizing ? QSizeF(dragNow_.x() - dragStart_.x(), dragNow_.y() - dragStart_.y())
-                                            : QSizeF();
-    if (std::hypot(delta.x(), delta.y()) < 0.5 && std::abs(resize.width()) < 0.5 && std::abs(resize.height()) < 0.5)
+    if (drag == Drag::Resizing) {
+        QRectF r = resizedBounds(*a);
+        QRectF b = a->bounds;
+        if (std::max({std::abs(r.left() - b.left()), std::abs(r.top() - b.top()), std::abs(r.right() - b.right()),
+                      std::abs(r.bottom() - b.bottom())}) >= 0.5)
+            emit annotationChanged(movedData(*a, {}, r));
         return;
-    emit annotationChanged(movedData(*a, delta, resize));
+    }
+    QPointF delta = dragNow_ - dragStart_;
+    if (std::hypot(delta.x(), delta.y()) >= 0.5)
+        emit annotationChanged(movedData(*a, delta));
 }
 
 void PdfView::deleteSelectedAnnotation()
@@ -1075,13 +1140,13 @@ void PdfView::updateCursor(QPointF pos)
         QPointF pt = toPage(page, content);
         switch (tool_) {
         case ReaderTool::Select: {
+            int edges = 0;
+            if (edgeAt(page, pos, &edges)) {
+                shape = resizeCursor(edges);
+                break;
+            }
             if (auto* a = annotationAt(page, pt); a && a->type != "highlight" && a->type != "underline") {
                 shape = a->external || !editable_ ? Qt::PointingHandCursor : Qt::SizeAllCursor;
-                if ((a->type == "image" || a->type == "text") && a->key == selectedAnn_) {
-                    QRectF v = toView(page, a->bounds);
-                    if (QRectF(v.bottomRight() - QPointF(6, 6), QSizeF(12, 12)).contains(pos))
-                        shape = Qt::SizeFDiagCursor;
-                }
                 break;
             }
             if (!links_.count(page))
@@ -1137,17 +1202,23 @@ void PdfView::mousePressEvent(QMouseEvent* e)
     case ReaderTool::Highlight:
     case ReaderTool::Underline: {
         if (tool_ == ReaderTool::Select) {
+            int edges = 0;
+            if (auto* a = edgeAt(page, e->position(), &edges)) {
+                // an edge or corner of a box: resize from there
+                selectedAnn_ = a->key;
+                clearTextSelection();
+                emit annotationSelected(a->key);
+                drag_ = Drag::Resizing;
+                resizeEdges_ = edges;
+                viewport()->update();
+                return;
+            }
             if (auto* a = annotationAt(page, pt)) {
                 selectedAnn_ = a->key;
                 clearTextSelection();
                 emit annotationSelected(a->key);
-                bool movable = !a->external && editable_ && a->type != "highlight" && a->type != "underline";
-                if (movable) {
-                    QRectF v = toView(page, a->bounds);
-                    bool corner = (a->type == "image" || a->type == "text") &&
-                                  QRectF(v.bottomRight() - QPointF(6, 6), QSizeF(12, 12)).contains(e->position());
-                    drag_ = corner ? Drag::Resizing : Drag::Moving;
-                }
+                if (!a->external && editable_ && a->type != "highlight" && a->type != "underline")
+                    drag_ = Drag::Moving;
                 viewport()->update();
                 return;
             }
@@ -1340,7 +1411,7 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
         break;
     case Drag::Moving:
     case Drag::Resizing:
-        commitMoved();
+        commitMoved(drag);
         break;
     case Drag::None:
         if (!pressedLink_.isEmpty() && tool_ == ReaderTool::Select) {

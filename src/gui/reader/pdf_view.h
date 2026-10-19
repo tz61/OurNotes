@@ -153,8 +153,15 @@ private:
     void createFromSelection(const QString& type, const QString& color);
     void createInk();
     void eraseAt(int page, QPointF pt);
-    void commitMoved();
-    Json movedData(const AnnView& a, QPointF delta, QSizeF resize) const;
+    void commitMoved(Drag drag);
+    // `resized`, when valid, is the annotation's new box (page space).
+    Json movedData(const AnnView& a, QPointF delta, const QRectF& resized = QRectF()) const;
+    // Resizing boxes (area and text annotations) by any edge or corner.
+    enum Edge { EdgeLeft = 1, EdgeTop = 2, EdgeRight = 4, EdgeBottom = 8 };
+    bool resizable(const AnnView& a) const;
+    int edgesAt(const AnnView& a, QPointF viewPos) const;
+    const AnnView* edgeAt(int page, QPointF viewPos, int* edges) const;
+    QRectF resizedBounds(const AnnView& a) const;  // the box resized by the current drag
     void deleteSelectedAnnotation();
     void setAnnotationColor(const QString& key, const QString& color);
     void closeTextEditor(bool commit);
@@ -190,6 +197,7 @@ private:
     int dragPage_ = -1;
     QPointF dragStart_;  // page space
     QPointF dragNow_;    // page space
+    int resizeEdges_ = 0;
     QPolygonF ink_;
     std::set<QString> erased_;
     std::map<QString, std::vector<QPolygonF>> erasedPaths_;

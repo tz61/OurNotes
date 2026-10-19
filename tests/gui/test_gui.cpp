@@ -17,6 +17,7 @@
 #include <QTreeView>
 #include <QTreeWidget>
 
+#include <array>
 #include <atomic>
 #include <QTest>
 #include <QTextDocument>
@@ -115,6 +116,89 @@ TEST_CASE("pdf view: highlight, note and ink tools create Zotero-style annotatio
     REQUIRE(created.size() == 3);
     CHECK(created[2]["annotationType"] == "ink");
     CHECK(created[2]["annotationPosition"]["paths"][0].size() >= 4);
+}
+
+TEST_CASE("pdf view: area annotations resize from any edge or corner")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 1000);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    std::vector<Json> created, changed;
+    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) { created.push_back(d); });
+    QObject::connect(&view, &PdfView::annotationChanged, [&](const Json& d) {
+        changed.push_back(d);
+        view.setAnnotations({d});  // as the library does after saving
+    });
+    view.setTool(ReaderTool::Area);
+    drag(view.viewport(), view.pageToViewport(0, {200, 300}), view.pageToViewport(0, {400, 450}));
+    REQUIRE(created.size() == 1);
+    REQUIRE(created[0]["annotationType"] == "image");
+    view.setAnnotations(created);
+    view.setTool(ReaderTool::Select);
+    view.selectAnnotation({}, false);  // nothing selected: the frame alone can be grabbed
+
+    // [x1, y1, x2, y2] in PDF coordinates (y up: y2 is the top edge)
+    auto box = [](const Json& d) {
+        auto r = d["annotationPosition"]["rects"][0];
+        return std::array<double, 4>{r[0].get<double>(), r[1].get<double>(), r[2].get<double>(), r[3].get<double>()};
+    };
+    auto at = [&](double x, double y) { return view.pageToViewport(0, {x, y}); };
+    auto cursorAt = [&](double x, double y) {
+        QTest::mouseMove(view.viewport(), at(x, y).toPoint());
+        return view.viewport()->cursor().shape();
+    };
+    auto start = box(created[0]);
+
+    // the top edge: vertical resize cursor, and only the top moves
+    CHECK(cursorAt(300, 300) == Qt::SizeVerCursor);
+    drag(view.viewport(), at(300, 300), at(300, 250));
+    REQUIRE(changed.size() == 1);
+    auto r = box(changed.back());
+    CHECK(r[3] == doctest::Approx(start[3] + 50).epsilon(0.005));
+    CHECK(r[1] == doctest::Approx(start[1]).epsilon(0.005));
+    CHECK(r[0] == doctest::Approx(start[0]).epsilon(0.005));
+    CHECK(r[2] == doctest::Approx(start[2]).epsilon(0.005));
+
+    // the left edge
+    CHECK(cursorAt(200, 375) == Qt::SizeHorCursor);
+    drag(view.viewport(), at(200, 375), at(150, 375));
+    REQUIRE(changed.size() == 2);
+    r = box(changed.back());
+    CHECK(r[0] == doctest::Approx(start[0] - 50).epsilon(0.005));
+    CHECK(r[2] == doctest::Approx(start[2]).epsilon(0.005));
+
+    // the bottom-right corner moves two edges
+    CHECK(cursorAt(400, 450) == Qt::SizeFDiagCursor);
+    CHECK(cursorAt(150, 450) == Qt::SizeBDiagCursor);
+    drag(view.viewport(), at(400, 450), at(440, 480));
+    REQUIRE(changed.size() == 3);
+    r = box(changed.back());
+    CHECK(r[2] == doctest::Approx(start[2] + 40).epsilon(0.005));
+    CHECK(r[1] == doctest::Approx(start[1] - 30).epsilon(0.005));
+    CHECK(r[3] == doctest::Approx(start[3] + 50).epsilon(0.005));
+
+    // inside the frame, dragging moves the whole box
+    auto before = box(changed.back());
+    double cx = (before[0] + before[2]) / 2, cy = 792 - (before[1] + before[3]) / 2;
+    CHECK(cursorAt(cx, cy) == Qt::SizeAllCursor);
+    drag(view.viewport(), at(cx, cy), at(cx + 20, cy + 10));
+    r = box(changed.back());
+    CHECK(r[0] - before[0] == doctest::Approx(20).epsilon(0.05));
+    CHECK(r[2] - before[2] == doctest::Approx(20).epsilon(0.05));
+    CHECK(r[3] - before[3] == doctest::Approx(-10).epsilon(0.05));
+
+    // an edge cannot be dragged past the opposite one
+    double left = r[0], right = r[2], mid = 792 - (r[1] + r[3]) / 2;
+    drag(view.viewport(), at(left, mid), at(right + 200, mid));
+    r = box(changed.back());
+    CHECK(r[0] < r[2]);
+    CHECK(r[2] == doctest::Approx(right).epsilon(0.005));
 }
 
 TEST_CASE("pdf view: double-click selects a word")
