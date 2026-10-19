@@ -5,6 +5,9 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QLabel>
+#include <QLayout>
+#include <QToolButton>
 #include <QAbstractTextDocumentLayout>
 #include <QScrollBar>
 #include <QTextBlock>
@@ -402,6 +405,43 @@ TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
     QApplication::processEvents();
     if (!snapshots.isEmpty())
         pane.grab().save(snapshots + "/item-pane-notes.png");
+}
+
+TEST_CASE("item pane: tags are shown as visible chips")
+{
+    const std::string kLongTag = "Computer Science - Computer Vision and Pattern Recognition and Robotics";
+    app();
+    Env env;
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"},
+                                                      {"title", "Tagged"},
+                                                      {"tags", Json::array({Json{{"tag", "robotics"}},
+                                                                            Json{{"tag", "humanoid"}, {"type", 1}},
+                                                                            Json{{"tag", kLongTag}, {"type", 1}}})}});
+    ItemPane pane;
+    pane.resize(420, 900);
+    pane.show();
+    pane.showItems(env.lib, {qs(jstr(paper, "key"))});
+    pane.findChild<QTabWidget*>()->setCurrentIndex(0);
+    QApplication::processEvents();
+    QApplication::processEvents();
+    TagsBox* tags = nullptr;
+    for (auto* t : pane.findChildren<TagsBox*>())
+        if (t->isVisible())
+            tags = t;
+    REQUIRE(tags);
+    int visible = 0;
+    for (auto* chip : tags->findChildren<QAbstractButton*>()) {
+        if (!chip->isVisible() || qobject_cast<QToolButton*>(chip))
+            continue;  // the line edit's clear button
+        ++visible;
+        CHECK(chip->height() > 10);
+        // chips never stick out of the pane, however long the tag
+        CHECK(chip->mapTo(&pane, QPoint(chip->width(), 0)).x() <= pane.width());
+    }
+    CHECK(visible == 3);
+    auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
+    if (!snapshots.isEmpty())
+        tags->grab().save(snapshots + "/tags.png");
 }
 
 int main(int argc, char** argv)

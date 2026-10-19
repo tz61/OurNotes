@@ -29,11 +29,13 @@ void FlowLayout::clear()
 
 QSize FlowLayout::minimumSize() const
 {
-    QSize size;
+    // Items are narrowed to the available width, so only their height constrains us;
+    // never force the parent wider (that would push content off-screen).
+    int h = 0;
     for (auto* item : items_)
-        size = size.expandedTo(item->minimumSize());
+        h = std::max(h, item->minimumSize().height());
     auto m = contentsMargins();
-    return size + QSize(m.left() + m.right(), m.top() + m.bottom());
+    return QSize(m.left() + m.right(), h + m.top() + m.bottom());
 }
 
 void FlowLayout::setGeometry(const QRect& rect)
@@ -48,9 +50,10 @@ int FlowLayout::doLayout(const QRect& rect, bool testOnly) const
     QRect area = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
     int x = area.x(), y = area.y(), lineHeight = 0;
     for (auto* item : items_) {
-        if (item->widget() && !item->widget()->isVisible() && !testOnly)
+        if (item->isEmpty())  // explicitly hidden widgets take no space
             continue;
         QSize hint = item->sizeHint();
+        hint.setWidth(std::min(hint.width(), std::max(1, area.width())));
         int nextX = x + hint.width() + spacing_;
         if (nextX - spacing_ > area.right() + 1 && lineHeight > 0) {
             x = area.x();

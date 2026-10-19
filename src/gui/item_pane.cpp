@@ -16,6 +16,8 @@
 #include <QSplitter>
 #include <QTabWidget>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QTextBlock>
@@ -413,6 +415,118 @@ void InfoEditor::changeType(const QString& type)
     lib.saveItem(libraryId_, converted);
 }
 
+// --- TagChip -----------------------------------------------------------------------------------
+
+// A tag shown as a rounded pill: optional colour dot, elided text, and an × to remove
+// it when the library is editable.
+class TagChip : public QAbstractButton {
+public:
+    TagChip(const QString& tag, const QString& color, bool automatic, bool removable, QWidget* parent = nullptr)
+        : QAbstractButton(parent), tag_(tag), color_(color), automatic_(automatic), removable_(removable)
+    {
+        setToolTip(removable ? tr("%1\nClick × to remove").arg(tag) : tag);
+        setCursor(Qt::ArrowCursor);
+        setMouseTracking(true);
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    }
+
+    std::function<void()> onRemove;
+
+    QSize sizeHint() const override
+    {
+        QFontMetrics fm(chipFont());
+        // +4: italic glyphs overhang their advance width
+        int w = padding() * 2 + fm.horizontalAdvance(tag_) + 4 + (color_.isEmpty() ? 0 : dot() + 6) +
+                (removable_ ? close() + 6 : 0);
+        return {w, fm.height() + 8};
+    }
+    QSize minimumSizeHint() const override { return {padding() * 2 + 24, sizeHint().height()}; }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        QColor base = palette().color(QPalette::Button);
+        if (underMouse())
+            base = palette().color(QPalette::Midlight);
+        p.setPen(QPen(palette().color(QPalette::Mid), 1));
+        p.setBrush(base);
+        p.drawRoundedRect(r, r.height() / 2, r.height() / 2);
+        qreal x = padding();
+        if (!color_.isEmpty()) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(color_));
+            p.drawEllipse(QRectF(x, (height() - dot()) / 2.0, dot(), dot()));
+            x += dot() + 6;
+        }
+        qreal right = width() - padding() - (removable_ ? close() + 6 : 0);
+        p.setFont(chipFont());
+        QColor fg = palette().color(QPalette::ButtonText);
+        if (automatic_)
+            fg.setAlphaF(0.8);
+        p.setPen(fg);
+        QString text = QFontMetrics(chipFont()).elidedText(tag_, Qt::ElideRight, int(right - x));
+        p.drawText(QRectF(x, 0, right - x, height()), Qt::AlignVCenter | Qt::AlignLeft, text);
+        if (removable_) {
+            QRectF c = closeRect();
+            p.setPen(QPen(closeHot_ ? palette().color(QPalette::Highlight) : fg, 1.4, Qt::SolidLine, Qt::RoundCap));
+            p.drawLine(c.topLeft() + QPointF(2, 2), c.bottomRight() - QPointF(2, 2));
+            p.drawLine(c.topRight() + QPointF(-2, 2), c.bottomLeft() + QPointF(2, -2));
+        }
+    }
+    void mouseMoveEvent(QMouseEvent* e) override
+    {
+        bool hot = removable_ && closeRect().adjusted(-3, -3, 3, 3).contains(e->position());
+        if (hot != closeHot_) {
+            closeHot_ = hot;
+            setCursor(hot ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+        QAbstractButton::mouseMoveEvent(e);
+    }
+    void mouseReleaseEvent(QMouseEvent* e) override
+    {
+        if (removable_ && closeRect().adjusted(-3, -3, 3, 3).contains(e->position()) && onRemove) {
+            onRemove();
+            return;
+        }
+        QAbstractButton::mouseReleaseEvent(e);
+    }
+    void changeEvent(QEvent* e) override
+    {
+        if (e->type() == QEvent::FontChange)
+            updateGeometry();
+        QAbstractButton::changeEvent(e);
+    }
+    void leaveEvent(QEvent* e) override
+    {
+        closeHot_ = false;
+        update();
+        QAbstractButton::leaveEvent(e);
+    }
+
+private:
+    QFont chipFont() const
+    {
+        QFont f = font();
+        f.setItalic(automatic_);
+        return f;
+    }
+    int padding() const { return 9; }
+    int dot() const { return 8; }
+    int close() const { return 10; }
+    QRectF closeRect() const
+    {
+        return QRectF(width() - padding() - close(), (height() - close()) / 2.0, close(), close());
+    }
+
+    QString tag_, color_;
+    bool automatic_, removable_;
+    bool closeHot_ = false;
+};
+
 // --- TagsBox ----------------------------------------------------------------------------------
 
 TagsBox::TagsBox(QWidget* parent) : QWidget(parent)
@@ -467,20 +581,18 @@ void TagsBox::rebuild()
             counts[jstr(t, "tag")]++;
     auto colors = lib.tagColors(libraryId_);
     header_->setText(tr("Tags (%1)").arg(counts.size()));
+    std::map<std::string, int> types;
+    for (auto& d : lib.items(libraryId_, toStdVector(keys_)))
+        for (auto& t : d.value("tags", Json::array()))
+            types[jstr(t, "tag")] = (int)jint(t, "type");
     for (auto& [tag, n] : counts) {
-        auto* chip = new QToolButton;
-        chip->setText(qs(tag) + (keys_.size() > 1 && n < keys_.size() ? QString(" (%1)").arg(n) : QString()));
-        chip->setAutoRaise(false);
-        if (colors.count(tag))
-            chip->setIcon(colorIcon(qs(colors[tag]), 10));
-        chip->setToolTip(editable ? tr("Click to remove") : QString());
-        chip->setEnabled(editable);
-        if (editable) {
-            chip->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-            connect(chip, &QToolButton::clicked, this, [this, tag = tag] {
-                AppContext::get().library().removeTag(libraryId_, toStdVector(keys_), tag);
-            });
-        }
+        QString label = qs(tag) + (keys_.size() > 1 && n < keys_.size() ? QString(" (%1)").arg(n) : QString());
+        auto* chip = new TagChip(label, colors.count(tag) ? qs(colors[tag]) : QString(), types[tag] == 1, editable);
+        chip->onRemove = [this, tag = tag] {
+            QMetaObject::invokeMethod(
+                this, [this, tag] { AppContext::get().library().removeTag(libraryId_, toStdVector(keys_), tag); },
+                Qt::QueuedConnection);
+        };
         flow_->addWidget(chip);
     }
     // completion with all tags of the library
