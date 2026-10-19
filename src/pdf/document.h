@@ -97,9 +97,6 @@ public:
 
     const fs::path& path() const { return path_; }
     bool isPdf() const;
-    // EPUB, HTML and the like: MuPDF lays the text out on pages itself, so a place in it
-    // is best kept as a position in its text (see textStart) rather than on a page.
-    bool isReflowable() const;
     bool needsPassword() const;
     bool authenticate(const std::string& password);
 
@@ -121,9 +118,6 @@ public:
     void releaseMemory();
 
     const PageText& text(int page);
-    // Text positions across the document: the characters of all pages, in order.
-    int textStart(int page);                 // position of the page's first character
-    std::pair<int, int> textAt(int position);  // {page, char index}; {-1, -1} past the end
     std::string pageText(int page);
     std::string fullText(int maxPages = 0);  // for indexing
     // One entry per hit; a hit spanning several lines has several rects.
@@ -149,7 +143,6 @@ private:
 
     fs::path path_;
     int pageCount_ = 0;
-    std::vector<int> textStarts_;  // known so far: textStarts_[p] for p < size
     std::unique_ptr<Impl> d_;
 };
 

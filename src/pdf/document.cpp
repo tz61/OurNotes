@@ -324,30 +324,6 @@ Document::~Document() = default;
 
 bool Document::isPdf() const { return d_->pdf != nullptr; }
 
-bool Document::isReflowable() const { return !d_->pdf && fz_is_document_reflowable(d_->ctx, d_->doc); }
-
-int Document::textStart(int page)
-{
-    page = std::clamp(page, 0, pageCount_);
-    if (textStarts_.empty())
-        textStarts_.push_back(0);
-    while ((int)textStarts_.size() <= page) {
-        int p = (int)textStarts_.size() - 1;
-        textStarts_.push_back(textStarts_.back() + (int)text(p).chars.size());
-    }
-    return textStarts_[page];
-}
-
-std::pair<int, int> Document::textAt(int position)
-{
-    if (position < 0)
-        return {-1, -1};
-    for (int p = 0; p < pageCount_; ++p)
-        if (position < textStart(p + 1))
-            return {p, position - textStart(p)};
-    return {-1, -1};
-}
-
 bool Document::needsPassword() const { return fz_needs_password(d_->ctx, d_->doc) && pageCount_ == 0; }
 
 bool Document::authenticate(const std::string& password)

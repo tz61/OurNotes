@@ -25,7 +25,6 @@
 #include <QTreeWidget>
 
 #include <array>
-#include <fstream>
 #include <future>
 #include <httplib.h>
 #include <atomic>
@@ -88,12 +87,6 @@ struct Env {
     AppContext context{config, library};
     int64_t lib = library.defaultLibrary();
 };
-
-QPointF charCenter2(PdfView& view, int page, int index)
-{
-    auto& box = view.document()->text(page).chars[index].box;
-    return view.pageToViewport(page, QPointF((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2));
-}
 
 QPointF charCenter(PdfView& view, int index)
 {
@@ -214,108 +207,6 @@ TEST_CASE("Shift+wheel scrolls sideways")
     CHECK(h->value() < right);
     wheel(-120, Qt::NoModifier);  // without Shift, down as before
     CHECK(v->value() > 0);
-}
-
-namespace {
-// A web page long enough for several pages of MuPDF's layout.
-void writeLongHtml(const fs::path& path)
-{
-    std::string html = "<!doctype html><html><head><title>Long page</title></head><body><h1>A long page</h1>";
-    for (int i = 1; i <= 60; ++i)
-        html += "<p>Paragraph " + std::to_string(i) + " says something worth reading about robots and notes.</p>";
-    html += "</body></html>";
-    std::ofstream(path, std::ios::binary) << html;
-}
-} // namespace
-
-TEST_CASE("reader: EPUB and web pages are read in OurNotes, annotated by their text")
-{
-    app();
-    TempDir tmp;
-    auto file = tmp.path / "page.html";
-    writeLongHtml(file);
-    auto doc = pdf::Document::open(file);
-    CHECK(!doc->isPdf());
-    CHECK(doc->isReflowable());
-    REQUIRE(doc->pageCount() > 1);
-    for (int p = 0; p < doc->pageCount(); ++p)
-        CHECK(doc->textAt(doc->textStart(p)) == std::make_pair(p, 0));
-    CHECK(doc->textAt(doc->textStart(doc->pageCount())) == std::make_pair(-1, -1));
-
-    PdfView view;
-    view.resize(800, 900);
-    view.open(file);
-    view.show();
-    view.setDarkPages(false);
-    QApplication::processEvents();
-    for (auto tool : {ReaderTool::Text, ReaderTool::Area, ReaderTool::Ink, ReaderTool::Eraser})
-        CHECK(!view.toolAvailable(tool));
-    CHECK(view.toolAvailable(ReaderTool::Highlight));
-    view.setFocus();
-    QTest::keyClick(&view, Qt::Key_6);  // area: not here
-    CHECK(view.tool() == ReaderTool::Select);
-
-    // a highlight on the second page is kept as a place in the text
-    view.goToPage(1);
-    QApplication::processEvents();
-    std::vector<Json> created;
-    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) { created.push_back(d); });
-    view.setTool(ReaderTool::Highlight);
-    auto& text = view.document()->text(1);
-    REQUIRE(text.chars.size() > 30);
-    drag(view.viewport(), charCenter2(view, 1, 0), charCenter2(view, 1, 8));
-    REQUIRE(created.size() == 1);
-    auto pos = created[0]["annotationPosition"];
-    CHECK(pos["type"] == "TextPositionSelector");
-    int start = pos["start"].get<int>(), end = pos["end"].get<int>();
-    CHECK(start == view.document()->textStart(1));
-    CHECK(end - start == 9);
-    CHECK(!jstr(created[0], "annotationText").empty());
-
-    // shown where the layout puts that text
-    auto yellow = [&] {
-        auto img = view.viewport()->grab().toImage();
-        int n = 0;
-        for (int y = 0; y < img.height(); y += 2)
-            for (int x = 0; x < img.width(); x += 2) {
-                QColor c = img.pixelColor(x, y);
-                n += c.red() > 200 && c.green() > 170 && c.blue() < 140;
-            }
-        return n;
-    };
-    CHECK(yellow() == 0);
-    view.setAnnotations({created[0]});
-    QApplication::processEvents();
-    CHECK(yellow() > 20);
-
-    // a note, at the nearest character
-    view.setTool(ReaderTool::Note);
-    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, charCenter2(view, 1, 20).toPoint());
-    REQUIRE(created.size() == 2);
-    CHECK(created[1]["annotationPosition"]["type"] == "TextPositionSelector");
-    CHECK(created[1]["annotationPosition"]["start"] == created[1]["annotationPosition"]["end"]);
-}
-
-TEST_CASE("main window: a web page snapshot opens in a reader tab")
-{
-    app();
-    Env env;
-    TempDir tmp;
-    auto file = tmp.path / "snapshot.html";
-    writeLongHtml(file);
-    auto parent = env.library.createItem(env.lib, Json{{"itemType", "webpage"}, {"title", "A web page"}});
-    auto att = env.library.importAttachment(env.lib, file, jstr(parent, "key"));
-    REQUIRE(jstr(att, "contentType") == "text/html");
-    MainWindow window;
-    window.show();
-    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
-    int before = tabs->count();
-    window.openAttachment(env.lib, qs(jstr(att, "key")));
-    QApplication::processEvents();
-    REQUIRE(tabs->count() == before + 1);
-    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
-    REQUIRE(reader);
-    CHECK(reader->view()->document()->isReflowable());
 }
 
 TEST_CASE("pdf view: zooming deep into a long document keeps the pages in view")

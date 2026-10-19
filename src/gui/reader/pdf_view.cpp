@@ -842,28 +842,6 @@ PdfView::AnnView PdfView::makeView(const Json& data) const
             pos = Json::object();
         }
     }
-    if (jstr(pos, "type") == "TextPositionSelector") {
-        // a place in the text (EPUB, HTML): on the page the layout puts it
-        if (!doc_)
-            return v;
-        int start = (int)jint(pos, "start", -1), end = (int)jint(pos, "end", start);
-        auto [page, from] = doc_->textAt(start);
-        if (page < 0)
-            return v;
-        auto& text = doc_->text(page);
-        if (v.type == "note") {
-            auto box = toQ(text.chars[from].box);
-            v.rects.push_back(QRectF(box.left() - kNoteSize / 2, box.top() - kNoteSize / 2, kNoteSize, kNoteSize));
-        } else {
-            int to = std::min((int)text.chars.size(), from + std::max(1, end - start)) - 1;  // this page's part
-            for (auto& r : text.rectsOf(from, to))
-                v.rects.push_back(toQ(r));
-        }
-        for (auto& r : v.rects)
-            v.bounds = v.bounds.isNull() ? r : v.bounds.united(r);
-        v.page = page;
-        return v;
-    }
     v.page = (int)jint(pos, "pageIndex", -1);
     if (!doc_ || v.page < 0 || v.page >= doc_->pageCount())
         return v;
@@ -979,23 +957,6 @@ Json PdfView::positionFromRects(int page, const std::vector<QRectF>& rects) cons
     return Json{{"pageIndex", page}, {"rects", arr}};
 }
 
-bool PdfView::toolAvailable(ReaderTool tool) const
-{
-    if (tool == ReaderTool::Select)
-        return true;
-    if (!editable_)
-        return false;
-    // reflowed text (EPUB, HTML) takes annotations on its words only
-    bool textTool = tool == ReaderTool::Highlight || tool == ReaderTool::Underline || tool == ReaderTool::Note;
-    return textTool || !doc_ || !doc_->isReflowable();
-}
-
-Json PdfView::textPosition(int page, int from, int to) const
-{
-    int at = doc_->textStart(page);
-    return Json{{"type", "TextPositionSelector"}, {"start", at + from}, {"end", at + to}};
-}
-
 Json PdfView::baseAnnotation(const QString& type, int page, int charOffset, double top) const
 {
     return Json{{"key", newKey()},
@@ -1025,10 +986,7 @@ void PdfView::createFromSelection(const QString& type, const QString& color)
     auto data = baseAnnotation(type, selPage_, std::min(selFrom_, selTo_), top);
     data["annotationColor"] = ss(color);
     data["annotationText"] = ss(selectedText());
-    if (doc_->isReflowable())  // where in the text: a page of its layout is no lasting place
-        data["annotationPosition"] = textPosition(selPage_, std::min(selFrom_, selTo_), std::max(selFrom_, selTo_) + 1);
-    else
-        data["annotationPosition"] = positionFromRects(selPage_, rects);
+    data["annotationPosition"] = positionFromRects(selPage_, rects);
     clearTextSelection();
     hidePopup();
     emit annotationCreated(data);
@@ -1505,7 +1463,7 @@ void PdfView::mousePressEvent(QMouseEvent* e)
     case ReaderTool::Underline: {
         if (tool_ == ReaderTool::Select) {
             int edges = 0;
-            if (auto* a = doc_->isReflowable() ? nullptr : edgeAt(page, e->position(), &edges)) {
+            if (auto* a = edgeAt(page, e->position(), &edges)) {
                 // an edge or corner of a box: resize from there
                 selectedAnn_ = a->key;
                 clearTextSelection();
@@ -1520,9 +1478,7 @@ void PdfView::mousePressEvent(QMouseEvent* e)
                 pressedAnn_ = a->key;  // a click (not a drag) edits its comment
                 clearTextSelection();
                 emit annotationSelected(a->key);
-                // in reflowed text annotations stay with their words
-                if (!a->external && editable_ && a->type != "highlight" && a->type != "underline" &&
-                    !doc_->isReflowable())
+                if (!a->external && editable_ && a->type != "highlight" && a->type != "underline")
                     drag_ = Drag::Moving;
                 viewport()->update();
                 return;
@@ -1571,10 +1527,7 @@ void PdfView::mousePressEvent(QMouseEvent* e)
         QRectF r(pt - QPointF(kNoteSize / 2, kNoteSize / 2), QSizeF(kNoteSize, kNoteSize));
         int offset = doc_->text(page).hitTest({(float)pt.x(), (float)pt.y()}, true);
         auto data = baseAnnotation("note", page, std::max(0, offset), r.top());
-        if (doc_->isReflowable())  // at the nearest character
-            data["annotationPosition"] = textPosition(page, std::max(0, offset), std::max(0, offset));
-        else
-            data["annotationPosition"] = positionFromRects(page, {r});
+        data["annotationPosition"] = positionFromRects(page, {r});
         emit annotationCreated(data);
         emit annotationSelected(qs(jstr(data, "key")));
         selectedAnn_ = qs(jstr(data, "key"));
@@ -1813,7 +1766,7 @@ void PdfView::keyPressEvent(QKeyEvent* e)
                                            ReaderTool::Note,   ReaderTool::Text,      ReaderTool::Area,
                                            ReaderTool::Ink,    ReaderTool::Eraser};
         auto tool = tools[e->key() - Qt::Key_1];
-        if (toolAvailable(tool))
+        if (editable_ || tool == ReaderTool::Select)
             emit toolChangeRequested(tool);
         return;
     }
