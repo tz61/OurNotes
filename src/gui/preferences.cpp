@@ -144,7 +144,7 @@ QWidget* PreferencesDialog::generalPage()
     bands->setObjectName("bandBackground");
     bands->setToolTip(tr("Poppin'Party from midnight to Ikka Dumb Rock! from 22:00. Pictures of your own in the data "
                          "directory under backgrounds/bands are shown instead."));
-    bands->setChecked(cfg.get("/ui/bandBackground", true).get<bool>());
+    bands->setChecked(cfg.get("/ui/bandBackground", false).get<bool>());
     form->addRow(QString(), bands);
     connect(bands, &QCheckBox::toggled, this, [](bool on) {
         auto& ctx = AppContext::get();
