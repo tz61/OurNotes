@@ -33,7 +33,13 @@ protected:
 
 private:
     void buildActions();
-    ReaderTab* findReader(int64_t libraryId, const QString& key) const;
+    int findTab(int64_t libraryId, const QString& key) const;  // a reader, loaded or not
+    // Open tabs and the library's view are saved on quit and restored on start; restored
+    // tabs load when they are first shown.
+    void saveSession();
+    void restoreSession();
+    void loadPendingTab(int index);
+    void shutDown();
     void updateTabActions();
     void showPreferences(int page = 0);
     void restartApplication();
@@ -54,6 +60,7 @@ private:
     QLabel* status_;
     SyncController* sync_ = nullptr;
     FulltextIndexer* indexer_ = nullptr;
+    bool shutDown_ = false;
 };
 
 } // namespace fp::gui

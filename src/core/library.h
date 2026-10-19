@@ -213,6 +213,12 @@ public:
     Json setting(int64_t lib, const std::string& name, const Json& def = nullptr);
     void setSetting(int64_t lib, const std::string& name, const Json& value);  // null removes
 
+    // --- reader state (local) ------------------------------------------------------------
+    // Where an attachment was left in the reader (page, zoom, scroll position), kept in
+    // storage/<KEY>/.zotero-reader-state as Zotero does; not synced. Empty if unknown.
+    Json readerState(const std::string& attachmentKey) const;
+    void setReaderState(const std::string& attachmentKey, const Json& state);
+
     // --- search --------------------------------------------------------------------------
     // Keys of all items (any level) matching every token of `query`.
     std::set<std::string> search(int64_t lib, const std::string& query, SearchMode mode);

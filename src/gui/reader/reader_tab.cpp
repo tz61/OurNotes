@@ -38,13 +38,7 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     if (!att)
         throw Error("attachment not found");
     parentKey_ = jqs(*att, "parentItem");
-    title_ = jqs(*att, "title");
-    if (!parentKey_.isEmpty())
-        if (auto parentItem = lib.item(libraryId, ss(parentKey_))) {
-            auto t = jqs(*parentItem, "title");
-            if (!t.isEmpty())
-                title_ = t;
-        }
+    title_ = titleFor(libraryId, attachmentKey);
     editable_ = AppContext::get().editable(libraryId);
 
     view_ = new PdfView(this);
@@ -136,11 +130,22 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
 
     reloadAnnotations();
     reloadNotes();
+    // Where the document was left: the local state has the exact position; the synced
+    // page wins when the document was read further on another computer (as in Zotero).
+    auto state = lib.readerState(ss(key_));
     auto lastPage = lib.setting(libraryId, "lastPageIndex_" + ss(key_));
-    int page = lastPage.is_number() ? lastPage.get<int>() : 0;
-    QTimer::singleShot(0, this, [this, page] {
-        view_->goToPage(page);
-        updatePageLabel(page);
+    if (lastPage.is_number_integer() && state.value("pageIndex", Json()) != lastPage)
+        state = Json{{"pageIndex", lastPage}, {"scale", state.value("scale", Json())}};
+    stateTimer_.setSingleShot(true);
+    stateTimer_.setInterval(1000);
+    connect(&stateTimer_, &QTimer::timeout, this, &ReaderTab::saveViewState);
+    QTimer::singleShot(0, this, [this, state] {
+        view_->restoreViewState(state);
+        updatePageLabel(view_->currentPage());
+        // from now on, changes of the view are the user's
+        connect(view_, &PdfView::viewChanged, &stateTimer_, qOverload<>(&QTimer::start));
+        connect(view_, &PdfView::zoomChanged, &stateTimer_, qOverload<>(&QTimer::start));
+        restored_ = true;
     });
     QTimer::singleShot(400, this, &ReaderTab::importEmbeddedAnnotations);
 }
@@ -149,6 +154,8 @@ ReaderTab::~ReaderTab()
 {
     if (positionTimer_.isActive())
         savePosition();
+    if (restored_)
+        saveViewState();
     noteEditor_->flush();
 }
 
@@ -431,6 +438,29 @@ void ReaderTab::focusFind()
 {
     find_->setFocus();
     find_->selectAll();
+}
+
+QString ReaderTab::titleFor(int64_t libraryId, const QString& attachmentKey)
+{
+    auto& lib = AppContext::get().library();
+    auto att = lib.item(libraryId, ss(attachmentKey));
+    if (!att)
+        return {};
+    auto title = jqs(*att, "title");
+    auto parentKey = jstr(*att, "parentItem");
+    if (!parentKey.empty())
+        if (auto parentItem = lib.item(libraryId, parentKey)) {
+            auto t = jqs(*parentItem, "title");
+            if (!t.isEmpty())
+                title = t;
+        }
+    return title;
+}
+
+void ReaderTab::saveViewState()
+{
+    stateTimer_.stop();
+    AppContext::get().library().setReaderState(ss(key_), view_->viewState());
 }
 
 void ReaderTab::savePosition()

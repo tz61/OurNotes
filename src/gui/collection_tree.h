@@ -15,6 +15,10 @@ public:
     void reload();
     Scope currentScope() const;
     void selectScope(const Scope& scope);
+    // Expanded libraries and collections, as "<libraryId>:<collectionKey>" (empty key for
+    // the library itself).
+    QStringList expandedState() const;
+    void restoreExpanded(const QStringList& state);
 
 signals:
     void scopeChanged(const Scope& scope);

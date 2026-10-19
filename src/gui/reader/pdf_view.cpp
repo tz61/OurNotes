@@ -280,6 +280,60 @@ void PdfView::setZoom(double zoom, QPointF anchor)
     emit zoomChanged(this->zoom());
 }
 
+Json PdfView::viewState() const
+{
+    Json state = Json::object();
+    if (!doc_ || pageRects_.empty())
+        return state;
+    int page = currentPage();
+    // the corner may lie outside the page (in the margin, or on the page above); the
+    // page's coordinate system extends there
+    QPointF corner = toPage(page, scrollOffset());
+    auto pdf = doc_->pageToPdf(page, pdf::Point{float(corner.x()), float(corner.y())});
+    state["pageIndex"] = page;
+    if (fit_ == Fit::Width)
+        state["scale"] = "page-width";
+    else if (fit_ == Fit::Page)
+        state["scale"] = "page-fit";
+    else
+        state["scale"] = std::round(zoom() * 1000) / 10;
+    // tenths of a point, so the view comes back to the pixel (Zotero reads either)
+    state["top"] = std::round(double(pdf.y) * 10) / 10;
+    state["left"] = std::round(double(pdf.x) * 10) / 10;
+    state["scrollMode"] = 0;
+    state["spreadMode"] = 0;
+    return state;
+}
+
+void PdfView::restoreViewState(const Json& state)
+{
+    if (!doc_ || pageRects_.empty())
+        return;
+    auto scale = state.value("scale", Json());
+    if (scale.is_number()) {
+        fit_ = Fit::None;
+        scale_ = std::clamp(scale.get<double>() / 100, 0.1, 8.0) * kBaseScale;
+    } else if (scale == "page-fit") {
+        fit_ = Fit::Page;
+    } else if (scale.is_string()) {  // "page-width", or pdf.js's "auto"
+        fit_ = Fit::Width;
+    }
+    ++generation_;
+    relayout(false);
+    emit zoomChanged(zoom());
+    auto pageIndex = state.value("pageIndex", Json());
+    int page = pageIndex.is_number_integer() ? std::clamp(pageIndex.get<int>(), 0, pageCount() - 1) : 0;
+    auto top = state.value("top", Json()), left = state.value("left", Json());
+    if (top.is_number() && left.is_number()) {
+        auto p = doc_->pdfToPage(page, pdf::Point{left.get<float>(), top.get<float>()});
+        QPointF corner = pageRects_[page].topLeft() + QPointF(p.x, p.y) * scale_;
+        horizontalScrollBar()->setValue(int(std::lround(corner.x())));
+        verticalScrollBar()->setValue(int(std::lround(corner.y())));
+    } else {
+        goToPage(page);
+    }
+}
+
 void PdfView::zoomIn()
 {
     double z = zoom();
@@ -340,6 +394,7 @@ void PdfView::scrollContentsBy(int, int)
         lastPage_ = page;
         emit pageChanged(page);
     }
+    emit viewChanged();
 }
 
 // --- rendering ------------------------------------------------------------------------------

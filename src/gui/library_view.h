@@ -30,8 +30,11 @@ public:
     void focusSearch();
     QTreeView* itemsView() const { return items_; }
     CollectionTree* collectionTree() const { return tree_; }
-    QByteArray saveState() const;
+    QByteArray saveState() const;  // layout: splitters and columns
     void restoreState(const QByteArray& state);
+    // What is shown: collection, selected items, expanded rows and scroll position.
+    Json viewState() const;
+    void restoreViewState(const Json& state);
 
     // actions
     void newItem(const QString& itemType);
@@ -61,6 +64,7 @@ private:
     void reloadItems();
     void openIndex(const QModelIndex& index);
     void showItemMenu(const QPoint& pos);
+    void selectKeys(const QStringList& keys, const QString& current);
 
     CollectionTree* tree_;
     TagSelector* tags_;

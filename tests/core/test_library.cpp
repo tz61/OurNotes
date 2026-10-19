@@ -165,3 +165,18 @@ TEST_CASE("fulltext search")
     CHECK(lib.search(id, "powerhouse", SearchMode::AllFields).empty());
     CHECK(lib.search(id, "\"the cell\"", SearchMode::Everything).count(key));
 }
+
+TEST_CASE("reader state is kept next to the attachment, like Zotero's")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    CHECK(lib.readerState("ABCD2345").empty());
+    Json state{{"pageIndex", 8}, {"scale", "page-width"}, {"top", 515.3}, {"left", -6.9}};
+    lib.setReaderState("ABCD2345", state);
+    CHECK(fs::exists(lib.storageDir() / "ABCD2345" / ".zotero-reader-state"));
+    CHECK(lib.readerState("ABCD2345") == state);
+    // keys that are not item keys never address files
+    lib.setReaderState("../evil", state);
+    CHECK(!fs::exists(tmp.path / "evil"));
+    CHECK(lib.readerState("../evil").empty());
+}

@@ -263,19 +263,7 @@ void LibraryView::reloadItems()
             current = pendingSelect_;
             pendingSelect_.clear();
         }
-        QItemSelection sel;
-        for (auto& k : selected) {
-            auto idx = model_->indexOfKey(k);
-            if (idx.isValid()) {
-                if (idx.parent().isValid())
-                    items_->setExpanded(idx.parent(), true);
-                sel.select(idx, idx.siblingAtColumn(ItemsModel::ColumnCount - 1));
-            }
-        }
-        items_->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
-        auto cur = model_->indexOfKey(current);
-        if (cur.isValid())
-            items_->selectionModel()->setCurrentIndex(cur, QItemSelectionModel::NoUpdate);
+        selectKeys(selected, current);
     }
     items_->verticalScrollBar()->setValue(scroll);
     if (!current.isEmpty() && model_->indexOfKey(current).isValid())
@@ -306,6 +294,72 @@ void LibraryView::selectItem(const QString& key, int64_t libraryId)
         items_->setExpanded(idx.parent(), true);
     items_->selectionModel()->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     items_->scrollTo(idx);
+}
+
+void LibraryView::selectKeys(const QStringList& keys, const QString& current)
+{
+    QItemSelection sel;
+    for (auto& k : keys) {
+        auto idx = model_->indexOfKey(k);
+        if (idx.isValid()) {
+            if (idx.parent().isValid())
+                items_->setExpanded(idx.parent(), true);
+            sel.select(idx, idx.siblingAtColumn(ItemsModel::ColumnCount - 1));
+        }
+    }
+    items_->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
+    auto cur = model_->indexOfKey(current);
+    if (cur.isValid())
+        items_->selectionModel()->setCurrentIndex(cur, QItemSelectionModel::NoUpdate);
+}
+
+namespace {
+
+const char* const kScopeNames[] = {"library", "collection", "unfiled", "duplicates", "trash"};
+
+} // namespace
+
+Json LibraryView::viewState() const
+{
+    auto s = scope();
+    Json state{{"libraryID", s.libraryId},
+               {"scope", kScopeNames[int(s.kind)]},
+               {"collection", s.collectionKey},
+               {"selected", toStdVector(selectedKeys())},
+               {"current", ss(model_->keyAt(items_->currentIndex()))},
+               {"collections", toStdVector(tree_->expandedState())}};
+    Json expanded = Json::array();
+    for (int i = 0; i < model_->rowCount(); ++i) {
+        auto idx = model_->index(i, 0);
+        if (items_->isExpanded(idx))
+            expanded.push_back(ss(model_->keyAt(idx)));
+    }
+    state["expanded"] = expanded;
+    // the row at the top of the list, which survives changes of window size and sorting
+    state["top"] = ss(model_->keyAt(items_->indexAt(QPoint(1, 1))));
+    return state;
+}
+
+void LibraryView::restoreViewState(const Json& state)
+{
+    if (!state.is_object() || !state.contains("libraryID"))
+        return;
+    Scope s{jint(state, "libraryID"), ScopeKind::Library, jstr(state, "collection")};
+    for (int k = 0; k < (int)std::size(kScopeNames); ++k)
+        if (jstr(state, "scope") == kScopeNames[k])
+            s.kind = ScopeKind(k);
+    tree_->restoreExpanded(toQStringList(state.value("collections", std::vector<std::string>())));
+    tree_->selectScope(s);
+    for (auto& k : state.value("expanded", Json::array()))
+        if (k.is_string())
+            items_->setExpanded(model_->indexOfKey(qs(k.get<std::string>())), true);
+    selectKeys(toQStringList(state.value("selected", std::vector<std::string>())), jqs(state, "current"));
+    // scroll once the list has its size
+    QTimer::singleShot(0, this, [this, top = jqs(state, "top"), current = jqs(state, "current")] {
+        auto idx = model_->indexOfKey(top.isEmpty() ? current : top);
+        if (idx.isValid())
+            items_->scrollTo(idx, top.isEmpty() ? QAbstractItemView::EnsureVisible : QAbstractItemView::PositionAtTop);
+    });
 }
 
 void LibraryView::focusSearch()

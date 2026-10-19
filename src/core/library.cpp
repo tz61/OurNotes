@@ -1392,6 +1392,35 @@ void Library::setSetting(int64_t lib, const std::string& name, const Json& value
     notify({lib, "setting", existing ? "modify" : "add", {name}});
 }
 
+// --- reader state -----------------------------------------------------------------------------
+
+Json Library::readerState(const std::string& key) const
+{
+    std::error_code ec;
+    auto path = storageDir() / key / ".zotero-reader-state";
+    if (!isValidKey(key) || !fs::is_regular_file(path, ec))
+        return Json::object();
+    try {
+        auto j = Json::parse(readFile(path));
+        if (j.is_object())
+            return j;
+    } catch (const std::exception&) {
+    }
+    return Json::object();
+}
+
+void Library::setReaderState(const std::string& key, const Json& state)
+{
+    if (!isValidKey(key))
+        return;
+    try {
+        fs::create_directories(storageDir() / key);
+        writeFileAtomic(storageDir() / key / ".zotero-reader-state", state.dump());
+    } catch (const std::exception&) {
+        // losing a reading position is not worth an error
+    }
+}
+
 // --- search -----------------------------------------------------------------------------------
 
 std::set<std::string> Library::search(int64_t lib, const std::string& query, SearchMode mode)

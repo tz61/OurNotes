@@ -94,6 +94,28 @@ void CollectionTree::selectScope(const Scope& s)
     }
 }
 
+QStringList CollectionTree::expandedState() const
+{
+    QStringList out;
+    QTreeWidgetItemIterator it(const_cast<CollectionTree*>(this));
+    for (; *it; ++it)
+        if ((*it)->isExpanded()) {
+            auto s = scopeOf(*it);
+            out << QString("%1:%2").arg(s.libraryId).arg(qs(s.collectionKey));
+        }
+    return out;
+}
+
+void CollectionTree::restoreExpanded(const QStringList& state)
+{
+    QTreeWidgetItemIterator it(this);
+    for (; *it; ++it) {
+        auto s = scopeOf(*it);
+        if (s.kind == ScopeKind::Library || s.kind == ScopeKind::Collection)
+            (*it)->setExpanded(state.contains(QString("%1:%2").arg(s.libraryId).arg(qs(s.collectionKey))));
+    }
+}
+
 void CollectionTree::reload()
 {
     auto& lib = AppContext::get().library();

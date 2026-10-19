@@ -85,7 +85,8 @@ int64_t fileMtimeMs(const fs::path& p)
 }
 
 // Copy (or hard-link) the contents of one Zotero storage folder, skipping Zotero's
-// own cache files. Returns bytes copied.
+// own cache files. The reader state (where the file was left) only seeds ours: it is
+// copied if we have none, and never linked, as freePen rewrites it. Returns bytes copied.
 int64_t copyStorageDir(const fs::path& src, const fs::path& dst, ZoteroFileMode mode, int& files)
 {
     int64_t bytes = 0;
@@ -93,6 +94,15 @@ int64_t copyStorageDir(const fs::path& src, const fs::path& dst, ZoteroFileMode 
     for (auto it = fs::recursive_directory_iterator(src, ec); !ec && it != fs::recursive_directory_iterator();
          it.increment(ec)) {
         auto name = pathString(it->path().filename());
+        if (name == ".zotero-reader-state" && it->is_regular_file(ec)) {
+            std::error_code ec2;
+            auto target = dst / u8path(name);
+            if (!fs::exists(target, ec2)) {
+                fs::create_directories(dst, ec2);
+                fs::copy_file(it->path(), target, ec2);
+            }
+            continue;
+        }
         if (startsWith(name, ".zotero")) {
             if (it->is_directory(ec))
                 it.disable_recursion_pending();

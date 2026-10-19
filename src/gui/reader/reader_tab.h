@@ -29,6 +29,9 @@ public:
     ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* parent = nullptr);
     ~ReaderTab() override;
 
+    // Tab title for an attachment: its parent item's title, else its own.
+    static QString titleFor(int64_t libraryId, const QString& attachmentKey);
+
     int64_t libraryId() const { return libraryId_; }
     QString attachmentKey() const { return key_; }
     QString title() const { return title_; }
@@ -62,6 +65,7 @@ private:
     void updatePageLabel(int page);
     void setTool(ReaderTool tool);
     void savePosition();
+    void saveViewState();
     QString citationFor(const Json& annotation) const;
 
     int64_t libraryId_;
@@ -88,7 +92,9 @@ private:
     QToolButton* colorButton_;
     QActionGroup* tools_;
     QTimer reloadTimer_;
-    QTimer positionTimer_;
+    QTimer positionTimer_;  // the synced last page, after page changes
+    QTimer stateTimer_;     // the local view state, after scrolling or zooming
+    bool restored_ = false;
     bool thumbnailsRequested_ = false;
     QAction* darkPages_ = nullptr;
 };

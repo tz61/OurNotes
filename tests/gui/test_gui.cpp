@@ -13,6 +13,8 @@
 #include <QAbstractTextDocumentLayout>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTabWidget>
+#include <QTreeView>
 #include <QTreeWidget>
 
 #include <atomic>
@@ -27,6 +29,8 @@
 #include "gui/common.h"
 #include "gui/fancy_progress.h"
 #include "gui/item_pane.h"
+#include "gui/library_view.h"
+#include "gui/main_window.h"
 #include "gui/items_model.h"
 #include "gui/metadata_progress.h"
 #include "gui/math_render.h"
@@ -263,6 +267,130 @@ TEST_CASE("reader: annotation cards stay idle and follow the theme")
     CHECK(edge == QColor("#ffd400"));  // the annotation's colour
 
     applyAppearance(Appearance::System);
+}
+
+TEST_CASE("reader: the view state round-trips in Zotero's format")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView a;
+    a.resize(800, 600);
+    a.open(file);
+    a.show();
+    QApplication::processEvents();
+    a.setZoom(2.5);
+    a.horizontalScrollBar()->setValue(140);
+    a.verticalScrollBar()->setValue(900);
+    auto state = a.viewState();
+    CHECK(state["pageIndex"] == 0);
+    CHECK(state["scale"].get<double>() == doctest::Approx(250));
+    // PDF coordinates: the viewport's top is 900 px down the page, i.e. this far up from the bottom
+    CHECK(state["top"].get<double>() == doctest::Approx(792 - (900 - 24) / (2.5 * 96 / 72)).epsilon(0.02));
+
+    PdfView b;
+    b.resize(800, 600);
+    b.open(file);
+    b.show();
+    QApplication::processEvents();
+    b.restoreViewState(state);
+    CHECK(b.zoom() == doctest::Approx(2.5));
+    CHECK(std::abs(b.verticalScrollBar()->value() - 900) <= 2);
+    CHECK(std::abs(b.horizontalScrollBar()->value() - 140) <= 2);
+
+    // fitted zoom is kept as a mode, as Zotero does
+    a.fitPage();
+    CHECK(a.viewState()["scale"] == "page-fit");
+    b.restoreViewState(Json{{"pageIndex", 0}, {"scale", "page-width"}});
+    CHECK(b.isFitWidth());
+}
+
+TEST_CASE("reader: a document opens where it was left")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    int scrolled = 0;
+    {
+        ReaderTab tab(env.lib, qs(key));
+        tab.resize(1200, 900);
+        tab.show();
+        QApplication::processEvents();
+        tab.view()->setZoom(3);
+        tab.view()->verticalScrollBar()->setValue(1500);
+        scrolled = tab.view()->verticalScrollBar()->value();
+        REQUIRE(scrolled > 1000);
+    }  // closing the tab saves where it was
+    auto state = env.library.readerState(key);
+    CHECK(state["scale"].get<double>() == doctest::Approx(300));
+    CHECK(fs::exists(env.library.storageDir() / key / ".zotero-reader-state"));
+
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    CHECK(tab.view()->zoom() == doctest::Approx(3));
+    CHECK(std::abs(tab.view()->verticalScrollBar()->value() - scrolled) <= 2);
+}
+
+TEST_CASE("main window: open tabs and the library view come back after a restart")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    QStringList keys;
+    QString paper;
+    for (auto name : {"first", "second"}) {
+        auto file = tmp.path / (std::string(name) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", name}});
+        keys << qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+        paper = qs(jstr(parent, "key"));
+    }
+    {
+        MainWindow window;
+        window.resize(1400, 900);
+        window.show();
+        QApplication::processEvents();
+        window.selectItem(paper);  // "second" in the library tab
+        window.openAttachment(env.lib, keys[0]);
+        window.openAttachment(env.lib, keys[1]);
+        auto* tabs = window.findChild<QTabWidget*>();
+        REQUIRE(tabs->count() == 3);
+        tabs->setCurrentIndex(1);  // "first" is the tab being read
+        window.close();
+    }
+    CHECK(env.config.get("/ui/session")["tabs"].size() == 2);
+
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>();
+    REQUIRE(tabs->count() == 3);
+    CHECK(tabs->currentIndex() == 1);
+    auto* first = qobject_cast<ReaderTab*>(tabs->widget(1));
+    REQUIRE(first);
+    CHECK(first->attachmentKey() == keys[0]);
+    CHECK(tabs->tabText(2) == "second");
+    // the other tab loads only when it is shown
+    CHECK(qobject_cast<ReaderTab*>(tabs->widget(2)) == nullptr);
+    tabs->setCurrentIndex(2);
+    auto* second = qobject_cast<ReaderTab*>(tabs->widget(2));
+    REQUIRE(second);
+    CHECK(second->attachmentKey() == keys[1]);
+    CHECK(tabs->currentIndex() == 2);
+    // and the library tab has the same item selected
+    auto* library = window.findChild<LibraryView*>();
+    REQUIRE(library);
+    CHECK(library->selectedKeys() == QStringList{paper});
 }
 
 TEST_CASE("reader tab persists annotations in the library")

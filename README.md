@@ -21,7 +21,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   eraser, eight colours, comments, move/resize. Annotations are stored like Zotero's
   (PDF user-space coordinates) and imported Zotero annotations line up exactly.
   Annotations already inside a PDF are shown read-only; *File → Export PDF with
-  Annotations* writes yours into a copy of the file.
+  Annotations* writes yours into a copy of the file. Each document reopens where it was
+  left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
+  like Zotero), and the open tabs and the library's selection come back after a
+  restart; restored tabs load when first shown.
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display

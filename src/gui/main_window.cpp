@@ -20,6 +20,7 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeView>
@@ -43,6 +44,27 @@
 #include "gui/sync_controller.h"
 
 namespace fp::gui {
+
+namespace {
+
+// A restored reader tab that has not been shown yet; becomes a ReaderTab when it is.
+class PendingReaderTab : public QWidget {
+public:
+    PendingReaderTab(int64_t libraryId, const QString& key) : libraryId(libraryId), key(key)
+    {
+        label = new QLabel(this);
+        label->setAlignment(Qt::AlignCenter);
+        label->setWordWrap(true);
+        (new QVBoxLayout(this))->addWidget(label);
+    }
+    const int64_t libraryId;
+    const QString key;
+    QLabel* label;
+};
+
+QString tabText(const QString& title) { return title.length() > 40 ? title.left(38) + "…" : title; }
+
+} // namespace
 
 MainWindow::MainWindow()
 {
@@ -72,7 +94,10 @@ MainWindow::MainWindow()
         tabs_->removeTab(i);
         w->deleteLater();
     });
-    connect(tabs_, &QTabWidget::currentChanged, this, [this] { updateTabActions(); });
+    connect(tabs_, &QTabWidget::currentChanged, this, [this](int i) {
+        loadPendingTab(i);
+        updateTabActions();
+    });
     connect(library_, &LibraryView::openAttachmentRequested, this,
             [this](qint64 lib, const QString& key) { openAttachment(lib, key); });
     connect(library_, &LibraryView::exportRequested, this, &MainWindow::exportItems);
@@ -117,6 +142,8 @@ MainWindow::MainWindow()
     if (sync_->hasTarget() && cfg.get("/sync/auto", true).get<bool>())
         QTimer::singleShot(3000, sync_, &SyncController::syncNow);
     updateTabActions();
+    QTimer::singleShot(0, this, &MainWindow::restoreSession);  // once the window is shown
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &MainWindow::shutDown);
 }
 
 MainWindow::~MainWindow() = default;
@@ -287,13 +314,83 @@ void MainWindow::updateTabActions()
 
 // --- attachments ---------------------------------------------------------------------------------
 
-ReaderTab* MainWindow::findReader(int64_t libraryId, const QString& key) const
+int MainWindow::findTab(int64_t libraryId, const QString& key) const
 {
-    for (int i = 1; i < tabs_->count(); ++i)
+    for (int i = 1; i < tabs_->count(); ++i) {
         if (auto* r = qobject_cast<ReaderTab*>(tabs_->widget(i)))
             if (r->libraryId() == libraryId && r->attachmentKey() == key)
-                return r;
-    return nullptr;
+                return i;
+        if (auto* p = dynamic_cast<PendingReaderTab*>(tabs_->widget(i)))
+            if (p->libraryId == libraryId && p->key == key)
+                return i;
+    }
+    return -1;
+}
+
+void MainWindow::loadPendingTab(int index)
+{
+    auto* pending = dynamic_cast<PendingReaderTab*>(tabs_->widget(index));
+    if (!pending || !pending->label->text().isEmpty())
+        return;  // not a restored tab, or one that could not be opened
+    ReaderTab* reader = nullptr;
+    try {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        reader = new ReaderTab(pending->libraryId, pending->key, tabs_);
+        QApplication::restoreOverrideCursor();
+    } catch (const std::exception& e) {
+        QApplication::restoreOverrideCursor();
+        pending->label->setText(tr("Could not open the PDF:\n\n%1").arg(qs(e.what())));
+        return;
+    }
+    QSignalBlocker block(tabs_);
+    tabs_->insertTab(index, reader, tabs_->tabIcon(index), tabs_->tabText(index));
+    tabs_->setTabToolTip(index, tabs_->tabToolTip(index + 1));
+    tabs_->removeTab(index + 1);
+    pending->deleteLater();
+    tabs_->setCurrentIndex(index);
+    reader->view()->setFocus();
+}
+
+void MainWindow::saveSession()
+{
+    Json tabs = Json::array();
+    int selected = 0;
+    for (int i = 1; i < tabs_->count(); ++i) {
+        auto* w = tabs_->widget(i);
+        Json tab;
+        if (auto* r = qobject_cast<ReaderTab*>(w))
+            tab = Json{{"libraryID", r->libraryId()}, {"key", ss(r->attachmentKey())}};
+        else if (auto* p = dynamic_cast<PendingReaderTab*>(w))
+            tab = Json{{"libraryID", p->libraryId}, {"key", ss(p->key)}};
+        else
+            continue;
+        tabs.push_back(tab);
+        if (i == tabs_->currentIndex())
+            selected = (int)tabs.size();
+    }
+    AppContext::get().config().set(
+        "/ui/session", Json{{"tabs", tabs}, {"selected", selected}, {"library", library_->viewState()}});
+}
+
+void MainWindow::restoreSession()
+{
+    auto session = AppContext::get().config().get("/ui/session", Json::object());
+    if (!session.is_object())
+        return;
+    library_->restoreViewState(session.value("library", Json::object()));
+    auto& lib = AppContext::get().library();
+    for (auto& t : session.value("tabs", Json::array())) {
+        int64_t libraryId = jint(t, "libraryID");
+        auto key = jqs(t, "key");
+        if (!lib.item(libraryId, ss(key)) || findTab(libraryId, key) >= 0)
+            continue;  // deleted meanwhile, or already opened (e.g. from the command line)
+        auto title = ReaderTab::titleFor(libraryId, key);
+        int i = tabs_->addTab(new PendingReaderTab(libraryId, key), icon("type-pdf"), tabText(title));
+        tabs_->setTabToolTip(i, title);
+    }
+    int selected = (int)jint(session, "selected");
+    if (selected > 0 && selected < tabs_->count() && tabs_->currentIndex() == 0)
+        tabs_->setCurrentIndex(selected);
 }
 
 void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page, const QString& annotation)
@@ -324,8 +421,13 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
         QDesktopServices::openUrl(QUrl::fromLocalFile(qpath(path)));
         return;
     }
-    auto* reader = findReader(libraryId, key);
-    if (!reader) {
+    ReaderTab* reader = nullptr;
+    if (int existing = findTab(libraryId, key); existing >= 0) {
+        tabs_->setCurrentIndex(existing);  // loads a restored tab
+        reader = qobject_cast<ReaderTab*>(tabs_->widget(existing));
+        if (!reader)
+            return;  // could not be opened; the tab says why
+    } else {
         try {
             QApplication::setOverrideCursor(Qt::WaitCursor);
             reader = new ReaderTab(libraryId, key, tabs_);
@@ -336,7 +438,7 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
             return;
         }
         auto title = reader->title();
-        int i = tabs_->addTab(reader, icon("type-pdf"), title.length() > 40 ? title.left(38) + "…" : title);
+        int i = tabs_->addTab(reader, icon("type-pdf"), tabText(title));
         tabs_->setTabToolTip(i, title);
     }
     tabs_->setCurrentWidget(reader);
@@ -572,7 +674,19 @@ void MainWindow::retrieveMetadata(int64_t libraryId, const QStringList& keys)
 
 void MainWindow::closeEvent(QCloseEvent* e)
 {
+    shutDown();
+    e->accept();
+}
+
+// Saves the window, the open tabs and where each document was left, then closes the
+// tabs. Runs once, whether the window is closed or the desktop session ends.
+void MainWindow::shutDown()
+{
+    if (shutDown_)
+        return;
+    shutDown_ = true;
     auto& cfg = AppContext::get().config();
+    saveSession();
     cfg.set("/ui/geometry", saveGeometry().toBase64().toStdString());
     cfg.set("/ui/libraryState", library_->saveState().toBase64().toStdString());
     try {
@@ -586,7 +700,6 @@ void MainWindow::closeEvent(QCloseEvent* e)
         delete w;
     }
     sync_->cancel();
-    e->accept();
 }
 
 } // namespace fp::gui

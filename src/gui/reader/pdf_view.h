@@ -45,6 +45,12 @@ public:
     void fitPage();
     bool isFitWidth() const { return fit_ == Fit::Width; }
 
+    // Where the view is, in the format of Zotero's .zotero-reader-state: pageIndex,
+    // scale (percent, "page-width" or "page-fit"), and the viewport's top-left corner as
+    // PDF coordinates of that page (top, left). Restoring needs a laid-out view.
+    Json viewState() const;
+    void restoreViewState(const Json& state);
+
     ReaderTool tool() const { return tool_; }
     void setTool(ReaderTool tool);
     QString color() const { return color_; }
@@ -77,6 +83,7 @@ signals:
     void darkPagesChanged(bool dark);
     void pageChanged(int page);
     void zoomChanged(double zoom);
+    void viewChanged();  // scrolled or zoomed
     void annotationCreated(const fp::Json& data);
     void annotationChanged(const fp::Json& data);
     void annotationDeleted(const QString& key);
