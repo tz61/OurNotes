@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ struct ZoteroImportReport {
 
     std::string summary() const;
 };
+
+// The user_pref("name", value); lines of a Zotero (Firefox) prefs.js: name -> value,
+// strings without their quotes and escapes, true/false and numbers as written.
+std::map<std::string, std::string> parseZoteroPrefs(const std::string& text);
 
 // Best guess of the Zotero data directory: the profile's custom dataDir
 // preference if set, otherwise ~/Zotero.

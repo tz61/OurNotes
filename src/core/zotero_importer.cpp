@@ -1,8 +1,9 @@
 #include "core/zotero_importer.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <map>
-#include <regex>
+#include <optional>
 #include <set>
 
 #include "core/hash.h"
@@ -42,7 +43,6 @@ std::vector<fs::path> profileRoots()
 std::map<std::string, std::string> readPrefs()
 {
     std::map<std::string, std::string> prefs;
-    static const std::regex re(R"re(user_pref\("([^"]+)",\s*("(?:[^"\\]|\\.)*"|true|false|-?\d+)\);)re");
     for (auto& root : profileRoots()) {
         std::error_code ec;
         if (!fs::is_directory(root, ec))
@@ -57,20 +57,30 @@ std::map<std::string, std::string> readPrefs()
             } catch (...) {
                 continue;
             }
-            for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) {
-                std::string value = (*it)[2];
-                if (value.size() >= 2 && value.front() == '"') {
-                    try {
-                        value = Json::parse(value).get<std::string>();
-                    } catch (...) {
-                        value = value.substr(1, value.size() - 2);
-                    }
-                }
-                prefs[(*it)[1]] = value;
-            }
+            for (auto& [name, value] : parseZoteroPrefs(text))
+                prefs[name] = value;
         }
     }
     return prefs;
+}
+
+// Zotero stores date fields as "YYYY-MM-DD original text" (a sortable form plus what
+// the user typed): the original text, or nothing when the value is not of that form.
+std::optional<std::string> originalDateText(const std::string& value)
+{
+    auto digits = [&](size_t from, size_t n) {
+        for (size_t i = from; i < from + n; ++i)
+            if (!std::isdigit((unsigned char)value[i]))
+                return false;
+        return true;
+    };
+    if (value.size() < 12 || !digits(0, 4) || value[4] != '-' || !digits(5, 2) || value[7] != '-' ||
+        !digits(8, 2) || value[10] != ' ')
+        return std::nullopt;
+    auto text = value.substr(11);
+    if (text.find_first_of("\r\n") != std::string::npos)
+        return std::nullopt;
+    return text;
 }
 
 int64_t fileMtimeMs(const fs::path& p)
@@ -163,6 +173,58 @@ std::string ZoteroImportReport::summary() const
     if (styles)
         s += ", " + std::to_string(styles) + " citation styles";
     return s;
+}
+
+// Read by hand: a std::regex over string values hundreds of kilobytes long (Zotero keeps
+// some caches in prefs.js) overflows the recursive matcher of MSVC's library, which then
+// throws, and the application aborted when started.
+std::map<std::string, std::string> parseZoteroPrefs(const std::string& text)
+{
+    std::map<std::string, std::string> prefs;
+    const std::string start = "user_pref(\"";
+    size_t pos = 0;
+    while ((pos = text.find(start, pos)) != std::string::npos) {
+        pos += start.size();
+        size_t nameEnd = text.find('"', pos);
+        if (nameEnd == std::string::npos)
+            break;
+        if (nameEnd == pos || nameEnd + 1 >= text.size() || text[nameEnd + 1] != ',')
+            continue;
+        std::string name = text.substr(pos, nameEnd - pos);
+        size_t i = nameEnd + 2;
+        while (i < text.size() && std::isspace((unsigned char)text[i]))
+            ++i;
+        std::string value;
+        if (i < text.size() && text[i] == '"') {
+            size_t end = i + 1;
+            while (end < text.size() && text[end] != '"')
+                end += text[end] == '\\' ? 2 : 1;
+            if (end >= text.size())
+                break;
+            std::string quoted = text.substr(i, end + 1 - i);
+            try {
+                value = Json::parse(quoted).get<std::string>();
+            } catch (...) {
+                value = quoted.substr(1, quoted.size() - 2);
+            }
+            i = end + 1;
+        } else {
+            size_t end = i;
+            while (end < text.size() && (std::isalnum((unsigned char)text[end]) || text[end] == '-'))
+                ++end;
+            value = text.substr(i, end - i);
+            bool number = !value.empty() && value.find_first_not_of("0123456789", value[0] == '-') == std::string::npos &&
+                          value != "-";
+            if (value != "true" && value != "false" && !number)
+                continue;
+            i = end;
+        }
+        if (text.compare(i, 2, ");") != 0)
+            continue;
+        prefs[name] = value;
+        pos = i + 2;
+    }
+    return prefs;
 }
 
 fs::path findZoteroDataDir()
@@ -354,20 +416,17 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
         return it == items.end() ? nullptr : &it->second.data;
     };
     {
-        // Zotero stores date fields as "YYYY-MM-DD original text" (a sortable form plus
-        // what the user typed) and accessDate as "YYYY-MM-DD HH:MM:SS" in UTC.
-        static const std::regex multipart(R"(^\d{4}-\d{2}-\d{2} (.+)$)");
+        // date fields keep what the user typed; accessDate is "YYYY-MM-DD HH:MM:SS" in UTC
         auto st = z.query("SELECT d.itemID, d.fieldID, v.value FROM itemData d JOIN itemDataValues v USING(valueID)");
         while (st.step())
             if (auto* d = findItem(st.i64(0)))
                 if (fields.count(st.i64(1))) {
                     const auto& field = fields[st.i64(1)];
                     std::string value = st.str(2);
-                    std::smatch m;
                     if (field == "accessDate")
                         value = sqlToIso(value);
-                    else if (std::regex_match(value, m, multipart) && m[1].str().find(':') == std::string::npos)
-                        value = m[1].str();
+                    else if (auto text = originalDateText(value); text && text->find(':') == std::string::npos)
+                        value = *text;
                     (*d)[field] = value;
                 }
     }
