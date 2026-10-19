@@ -151,6 +151,10 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     splitter_->setStretchFactor(1, 1);
     splitter_->setStretchFactor(2, 0);
     splitter_->setSizes({240, 760, 380});
+    // dragging an edge far does not collapse the list (or the item pane, which has its
+    // own button) to nothing
+    splitter_->setCollapsible(1, false);
+    splitter_->setCollapsible(2, false);
     // dragging the item pane's edge squeezes the item list, never the collections
     splitter_->handle(2)->installEventFilter(this);
     connect(paneToggle_, &QToolButton::toggled, this, [this](bool on) {
@@ -468,36 +472,40 @@ bool LibraryView::eventFilter(QObject* watched, QEvent* e)
     if (watched == items_->viewport() && e->type() == QEvent::Resize)
         fitColumns();
     if (watched == splitter_->handle(2)) {
-        // pin the collections pane at its width while the item pane's edge is dragged
+        // While the item pane's edge is dragged, the collections pane keeps its width and
+        // the list keeps room for the title's minimum (or what it has, if less). Only
+        // then: as a lasting minimum it would set the window's, too wide for small screens.
         if (e->type() == QEvent::MouseButtonPress) {
             leftMinimum_ = leftSplitter_->minimumWidth();
             leftSplitter_->setMinimumWidth(leftSplitter_->width());
+            middle_->setMinimumWidth(std::min(middle_->width(), listMinimum_));
         } else if (e->type() == QEvent::MouseButtonRelease) {
             leftSplitter_->setMinimumWidth(leftMinimum_);
+            middle_->setMinimumWidth(0);
         }
     }
     return QWidget::eventFilter(watched, e);
 }
 
-// The title column takes whatever width the other columns leave, down to a minimum;
-// the list cannot be made narrower than that, so the last column always ends where the
-// list does.
+// The title column takes whatever width the other columns leave, so the last column
+// always ends where the list does. Dragging the item pane's edge stops when the title is
+// at its minimum (see eventFilter); only a narrow window squeezes it further.
 void LibraryView::fitColumns()
 {
     if (fitting_)
         return;
     auto* header = items_->header();
-    constexpr int kMinTitle = 180;
+    constexpr int kMinTitle = 180, kNarrowTitle = 60;
     int others = 0;
     for (int c = 0; c < header->count(); ++c)
         if (c != ItemsModel::Title && !header->isSectionHidden(c))
             others += header->sectionSize(c);
     fitting_ = true;
-    header->resizeSection(ItemsModel::Title, std::max(kMinTitle, items_->viewport()->width() - others));
+    header->resizeSection(ItemsModel::Title, std::max(kNarrowTitle, items_->viewport()->width() - others));
     fitting_ = false;
     items_->horizontalScrollBar()->setValue(0);
     int chrome = items_->frameWidth() * 2 + items_->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-    middle_->setMinimumWidth(std::max(kMinTitle + others + chrome, middle_->layout()->minimumSize().width()));
+    listMinimum_ = std::max(kMinTitle + others + chrome, middle_->layout()->minimumSize().width());
 }
 
 void LibraryView::openIndex(const QModelIndex& index)

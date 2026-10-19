@@ -1507,7 +1507,7 @@ TEST_CASE("main window: tabs wrapping onto more rows never resize the window, wh
         },
         5000));
     window.showNormal();
-    QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000);
+    CHECK(QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000));
 }
 
 TEST_CASE("main window: Control-Command-F (F11 elsewhere) enters and leaves full screen")
@@ -1607,13 +1607,9 @@ TEST_CASE("library: columns fill the list, the title column gives way, the item 
     CHECK(total() == items->viewport()->width());
     CHECK(otherWidths() == before);
     CHECK(header->sectionSize(ItemsModel::Title) < title);
-    // down to a minimum: the list does not get narrower than that
-    splitter->setSizes({240, 10, 1250});
-    QApplication::processEvents();
-    CHECK(header->sectionSize(ItemsModel::Title) >= 180);
-    CHECK(total() == items->viewport()->width());
-    splitter->setSizes({240, 760, 500});
-    QApplication::processEvents();
+    // the list's minimum is not the window's: squeezed by a narrow window, the title
+    // column gives way further (dragging the pane's edge stops at 180, below)
+    CHECK(view.minimumSizeHint().width() < 700);
 
     // dragging the item pane's edge far to the left stops at the list's minimum and
     // leaves the collections alone

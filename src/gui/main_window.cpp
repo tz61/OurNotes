@@ -274,9 +274,9 @@ void MainWindow::buildActions()
 
     auto* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Library Tab"), QKeySequence("Ctrl+1"), this, [this] { tabs_->setCurrentIndex(0); });
-    auto* nextTab = view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
+    [[maybe_unused]] auto* nextTab = view->addAction(tr("Next Tab"), QKeySequence::NextChild, this,
                                     [this] { tabs_->setCurrentIndex((tabs_->currentIndex() + 1) % tabs_->count()); });
-    auto* previousTab = view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
+    [[maybe_unused]] auto* previousTab = view->addAction(tr("Previous Tab"), QKeySequence::PreviousChild, this, [this] {
         tabs_->setCurrentIndex((tabs_->currentIndex() + tabs_->count() - 1) % tabs_->count());
     });
 #ifdef Q_OS_MACOS

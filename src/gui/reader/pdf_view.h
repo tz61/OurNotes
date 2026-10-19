@@ -137,6 +137,7 @@ private:
         double width = 2;
         double fontSize = 12;
         QString comment;
+        bool badge = false;  // has a comment to show as a badge (see hasCommentBadge)
         bool external = false;
     };
 

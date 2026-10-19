@@ -47,16 +47,21 @@ constexpr double kBadgeHeight = 13;
 
 void paintCommentBadge(QPainter& p, const QRectF& r, const QColor& color)
 {
-    QPainterPath bubble;
-    bubble.addRoundedRect(r, 3, 3);
-    QPainterPath tail;  // pointing down-left, at the annotation's corner
-    tail.moveTo(r.left() + 2, r.bottom() - 2);
-    tail.lineTo(r.left() - 3, r.bottom() + 4);
-    tail.lineTo(r.left() + 7, r.bottom());
-    tail.closeSubpath();
+    // the outline is the same for every badge; uniting paths is slow, so it is made once
+    static const QPainterPath shape = [] {
+        QRectF b(0, 0, kBadgeWidth, kBadgeHeight);
+        QPainterPath bubble;
+        bubble.addRoundedRect(b, 3, 3);
+        QPainterPath tail;  // pointing down-left, at the annotation's corner
+        tail.moveTo(b.left() + 2, b.bottom() - 2);
+        tail.lineTo(b.left() - 3, b.bottom() + 4);
+        tail.lineTo(b.left() + 7, b.bottom());
+        tail.closeSubpath();
+        return bubble.united(tail);
+    }();
     p.setPen(QPen(color.darker(170), 1));
     p.setBrush(color);
-    p.drawPath(bubble.united(tail));
+    p.drawPath(shape.translated(r.topLeft()));
     // two lines of "text": dark on bright colours (yellow), light on darker ones (blue)
     double luminance = 0.299 * color.redF() + 0.587 * color.greenF() + 0.114 * color.blueF();
     QColor ink = luminance > 0.6 ? QColor(0, 0, 0, 160) : QColor(255, 255, 255, 230);
@@ -772,6 +777,8 @@ PdfView::AnnView PdfView::makeView(const Json& data) const
     if (!v.color.isValid())
         v.color = QColor("#ffd400");
     v.comment = jqs(data, "annotationComment");
+    // a sticky note's or a text box's comment is what it shows; the others get a badge
+    v.badge = v.type != "note" && v.type != "text" && !v.comment.trimmed().isEmpty();
     v.external = jbool(data, "annotationIsExternal");
     auto pos = data.value("annotationPosition", Json::object());
     if (pos.is_string()) {
@@ -847,11 +854,8 @@ const PdfView::AnnView* PdfView::annotationAt(int page, QPointF pt) const
     return found;
 }
 
-bool PdfView::hasCommentBadge(const AnnView& a) const
-{
-    // a sticky note's or a text box's comment is what it shows
-    return a.type != "note" && a.type != "text" && !a.comment.trimmed().isEmpty();
-}
+// worked out when the annotation is loaded: this is asked on every paint and mouse move
+bool PdfView::hasCommentBadge(const AnnView& a) const { return a.badge; }
 
 QRectF PdfView::commentBadge(const AnnView& a, const QRectF& bounds) const
 {
