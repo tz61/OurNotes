@@ -22,6 +22,7 @@ set(OURNOTES_GUI_SOURCES
     note_html.cpp
     preferences.cpp
     shift_wheel.cpp
+    side_pane.cpp
     sync_controller.cpp
     sync_history.cpp
     tab_widget.cpp

@@ -34,6 +34,7 @@
 #include "gui/icons.h"
 #include "gui/item_pane.h"
 #include "gui/note_editor.h"
+#include "gui/side_pane.h"
 #include "gui/reader/annotation_sidebar.h"
 #include "gui/theme.h"
 
@@ -363,6 +364,7 @@ void ReaderTab::buildContextPane()
             AppContext::get().config().set("/reader/contextTab", index == 0 ? "info" : "notes");
     });
     splitter_->addWidget(contextPane_);
+    shareSidePaneWidth(splitter_);  // as wide as in the other tabs and the library
 }
 
 void ReaderTab::buildToolbar()

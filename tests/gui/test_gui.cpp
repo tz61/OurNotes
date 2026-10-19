@@ -2893,6 +2893,62 @@ TEST_CASE("library: moving between items does not change the window's minimum he
     CHECK(view->findChild<LocationBox*>());
 }
 
+TEST_CASE("main window: the pane beside the PDFs and the library is one width")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    std::vector<QString> keys;
+    for (int i = 0; i < 3; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper " + std::to_string(i)}});
+        keys.push_back(qs(jstr(env.library.importAttachment(env.lib, file, jstr(paper, "key")), "key")));
+    }
+    MainWindow window;
+    window.resize(1500, 900);
+    window.show();
+    window.openAttachment(env.lib, keys[0]);
+    window.openAttachment(env.lib, keys[1]);
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto paneWidth = [&](QWidget* tab) {
+        QSplitter* split = nullptr;  // the tab's own, whose last widget is the pane
+        for (auto* s : tab->findChildren<QSplitter*>())
+            if (s->orientation() == Qt::Horizontal && s->count() == 3 && (!split || s->parentWidget() == tab))
+                split = s;
+        return split ? split->sizes().back() : -1;
+    };
+    auto* first = tabs->widget(1);
+    tabs->setCurrentWidget(first);
+    QApplication::processEvents();
+    QSplitter* split = nullptr;
+    for (auto* s : first->findChildren<QSplitter*>())
+        if (s->orientation() == Qt::Horizontal && s->count() == 3)
+            split = s;
+    REQUIRE(split);
+    int before = split->sizes().back();
+    auto* handle = split->handle(2);
+    QPoint mid(handle->width() / 2, handle->height() / 2);
+    QTest::mousePress(handle, Qt::LeftButton, {}, mid);
+    QTest::mouseMove(handle, mid - QPoint(40, 0));
+    QTest::mouseMove(handle, mid - QPoint(80, 0));
+    QTest::mouseRelease(handle, Qt::LeftButton, {}, mid - QPoint(80, 0));
+    QApplication::processEvents();
+    int width = split->sizes().back();
+    REQUIRE(width > before);
+    CHECK(env.config.get("/ui/sidePaneWidth", 0).get<int>() == width);
+    tabs->setCurrentIndex(2);  // the other PDF
+    QApplication::processEvents();
+    CHECK(paneWidth(tabs->widget(2)) == width);
+    tabs->setCurrentIndex(0);  // the library's item pane
+    QApplication::processEvents();
+    CHECK(paneWidth(window.findChild<LibraryView*>()) == width);
+    window.openAttachment(env.lib, keys[2]);  // opened later
+    QApplication::processEvents();
+    CHECK(paneWidth(tabs->currentWidget()) == width);
+}
+
 TEST_CASE("main window: Ctrl+Shift+Tab goes to the previous tab, also from a note")
 {
     app();

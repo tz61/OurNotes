@@ -29,6 +29,7 @@
 #include "gui/icons.h"
 #include "gui/item_pane.h"
 #include "gui/note_editor.h"
+#include "gui/side_pane.h"
 #include "gui/tag_selector.h"
 #include "gui/theme.h"
 
@@ -237,6 +238,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     splitter_->setStretchFactor(1, 1);
     splitter_->setStretchFactor(2, 0);
     splitter_->setSizes({240, 760, 380});
+    shareSidePaneWidth(splitter_);  // the item pane as wide as the PDFs' Info and Notes
     // dragging an edge far does not collapse the list (or the item pane, which has its
     // own button) to nothing
     splitter_->setCollapsible(1, false);
@@ -600,6 +602,7 @@ void LibraryView::restoreState(const QByteArray& state)
     }
     items_->header()->setStretchLastSection(false);
     setItemPaneVisible(paneToggle_->isChecked());  // not part of the splitter's state
+    applySidePaneWidth(splitter_);
     fitColumns();
 }
 
