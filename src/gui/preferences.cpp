@@ -139,12 +139,11 @@ QWidget* PreferencesDialog::generalPage()
         ctx.config().save();
         emit ctx.appearanceChanged();
     });
-    auto* bands = new QCheckBox(tr("Show a BanG Dream! band behind the item list, a different one every two hours"),
+    auto* bands = new QCheckBox(tr("Show a background picture behind the item list, a different one every two hours"),
                                 page);
     bands->setObjectName("bandBackground");
-    bands->setToolTip(tr("Poppin'Party from midnight to Ikka Dumb Rock! from 22:00. Pictures of your own in the data "
-                         "directory under backgrounds/bands are shown instead."));
-    bands->setChecked(cfg.get("/ui/bandBackground", false).get<bool>());
+    bands->setToolTip(tr("Pictures of your own in the data directory under backgrounds/bands are shown instead."));
+    bands->setChecked(cfg.get("/ui/bandBackground", true).get<bool>());
     form->addRow(QString(), bands);
     connect(bands, &QCheckBox::toggled, this, [](bool on) {
         auto& ctx = AppContext::get();

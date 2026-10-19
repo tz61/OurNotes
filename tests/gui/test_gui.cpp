@@ -3106,7 +3106,7 @@ TEST_CASE("library: with a band picture the list has no stripes, in light and da
         INFO((appearance == Appearance::Light ? "light" : "dark") << " mode");
         applyAppearance(appearance);
         Env env;
-        env.config.set("/ui/bandBackground", true);  // off unless asked for
+        env.config.set("/ui/bandBackground", true);
         auto bands = env.library.dataDir() / "backgrounds" / "bands";
         fs::create_directories(bands);
         QImage picture(100, 2000, QImage::Format_RGB32);  // fitted and centred: the whole height, mid-list

@@ -296,7 +296,8 @@ void MainWindow::buildActions()
     });
     exportPdf->setObjectName("exportPdf");
     file->addSeparator();
-    file->addAction(tr("Close Tab"), QKeySequence::Close, this, [this] {
+    // Ctrl+W (⌘W) everywhere: Windows' standard Close is Ctrl+F4
+    file->addAction(tr("Close Tab"), QKeySequence("Ctrl+W"), this, [this] {
         int i = tabs_->currentIndex();
         if (i > 0)
             emit tabs_->tabCloseRequested(i);

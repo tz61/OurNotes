@@ -551,7 +551,7 @@ void LibraryView::updateBandBackground()
     QStringList files;
     const QStringList kinds{"*.png", "*.jpg", "*.jpeg", "*.webp"};
     QDir dir(qpath(AppContext::get().library().dataDir() / "backgrounds" / "bands"));
-    if (AppContext::get().config().get("/ui/bandBackground", false).get<bool>()) {  // off unless asked for
+    if (AppContext::get().config().get("/ui/bandBackground", true).get<bool>()) {
         files = dir.entryList(kinds, QDir::Files, QDir::Name);
         if (files.isEmpty()) {
             dir = QDir(":/bands");

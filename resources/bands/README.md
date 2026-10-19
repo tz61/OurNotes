@@ -2,7 +2,7 @@
 
 The twelve bands OurNotes can show behind the item list, a different one every two hours
 of the day: Poppin'Party from midnight, Afterglow from 2:00, … Ikka Dumb Rock! from
-22:00. Off unless turned on in *Preferences → General*. They are built into the program (`src/gui/resources.qrc`); pictures in
+22:00. *Preferences → General* turns them off ("background picture"). They are built into the program (`src/gui/resources.qrc`); pictures in
 `<data dir>/backgrounds/bands/` are shown instead, in name order.
 
 From the [BanG Dream! wiki](https://bandori.miraheze.org/): the bands' artist covers,
