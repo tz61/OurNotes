@@ -302,15 +302,19 @@ void PdfView::relayout(bool keepPosition)
         y += h + kGap;
     }
     contentSize_ = QSizeF(contentW, y - kGap + kMargin);
+    // The scroll bars take the new size before the view is put back where it was; in
+    // between, the old offset points elsewhere (dozens of pages away, deep into a long
+    // document), and the renders asked for there dropped the pages in view: blank
+    // pages while zooming. Only the final place counts.
+    ++settling_;
     updateScrollBars();
-    if (anchorPage >= 0) {
+    if (anchorPage >= 0)
         verticalScrollBar()->setValue(int(pageRects_[anchorPage].top() + anchorY * scale_ - 1));
-    }
-    if (textEditor_ && !editingKey_.isEmpty())
-        if (auto* a = findAnn(editingKey_))
-            textEditor_->setGeometry(toView(a->page, a->rects.empty() ? a->bounds : a->rects[0]).toRect());
-    requestRenders();
-    viewport()->update();
+    --settling_;
+    if (settling_ == 0)
+        scrolled();
+    else
+        viewport()->update();
 }
 
 void PdfView::updateScrollBars()
@@ -397,12 +401,15 @@ void PdfView::setZoom(double zoom, QPointF anchor)
     fit_ = Fit::None;
     scale_ = zoom * kBaseScale;
     ++generation_;
+    ++settling_;  // see relayout
     relayout(page < 0);
     if (page >= 0) {
         QPointF newContent = pageRects_[page].topLeft() + pagePt * scale_;
         horizontalScrollBar()->setValue(int(newContent.x() - anchor.x()));
         verticalScrollBar()->setValue(int(newContent.y() - anchor.y()));
     }
+    --settling_;
+    scrolled();
     emit zoomChanged(this->zoom());
 }
 
@@ -509,6 +516,14 @@ void PdfView::resizeEvent(QResizeEvent* e)
 }
 
 void PdfView::scrollContentsBy(int, int)
+{
+    if (settling_ == 0)
+        scrolled();
+}
+
+// After the view moved (or its layout changed): what follows the pages, the renders
+// for where it is now, and the page it shows.
+void PdfView::scrolled()
 {
     hidePopup();
     placeComment();

@@ -163,6 +163,8 @@ private:
     QPointF toView(int page, QPointF pagePoint) const;
     std::pair<int, int> visiblePages(double margin = 0) const;
     void requestRenders();
+    void scrolled();
+    int settling_ = 0;  // a layout or zoom is placing the view; scrolling meanwhile does not count
     // A view not shown for a while gives back its rendered pages, render thread and
     // MuPDF caches; they come back when it is shown again.
     void releaseMemory();

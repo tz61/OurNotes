@@ -209,6 +209,42 @@ TEST_CASE("Shift+wheel scrolls sideways")
     CHECK(v->value() > 0);
 }
 
+TEST_CASE("pdf view: zooming deep into a long document keeps the pages in view")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "long.pdf";
+    writeManyPagesPdf(file, 300);
+    PdfView view;
+    view.resize(900, 900);
+    view.open(file);
+    view.show();
+    view.setDarkPages(false);
+    QApplication::processEvents();
+    // text on screen: the pages' rendered images, not blank paper
+    auto inkShown = [&] {
+        auto img = view.viewport()->grab().toImage().convertToFormat(QImage::Format_Grayscale8);
+        int ink = 0;
+        for (int y = 0; y < img.height(); y += 2)
+            for (int x = 0; x < img.width(); x += 2)
+                ink += qGray(img.pixel(x, y)) < 80;
+        return ink;
+    };
+    for (int page : {2, 250}) {
+        view.goToPage(page);
+        REQUIRE(QTest::qWaitFor([&] { return inkShown() > 50; }, 10000));
+        QPointF centre(view.viewport()->width() / 2.0, view.viewport()->height() / 2.0);
+        for (double factor : {1.25, 0.8, 0.8, 1.6}) {
+            view.setZoom(view.zoom() * factor, centre);
+            // drawn before any new render can arrive: the old images, scaled
+            INFO("page " << page << ", zoom x" << factor);
+            CHECK(inkShown() > 20);
+            CHECK(std::abs(view.currentPage() - page) <= 1);
+            REQUIRE(QTest::qWaitFor([&] { return inkShown() > 50; }, 10000));
+        }
+    }
+}
+
 TEST_CASE("pdf view: pages are drawn pixel for pixel, not resampled")
 {
     app();
