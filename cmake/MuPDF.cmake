@@ -78,9 +78,12 @@ elseif(OURNOTES_BUNDLE_MUPDF AND MSVC)
         PREFIX "${_prefix}"
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND ""
-        # the projects ask for Visual Studio 2019's toolset (use the one CMake found) and
-        # link-time code generation (which every program linking libmupdf.lib would redo)
-        BUILD_COMMAND "${_msbuild}" platform/win32/libmupdf.vcxproj -m -nologo -verbosity:minimal
+        # Built through the solution: it maps the bin2coff tool (which embeds the fonts and
+        # only has a Release|Win32 configuration) to Win32 when building for x64; building
+        # libmupdf.vcxproj alone would ask bin2coff for Release|x64 and fail (MSB8013).
+        # The projects ask for Visual Studio 2019's toolset (use the one CMake found) and
+        # link-time code generation (which every program linking libmupdf.lib would redo).
+        BUILD_COMMAND "${_msbuild}" platform/win32/mupdf.sln -t:libmupdf -m -nologo -verbosity:minimal
             "-p:Configuration=${_config}" "-p:Platform=${_platform}"
             "-p:PlatformToolset=v${MSVC_TOOLSET_VERSION}" -p:WindowsTargetPlatformVersion=10.0
             -p:WholeProgramOptimization=false

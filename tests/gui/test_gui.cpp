@@ -1303,7 +1303,8 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     env.config.set("/notes/formulaColor", "#ff0000");
     emit env.context.appearanceChanged();
     QApplication::processEvents();
-    CHECK(brightest([](QColor c) { return c.red() > 180 && c.green() < 90; }) > 3);
+    // red, not how bright: the thin strokes come out lighter on Windows (few pixels > 180)
+    CHECK(brightest([](QColor c) { return c.red() > 120 && c.green() < 60; }) > 3);
     env.config.set("/notes/formulaColor", "");
 
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
@@ -1773,7 +1774,17 @@ TEST_CASE("main window: Enter on several items opens them top to bottom")
 int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
+#ifdef Q_OS_WIN
+    // On Windows the offscreen platform looks for fonts only in Qt's lib/fonts, which
+    // does not exist: without fonts every character is a 12-pixel box, and every width
+    // the tests check is too large. Use the system's fonts and Windows' UI font.
+    if (!qEnvironmentVariableIsSet("QT_QPA_FONTDIR"))
+        qputenv("QT_QPA_FONTDIR", (qEnvironmentVariable("WINDIR", "C:/Windows") + "/Fonts").toLocal8Bit());
+#endif
     QApplication application(argc, argv);
+#ifdef Q_OS_WIN
+    QApplication::setFont(QFont("Segoe UI", 9));
+#endif
     doctest::Context context(argc, argv);
     return context.run();
 }
