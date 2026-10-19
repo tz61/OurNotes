@@ -451,7 +451,7 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
                 storedAttachments[jstr(*d, "key")] = {items[st.i64(0)].lib, d};
         }
     }
-    int skippedExternal = 0;
+    int external = 0;
     {
         auto st = z.query("SELECT itemID, parentItemID, type, authorName, text, comment, color, pageLabel, sortIndex, "
                           "position, isExternal FROM itemAnnotations");
@@ -460,10 +460,9 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
             if (!d)
                 continue;
             if (st.i64(10)) {
-                // Annotations stored inside the PDF are rendered from the file itself.
-                items.erase(st.i64(0));
-                ++skippedExternal;
-                continue;
+                // Stored inside the PDF file itself; read-only, like in Zotero.
+                (*d)["annotationIsExternal"] = true;
+                ++external;
             }
             int type = st.i32(2);
             (*d)["parentItem"] = keyOf[st.i64(1)];
@@ -482,8 +481,8 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
             }
         }
     }
-    if (skippedExternal)
-        log(std::to_string(skippedExternal) + " annotations embedded in PDF files are shown from the files themselves");
+    if (external)
+        log(std::to_string(external) + " annotations come from PDF files and are read-only");
 
     // --- files --------------------------------------------------------------------------
     if (opt.fileMode != ZoteroFileMode::None) {
