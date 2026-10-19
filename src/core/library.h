@@ -25,6 +25,16 @@ struct LibraryInfo {
     bool editable = true;
     std::string syncTarget;   // id of the target sync_version refers to
     int64_t syncVersion = 0;  // last remote library version pulled
+    std::string syncName;     // the name last agreed with that target ("" before the first)
+};
+
+// What keeps a library from being deleted: entries in it or in its trash (saved
+// searches go with it).
+struct LibraryContents {
+    int64_t items = 0;        // top-level items
+    int64_t collections = 0;
+    int64_t other = 0;        // child items (notes, attachments, annotations)
+    bool empty() const { return items == 0 && collections == 0 && other == 0; }
 };
 
 // Flat item row for list views (derived columns only, no JSON parsing needed).
@@ -142,9 +152,12 @@ public:
     int64_t createLibrary(const std::string& name, const std::string& type = "user", const std::string& uid = {});
     void renameLibrary(int64_t id, const std::string& name);
     void deleteLibrary(int64_t id);
+    static constexpr const char* kDefaultName = "My Library";
     int64_t defaultLibrary();  // creates "My Library" when there is none
     void setSyncState(int64_t id, const std::string& target, int64_t version);
+    void setSyncName(int64_t id, const std::string& name);
     void setLibraryEditable(int64_t id, bool editable);
+    LibraryContents libraryContents(int64_t id);  // trash included
 
     // --- items -----------------------------------------------------------------------
     std::optional<Json> item(int64_t lib, const std::string& key);

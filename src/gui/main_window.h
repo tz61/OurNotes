@@ -51,6 +51,8 @@ private:
     void addByIdentifier();
     void retrieveMetadata(int64_t libraryId, const QStringList& keys);
     void newLibrary();
+    // Only an empty library: on the sync target first, when it is synced there.
+    void deleteLibrary(int64_t libraryId);
     void showConflicts();
     void setStatus(const QString& text, int timeoutMs = 0);
 

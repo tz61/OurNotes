@@ -25,6 +25,7 @@ signals:
     void exportRequested(const Scope& scope);
     void bibliographyRequested(const Scope& scope);
     void newLibraryRequested();
+    void deleteLibraryRequested(qint64 libraryId);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* e) override;

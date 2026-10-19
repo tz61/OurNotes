@@ -324,7 +324,7 @@ ZoteroImportReport importZotero(Library& library, const ZoteroImportOptions& opt
             std::string uid, name;
             if (l.type == "user") {
                 uid = userId.empty() ? "zotero-local" : "zotero-user-" + userId;
-                name = "My Library";
+                name = Library::kDefaultName;
                 l.uriPrefix = userId.empty() ? "http://zotero.org/users/local/" + localUserKey
                                              : "http://zotero.org/users/" + userId;
             } else if (l.type == "group" && groups.count(l.zoteroId)) {

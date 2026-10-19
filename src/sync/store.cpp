@@ -586,11 +586,18 @@ std::vector<Json> Store::members(const std::string& uid)
     return out;
 }
 
-void Store::deleteLibrary(const std::string& uid)
+void Store::deleteLibrary(const std::string& uid, bool requireEmpty)
 {
     std::lock_guard lock(mutex_);
     Txn txn(db_, true);
     requireLibraryVersion(uid);
+    if (requireEmpty) {
+        auto n = db_.scalarInt("SELECT count(*) FROM objects WHERE uid = ? AND deleted = 0"
+                               " AND type IN ('item', 'collection')",
+                               uid);
+        if (n && *n > 0)
+            throw SyncError("the library still has " + std::to_string(*n) + " entries on the server", 409);
+    }
     deleteLibraryRows(db_, uid);
     txn.commit();
     if (isValidKey(uid)) {

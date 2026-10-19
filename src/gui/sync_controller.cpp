@@ -30,8 +30,8 @@ SyncController::SyncController(QObject* parent) : QObject(parent)
     connect(&intervalTimer_, &QTimer::timeout, this, &SyncController::syncNow);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64, const QString& type, const QString& action, const QStringList&) {
-                if (action == "refresh" || type == "library")
-                    return;
+                if (action == "refresh" || (type == "library" && action != "modify"))
+                    return;  // a rename is synced, the rest is the library's own state
                 if (AppContext::get().config().get("/sync/auto", true).get<bool>() && hasTarget())
                     autoTimer_.start();
             });
@@ -146,6 +146,34 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
         }
         QMetaObject::invokeMethod(
             this, [this, libraryId, key, ok, error] { emit fileDownloaded(libraryId, key, ok, error); },
+            Qt::QueuedConnection);
+    }).detach();
+}
+
+void SyncController::deleteRemoteLibrary(qint64 libraryId)
+{
+    auto target = AppContext::get().config().activeTarget();
+    auto info = AppContext::get().library().library(libraryId);
+    if (!target || !info) {
+        emit remoteLibraryDeleted(libraryId, false, tr("No sync target is configured."));
+        return;
+    }
+    auto dataDir = AppContext::get().library().dataDir();
+    std::thread([this, dataDir, t = *target, libraryId, uid = info->uid] {
+        bool ok = false;
+        QString error;
+        try {
+            Library lib(dataDir);
+            auto transport = makeTransport(t);
+            sync::SyncEngine(lib, *transport, t.id).deleteRemoteLibrary(uid);
+            ok = true;
+        } catch (const sync::SyncError& e) {
+            error = e.status == 401 ? tr("Authentication failed. Sign in again in Preferences → Sync.") : qs(e.what());
+        } catch (const std::exception& e) {
+            error = qs(e.what());
+        }
+        QMetaObject::invokeMethod(
+            this, [this, libraryId, ok, error] { emit remoteLibraryDeleted(libraryId, ok, error); },
             Qt::QueuedConnection);
     }).detach();
 }

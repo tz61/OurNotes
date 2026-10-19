@@ -63,6 +63,7 @@ signals:
     void bibliographyRequested(const Scope& scope, const QStringList& keys);
     void retrieveMetadataRequested(qint64 libraryId, const QStringList& keys);
     void newLibraryRequested();
+    void deleteLibraryRequested(qint64 libraryId);
     void selectionChanged();
 
 protected:

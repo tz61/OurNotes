@@ -31,6 +31,9 @@ std::string SyncReport::summary() const
     std::string s = "pulled " + std::to_string(pulled) + ", pushed " + std::to_string(pushed);
     if (deletedLocally)
         s += ", removed " + std::to_string(deletedLocally);
+    if (librariesRemoved)
+        s += ", " + std::to_string(librariesRemoved) + " empty librar" + (librariesRemoved == 1 ? "y" : "ies") +
+             " removed";
     if (uploaded || downloaded)
         s += ", files up " + std::to_string(uploaded) + " / down " + std::to_string(downloaded);
     if (conflicts)
@@ -66,14 +69,45 @@ SyncReport SyncEngine::syncAll()
     std::map<std::string, RemoteLibrary> remoteByUid;
     for (auto& r : remote)
         remoteByUid[r.uid] = r;
+    bool targetHasOwnLibrary =
+        std::any_of(remote.begin(), remote.end(), [](auto& r) { return r.type == "user" && r.role == "owner"; });
 
     for (auto& lib : library_.libraries()) {
+        bool known = remoteByUid.count(lib.uid) > 0;
+        if (!known && library_.libraryContents(lib.id).empty()) {
+            // sync_target is only set once the target has had the library
+            std::string why;
+            if (lib.syncTarget == targetId_)
+                why = "it is no longer on the sync target";
+            else if (lib.syncTarget.empty() && lib.type == "user" && targetHasOwnLibrary)
+                why = "the sync target has your library already";  // made at first start
+            if (!why.empty()) {
+                log("Removing the empty library \"" + lib.name + "\": " + why);
+                library_.deleteLibrary(lib.id);
+                ++report.librariesRemoved;
+                continue;
+            }
+        }
+        if (!known) {
+            try {
+                remoteByUid[lib.uid] = transport_.ensureLibrary(lib.uid, lib.name, lib.type);
+            } catch (const SyncError& e) {
+                if (e.status != 403)
+                    throw;
+                report.errors.push_back(lib.name + ": " + e.what());  // no longer shared with us
+                continue;
+            }
+            library_.setSyncName(lib.id, lib.name);
+            if (lib.syncTarget == targetId_) {
+                // deleted there while it had entries here: upload them all again
+                log("Uploading \"" + lib.name + "\" again: it was no longer on the sync target");
+                library_.resetSyncState(lib.id, targetId_);
+            }
+        }
         if (lib.syncTarget != targetId_) {
             log("First sync of \"" + lib.name + "\" with this target");
             library_.resetSyncState(lib.id, targetId_);
         }
-        if (!remoteByUid.count(lib.uid))
-            remoteByUid[lib.uid] = transport_.ensureLibrary(lib.uid, lib.name, lib.type);
     }
     for (auto& [uid, r] : remoteByUid) {
         auto local = library_.libraryByUid(uid);
@@ -81,11 +115,18 @@ SyncReport SyncEngine::syncAll()
         if (!local) {
             log("Adding library \"" + r.name + "\" from sync target");
             library_.setSyncState(id, targetId_, 0);
+            library_.setSyncName(id, r.name);
+        } else if (local->name != r.name) {
+            syncName(*local, r);
+        } else if (local->syncName != r.name) {
+            library_.setSyncName(id, r.name);
         }
         library_.setLibraryEditable(id, r.role != "read");
     }
 
     for (auto& lib : library_.libraries()) {
+        if (!remoteByUid.count(lib.uid))
+            continue;  // could not be uploaded
         if (cancelled()) {
             report.cancelled = true;
             break;
@@ -102,6 +143,38 @@ SyncReport SyncEngine::syncAll()
     }
     library_.notifyRefresh();
     return report;
+}
+
+// The side whose name changed since the two last agreed wins; when both did, the
+// target's. Before they first agree (versions before 0.1.3 did not sync names), a
+// local name other than the default one is kept.
+void SyncEngine::syncName(const LibraryInfo& local, RemoteLibrary& remote)
+{
+    const auto& base = local.syncName;
+    bool localChanged = base.empty() ? local.name != Library::kDefaultName : local.name != base;
+    bool remoteChanged = !base.empty() && remote.name != base;
+    if (remote.role == "owner" && localChanged && !remoteChanged) {
+        log("Renaming \"" + remote.name + "\" to \"" + local.name + "\" on the sync target");
+        remote = transport_.ensureLibrary(remote.uid, local.name, remote.type);
+    } else {
+        log("Renaming \"" + local.name + "\" to \"" + remote.name + "\" as on the sync target");
+        library_.renameLibrary(local.id, remote.name);
+    }
+    library_.setSyncName(local.id, remote.name);
+}
+
+void SyncEngine::deleteRemoteLibrary(const std::string& uid)
+{
+    try {
+        transport_.deleteLibrary(uid);
+    } catch (const SyncError& e) {
+        if (e.status != 404 && e.status != 405)
+            throw;
+        // not there, or a server without this call
+        auto remote = transport_.libraries();
+        if (std::any_of(remote.begin(), remote.end(), [&](auto& r) { return r.uid == uid; }))
+            throw SyncError("the sync server cannot delete libraries; update it to OurNotes 0.1.3 or later", 501);
+    }
 }
 
 void SyncEngine::syncLibrary(int64_t libraryId, SyncReport& report)

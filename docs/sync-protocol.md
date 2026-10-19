@@ -41,6 +41,15 @@ its file; uploading a file for an item that is a tombstone is refused (409).
 
 1. `ensureLibrary(uid, name, type)` — creates the library (caller becomes owner)
    or returns the existing one with the caller's `role`.
+   - Names: the client stores the name it last agreed on with the target. If only
+     the local name changed since, the owner sends it with `ensureLibrary`; if the
+     target's changed (or both did, or the caller is not the owner), the local
+     library takes the target's name.
+   - A library the client synced with this target before that is no longer
+     listed was deleted there (or is no longer shared): an empty local copy is
+     removed, one with entries is uploaded again.
+   - A fresh install's empty default library is not uploaded when the target
+     already has a `user` library owned by the caller.
 2. **Pull**: request `changes(since)` with `since` = the version stored after the
    last successful pull (0 at first). Follow `next` until it is `null`, applying
    every object. Then store the `version` of the **last** page as the new
@@ -86,7 +95,7 @@ Errors use the HTTP status and a body `{"error": "message"}`:
 | 401 | missing, invalid or revoked token; wrong password |
 | 403 | read-only member writing; `PUT /libraries/{uid}` on someone else's library |
 | 404 | unknown route, library missing or not accessible, file missing |
-| 409 | upload for a deleted item |
+| 409 | upload for a deleted item; deleting a library that has entries |
 | 413 | body larger than the server allows |
 | 429 | too many failed logins from this address (see `Retry-After`) |
 | 500, 507 | server error, disk full |
@@ -98,7 +107,7 @@ Limits: push ≤ 1000 objects and ≤ 64 MiB of JSON; `changes` returns at most
 ### `GET /info` (no auth)
 
 ```json
-{"server": "ournotesd", "version": "0.1.2", "api": 1}
+{"server": "ournotesd", "version": "0.1.3", "api": 1}
 ```
 
 ### `POST /login` (no auth)
@@ -132,6 +141,13 @@ Body `{"name": "My Library", "type": "user"}`. Creates the library owned by the
 caller, or returns the existing one (the owner's `name` is updated if it
 differs). → a library object as above. 403 if it exists and the caller has no
 access. `GET /libraries/{uid}` returns the library without changing it.
+
+### `DELETE /libraries/{uid}`
+
+Deletes an empty library with its files (owner only) → `{"deleted": true}`. 409
+while it has items or collections that are not deleted, 403 for members. Servers
+before 0.1.3 answer 404 (unknown route): a client tells that apart from a missing
+library by `GET /libraries` still listing it.
 
 ### `GET /libraries/{uid}/changes?since=N&limit=L&cursor=C`
 

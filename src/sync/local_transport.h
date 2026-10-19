@@ -19,6 +19,7 @@ public:
     Json info() override;
     std::vector<RemoteLibrary> libraries() override;
     RemoteLibrary ensureLibrary(const std::string& uid, const std::string& name, const std::string& type) override;
+    void deleteLibrary(const std::string& uid) override;
     ChangesPage changes(const std::string& uid, int64_t since, const std::string& cursor, int limit) override;
     PushResult push(const std::string& uid, const std::vector<PushObject>& objects) override;
 

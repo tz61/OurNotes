@@ -14,7 +14,7 @@ namespace on {
 
 namespace {
 
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 
 const char* kSchemaSql = R"SQL(
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS libraries(
     editable INTEGER NOT NULL DEFAULT 1,
     sync_target TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
-    created TEXT NOT NULL DEFAULT '');
+    created TEXT NOT NULL DEFAULT '',
+    sync_name TEXT);
 CREATE TABLE IF NOT EXISTS items(
     library_id INTEGER NOT NULL,
     key TEXT NOT NULL,
@@ -256,6 +257,9 @@ void Library::migrate()
         return;
     sql::Transaction tx(db_);
     db_.exec(kSchemaSql);
+    // 2: the library name last agreed with the sync target (names are synced)
+    if (!db_.scalarInt("SELECT 1 FROM pragma_table_info('libraries') WHERE name='sync_name'"))
+        db_.exec("ALTER TABLE libraries ADD COLUMN sync_name TEXT");
     if (!db_.scalarStr("SELECT value FROM meta WHERE key='created'"))
         db_.run("INSERT INTO meta(key, value) VALUES('created', ?)", nowIso());
     db_.setUserVersion(kSchemaVersion);
@@ -319,10 +323,12 @@ static LibraryInfo readLibrary(sql::Stmt& st)
     l.editable = st.i64(4) != 0;
     l.syncTarget = st.str(5);
     l.syncVersion = st.i64(6);
+    l.syncName = st.str(7);
     return l;
 }
 
-static const char* kLibraryCols = "SELECT id, uid, name, type, editable, sync_target, sync_version FROM libraries ";
+static const char* kLibraryCols =
+    "SELECT id, uid, name, type, editable, sync_target, sync_version, sync_name FROM libraries ";
 
 std::vector<LibraryInfo> Library::libraries()
 {
@@ -390,12 +396,29 @@ int64_t Library::defaultLibrary()
         return *id;
     if (auto id = db_.scalarInt("SELECT id FROM libraries ORDER BY id LIMIT 1"))
         return *id;
-    return createLibrary("My Library", "user");
+    return createLibrary(kDefaultName, "user");
 }
 
 void Library::setSyncState(int64_t id, const std::string& target, int64_t version)
 {
     db_.run("UPDATE libraries SET sync_target=?, sync_version=? WHERE id=?", target, version, id);
+}
+
+void Library::setSyncName(int64_t id, const std::string& name)
+{
+    db_.run("UPDATE libraries SET sync_name=? WHERE id=?", name, id);
+}
+
+LibraryContents Library::libraryContents(int64_t id)
+{
+    LibraryContents c;
+    c.items = db_.scalarInt("SELECT count(*) FROM items WHERE library_id=? AND (parent_key IS NULL OR parent_key='')",
+                            id).value_or(0);
+    c.collections = db_.scalarInt("SELECT count(*) FROM collections WHERE library_id=?", id).value_or(0);
+    c.other = db_.scalarInt("SELECT count(*) FROM items WHERE library_id=? AND parent_key IS NOT NULL"
+                            " AND parent_key!=''",
+                            id).value_or(0);
+    return c;
 }
 
 void Library::setLibraryEditable(int64_t id, bool editable)

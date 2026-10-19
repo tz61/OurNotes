@@ -238,15 +238,7 @@ void CollectionTree::contextMenuEvent(QContextMenuEvent* e)
         menu.addAction(tr("Create Bibliography from Library…"), this, [=] { emit bibliographyRequested(s); });
         menu.addSeparator();
         menu.addAction(tr("New Library…"), this, &CollectionTree::newLibraryRequested);
-        menu.addAction(tr("Delete Library…"), this, [=] {
-            auto name = item->text(0);
-            if (QMessageBox::warning(this, tr("Delete Library"),
-                                     tr("Permanently delete the library \"%1\" with all its items and files from "
-                                        "this computer?\n\nCopies on sync servers are not affected.")
-                                         .arg(name),
-                                     QMessageBox::Yes | QMessageBox::Cancel) == QMessageBox::Yes)
-                ctx->library().deleteLibrary(s.libraryId);
-        });
+        menu.addAction(tr("Delete Library…"), this, [=] { emit deleteLibraryRequested(s.libraryId); });
         break;
     }
     case ScopeKind::Collection:

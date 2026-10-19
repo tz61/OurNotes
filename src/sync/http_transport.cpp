@@ -190,6 +190,8 @@ RemoteLibrary HttpTransport::ensureLibrary(const std::string& uid, const std::st
     return remoteLibraryFromJson(request("PUT", libraryPath(uid), &body));
 }
 
+void HttpTransport::deleteLibrary(const std::string& uid) { request("DELETE", libraryPath(uid)); }
+
 ChangesPage HttpTransport::changes(const std::string& uid, int64_t since, const std::string& cursor, int limit)
 {
     std::string q = "/changes?since=" + std::to_string(since);

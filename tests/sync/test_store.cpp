@@ -138,6 +138,19 @@ TEST_CASE("store: library access rules")
     CHECK(store.ensureLibrary("LIBA", "Bob's now", "user", "bob").owner == "bob");
 }
 
+TEST_CASE("store: deleting a library when asked to keep one with entries")
+{
+    TempDir dir;
+    Store store(dir.path);
+    store.createUser("alice", "a");
+    store.ensureLibrary("LIB", "Main", "user", "alice");
+    store.push("LIB", {put("item", "AAAA1111", 0, item("First")), put("setting", "tagColors", 0, Json::array())});
+    CHECK(statusOf([&] { store.deleteLibrary("LIB", true); }) == 409);
+    store.push("LIB", {del("item", "AAAA1111", 1)});
+    store.deleteLibrary("LIB", true);  // deleted entries and settings do not count
+    CHECK_FALSE(store.library("LIB", "alice"));
+}
+
 TEST_CASE("store: push and changes round trip")
 {
     TempDir dir;

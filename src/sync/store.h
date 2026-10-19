@@ -66,7 +66,9 @@ public:
     void share(const std::string& uid, const std::string& username, const std::string& role);
     bool unshare(const std::string& uid, const std::string& username);
     std::vector<Json> members(const std::string& uid);  // {username, role}
-    void deleteLibrary(const std::string& uid);
+    // requireEmpty: refuses (409) while the library has items or collections that are
+    // not deleted.
+    void deleteLibrary(const std::string& uid, bool requireEmpty = false);
     void renameLibrary(const std::string& uid, const std::string& name);
     // "owner", "write", "read" or "" when the user has no access.
     std::string role(const std::string& uid, const std::string& username);

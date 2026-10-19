@@ -116,6 +116,7 @@ MainWindow::MainWindow()
     connect(library_, &LibraryView::retrieveMetadataRequested, this,
             [this](qint64 lib, const QStringList& keys) { retrieveMetadata(lib, keys); });
     connect(library_, &LibraryView::newLibraryRequested, this, &MainWindow::newLibrary);
+    connect(library_, &LibraryView::deleteLibraryRequested, this, [this](qint64 id) { deleteLibrary(id); });
     connect(sync_, &SyncController::started, this, [this] {
         syncButton_->setIcon(icon("sync"));
         syncButton_->setEnabled(false);
@@ -128,6 +129,23 @@ MainWindow::MainWindow()
         syncButton_->setToolTip(ok ? tr("Sync (last: %1)").arg(QTime::currentTime().toString("HH:mm")) : summary);
         setStatus(ok ? tr("Sync finished: %1").arg(summary) : tr("Sync failed: %1").arg(summary.section('\n', 0, 0)),
                   ok ? 8000 : 0);
+    });
+    connect(sync_, &SyncController::remoteLibraryDeleted, this, [this](qint64 id, bool ok, const QString& error) {
+        auto& lib = AppContext::get().library();
+        auto info = lib.library(id);
+        if (!info)
+            return;
+        setStatus({});
+        if (!ok)
+            QMessageBox::warning(this, tr("Delete Library"),
+                                 tr("\"%1\" could not be deleted on the sync target, so it was kept:\n\n%2")
+                                     .arg(qs(info->name), error));
+        else if (!lib.libraryContents(id).empty())  // filled in the meantime: the next sync uploads it again
+            QMessageBox::information(this, tr("Delete Library"),
+                                     tr("\"%1\" got new entries while it was being deleted, so it was kept.")
+                                         .arg(qs(info->name)));
+        else
+            lib.deleteLibrary(id);
     });
     connect(sync_, &SyncController::fileDownloaded, this,
             [this](qint64 lib, const QString& key, bool ok, const QString& error) {
@@ -549,6 +567,59 @@ void MainWindow::newLibrary()
     if (!ok || name.trimmed().isEmpty())
         return;
     AppContext::get().library().createLibrary(ss(name.trimmed()), "group");
+}
+
+void MainWindow::deleteLibrary(int64_t libraryId)
+{
+    auto& lib = AppContext::get().library();
+    auto info = lib.library(libraryId);
+    if (!info)
+        return;
+    auto name = qs(info->name);
+    auto refuse = [this](const QString& text) {
+        QMessageBox box(QMessageBox::Information, tr("Delete Library"), text, QMessageBox::Ok, this);
+        box.setObjectName("libraryNotDeletable");
+        box.exec();
+    };
+    if (lib.libraries().size() <= 1) {
+        refuse(tr("\"%1\" is the only library, and OurNotes needs one.").arg(name));
+        return;
+    }
+    auto contents = lib.libraryContents(libraryId);
+    if (!contents.empty()) {
+        auto what = contents.items || contents.collections
+                        ? tr("%1 and %2").arg(tr("%n item(s)", nullptr, (int)contents.items),
+                                              tr("%n collection(s)", nullptr, (int)contents.collections))
+                        : tr("%n entry(s) without a parent item", nullptr, (int)contents.other);
+        refuse(tr("\"%1\" still has %2, counting its trash.\n\nOnly an empty library can be deleted: delete its "
+                  "collections, move its items to the trash and empty the trash first.")
+                   .arg(name, what));
+        return;
+    }
+    auto target = AppContext::get().config().activeTarget();
+    bool remote = target && info->syncTarget == target->id;
+    auto question = remote ? tr("Delete the empty library \"%1\"?\n\nIt is also deleted on the sync target \"%2\", "
+                                "and on your other devices when they next sync.")
+                                 .arg(name, qs(target->name))
+                           : tr("Delete the empty library \"%1\"?").arg(name);
+    QMessageBox box(QMessageBox::Question, tr("Delete Library"), question, QMessageBox::NoButton, this);
+    box.setObjectName("confirmDeleteLibrary");
+    auto* yes = box.addButton(tr("Delete Library"), QMessageBox::DestructiveRole);
+    box.setDefaultButton(box.addButton(QMessageBox::Cancel));
+    box.exec();
+    if (box.clickedButton() != static_cast<QAbstractButton*>(yes))
+        return;
+    if (!remote) {
+        lib.deleteLibrary(libraryId);
+        return;
+    }
+    if (sync_->isRunning()) {
+        QMessageBox::information(this, tr("Delete Library"),
+                                 tr("A sync is running. Delete the library when it has finished."));
+        return;
+    }
+    setStatus(tr("Deleting \"%1\" on the sync target…").arg(name));
+    sync_->deleteRemoteLibrary(libraryId);
 }
 
 void MainWindow::showConflicts()

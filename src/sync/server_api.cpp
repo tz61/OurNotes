@@ -279,6 +279,16 @@ struct ApiServer::State {
         sendJson(res, toJson(lib));
     }
 
+    void deleteLibrary(const Request& req, Response& res)
+    {
+        auto user = authenticate(req, res);
+        auto uid = pathParam(req, "uid");
+        if (requireLibrary(uid, user, false).role != "owner")
+            throw SyncError("only the owner of the library can delete it", 403);
+        store.deleteLibrary(uid, true);
+        sendJson(res, Json{{"deleted", true}});
+    }
+
     void changes(const Request& req, Response& res)
     {
         auto user = authenticate(req, res);
@@ -479,6 +489,7 @@ void ApiServer::mount(httplib::Server& svr)
     svr.Get(api + "/libraries", get(&State::listLibraries));
     svr.Get(lib, get(&State::getLibrary));
     svr.Put(lib, withBody(&State::putLibrary));
+    svr.Delete(lib, ignoreBody(&State::deleteLibrary));
     svr.Get(lib + "/changes", get(&State::changes));
     svr.Post(lib + "/push", withBody(&State::push));
     svr.Get(lib + "/files", get(&State::listFiles));

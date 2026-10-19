@@ -111,4 +111,9 @@ TEST_CASE("local transport: two devices sharing a folder")
     } catch (const SyncError& e) {
         CHECK(e.status == 403);
     }
+    CHECK(statusOf([&] { a.deleteLibrary("FOREIGN1"); }) == 403);
+    a.ensureLibrary("EMPTY001", "Empty", "group");
+    a.deleteLibrary("EMPTY001");
+    CHECK(a.libraries().size() == 2);
+    CHECK(statusOf([&] { a.deleteLibrary("LIBRARY1"); }) == 409);
 }

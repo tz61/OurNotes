@@ -1426,6 +1426,40 @@ TEST_CASE("notes: autosaving keeps the whole undo history")
     CHECK(countMath(edit->document()) == 1);
 }
 
+TEST_CASE("main window: only an empty library is deleted, after asking")
+{
+    app();
+    Env env;
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Kept"}});
+    auto extra = env.library.createLibrary("Extra", "group");
+    MainWindow window;
+    window.show();
+    auto* view = window.findChild<LibraryView*>();
+    REQUIRE(view);
+    auto ask = [&](int64_t id, const QString& box, bool confirm) {
+        QString text;
+        answerConfirmation(box, confirm, &text);
+        emit view->deleteLibraryRequested(id);
+        REQUIRE(QTest::qWaitFor([&] { return !text.isEmpty(); }));
+        QApplication::processEvents();
+        return text;
+    };
+
+    auto text = ask(env.lib, "libraryNotDeletable", false);
+    CHECK(text.contains("1 item"));
+    CHECK(text.contains("empty the trash"));
+    CHECK(env.library.library(env.lib));
+
+    ask(extra, "confirmDeleteLibrary", false);
+    CHECK(env.library.library(extra));
+    text = ask(extra, "confirmDeleteLibrary", true);
+    CHECK(text.contains("Extra"));
+    CHECK(!env.library.library(extra));
+    CHECK(window.findChild<QTreeWidget*>()->topLevelItemCount() == 1);
+
+    CHECK(ask(env.lib, "libraryNotDeletable", false).contains("only library"));
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

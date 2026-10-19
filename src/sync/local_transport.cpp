@@ -91,6 +91,13 @@ RemoteLibrary LocalTransport::ensureLibrary(const std::string& uid, const std::s
     return store_.ensureLibrary(uid, name, type, kUser);
 }
 
+void LocalTransport::deleteLibrary(const std::string& uid)
+{
+    if (requireLibrary(uid, false).role != "owner")
+        throw SyncError("only the owner of library '" + uid + "' can delete it", 403);
+    store_.deleteLibrary(uid, true);
+}
+
 RemoteLibrary LocalTransport::requireLibrary(const std::string& uid, bool write)
 {
     auto lib = store_.library(uid, kUser);

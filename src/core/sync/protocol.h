@@ -108,8 +108,12 @@ public:
 
     virtual Json info() = 0;
     virtual std::vector<RemoteLibrary> libraries() = 0;
-    // Create the library if it does not exist (the caller becomes its owner).
+    // Create the library if it does not exist (the caller becomes its owner); for its
+    // owner, also renames it to name.
     virtual RemoteLibrary ensureLibrary(const std::string& uid, const std::string& name, const std::string& type) = 0;
+    // Delete an empty library (owner only): 409 while it has entries, 404 when it is
+    // not there (or the server predates this call).
+    virtual void deleteLibrary(const std::string& uid) = 0;
     virtual ChangesPage changes(const std::string& uid, int64_t since, const std::string& cursor, int limit) = 0;
     virtual PushResult push(const std::string& uid, const std::vector<PushObject>& objects) = 0;
 

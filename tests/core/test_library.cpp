@@ -52,6 +52,23 @@ TEST_CASE("items: create, edit, derived columns, search")
     CHECK(!lib.item(id, jstr(note, "key")));  // children erased too
 }
 
+TEST_CASE("libraries: a database from before synced names is upgraded")
+{
+    TempDir tmp;
+    {
+        Library lib(tmp.path);
+        lib.defaultLibrary();
+        lib.db().exec("ALTER TABLE libraries DROP COLUMN sync_name");
+        lib.db().setUserVersion(1);
+    }
+    Library lib(tmp.path);
+    auto info = lib.libraries().at(0);
+    CHECK(info.name == Library::kDefaultName);
+    CHECK(info.syncName.empty());
+    lib.setSyncName(info.id, "Main");
+    CHECK(lib.library(info.id)->syncName == "Main");
+}
+
 TEST_CASE("collections and tags")
 {
     TempDir tmp;

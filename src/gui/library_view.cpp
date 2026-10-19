@@ -255,6 +255,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     connect(tree_, &CollectionTree::bibliographyRequested, this,
             [this](const Scope& s) { emit bibliographyRequested(s, {}); });
     connect(tree_, &CollectionTree::newLibraryRequested, this, &LibraryView::newLibraryRequested);
+    connect(tree_, &CollectionTree::deleteLibraryRequested, this, &LibraryView::deleteLibraryRequested);
     connect(tags_, &TagSelector::selectionChanged, this, [this](const QStringList& tags) {
         model_->setTagFilter(tags);
         if (model_->isSearching())

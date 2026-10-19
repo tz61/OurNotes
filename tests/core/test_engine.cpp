@@ -35,7 +35,20 @@ public:
         auto& l = libs[uid];
         if (l.info.uid.empty())
             l.info = {uid, name, type, "owner", "me", 0};
+        else if (l.info.role == "owner" && !name.empty())
+            l.info.name = name;
         return l.info;
+    }
+    bool canDelete = true;  // false: like a server from before libraries could be deleted
+    void deleteLibrary(const std::string& uid) override
+    {
+        auto it = libs.find(uid);
+        if (!canDelete || it == libs.end())
+            throw SyncError("not found", 404);
+        for (auto& [k, o] : it->second.objects)
+            if (!o.deleted && (o.type == "item" || o.type == "collection"))
+                throw SyncError("not empty", 409);
+        libs.erase(it);
     }
     ChangesPage changes(const std::string& uid, int64_t since, const std::string& cursor, int limit) override
     {
@@ -167,6 +180,148 @@ TEST_CASE("two clients converge through a server")
     auto r3 = syncWith(a, server);
     CHECK(r3.deletedLocally == 1);
     CHECK(!a.item(la, key));
+}
+
+TEST_CASE("library names are synced: the side that renamed wins")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    a.createItem(la, Json{{"itemType", "book"}, {"title", "Book"}});
+    syncWith(a, server);
+    syncWith(b, server);
+    auto lb = b.libraries().at(0).id;
+    auto uid = a.library(la)->uid;
+    auto nameOf = [](Library& l, int64_t id) { return l.library(id)->name; };
+
+    a.renameLibrary(la, "Main");
+    syncWith(a, server);
+    CHECK(server.libs.at(uid).info.name == "Main");
+    syncWith(b, server);
+    CHECK(nameOf(b, lb) == "Main");
+    syncWith(a, server);
+    CHECK(nameOf(a, la) == "Main");
+
+    // renamed on both: the one the target has already wins
+    b.renameLibrary(lb, "Papers");
+    syncWith(b, server);
+    a.renameLibrary(la, "Reading");
+    syncWith(a, server);
+    CHECK(nameOf(a, la) == "Papers");
+    CHECK(server.libs.at(uid).info.name == "Papers");
+
+    // a library shared with us keeps its owner's name
+    server.libs.at(uid).info.role = "write";
+    b.renameLibrary(lb, "Mine");
+    syncWith(b, server);
+    CHECK(nameOf(b, lb) == "Papers");
+}
+
+TEST_CASE("library names before they were synced: a renamed library keeps its name")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    a.createItem(la, Json{{"itemType", "book"}, {"title", "Book"}});
+    syncWith(a, server);
+    syncWith(b, server);
+    auto lb = b.libraries().at(0).id;
+    auto uid = a.library(la)->uid;
+    // as left by a version that did not sync names: A renamed it, B still has the default
+    a.renameLibrary(la, "Main");
+    a.setSyncName(la, "");
+    b.setSyncName(lb, "");
+    syncWith(b, server);
+    CHECK(b.library(lb)->name == Library::kDefaultName);
+    syncWith(a, server);
+    CHECK(server.libs.at(uid).info.name == "Main");
+    syncWith(b, server);
+    CHECK(b.library(lb)->name == "Main");
+}
+
+TEST_CASE("deleting a library: only empty ones, on the target and then on every device")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    a.createItem(la, Json{{"itemType", "book"}, {"title", "Book"}});
+    auto extraA = a.createLibrary("Extra", "group");
+    auto keepA = a.createLibrary("Keep", "group");
+    syncWith(a, server);
+    syncWith(b, server);
+    REQUIRE(b.libraries().size() == 3);
+    auto uidOf = [](Library& l, int64_t id) { return l.library(id)->uid; };
+    auto extraUid = uidOf(a, extraA);
+    auto keepUid = uidOf(a, keepA);
+    CHECK(a.libraryContents(extraA).empty());
+    CHECK(!a.libraryContents(la).empty());
+    CHECK(a.libraryContents(la).items == 1);
+
+    // the target refuses a library with entries
+    SyncEngine engineA(a, server, "fake");
+    CHECK_THROWS_AS(engineA.deleteRemoteLibrary(uidOf(a, la)), SyncError);
+    CHECK(server.libs.count(uidOf(a, la)));
+
+    engineA.deleteRemoteLibrary(extraUid);
+    a.deleteLibrary(extraA);
+    CHECK(!server.libs.count(extraUid));
+    engineA.deleteRemoteLibrary(extraUid);  // gone already: done
+    auto ra = syncWith(a, server);
+    CHECK(ra.errors.empty());
+    CHECK(!server.libs.count(extraUid));  // not uploaded again
+
+    // B drops its empty copy; one that got entries here meanwhile is uploaded again
+    auto keepB = b.libraryByUid(keepUid)->id;
+    b.createItem(keepB, Json{{"itemType", "book"}, {"title", "Written offline"}});
+    engineA.deleteRemoteLibrary(keepUid);
+    a.deleteLibrary(keepA);
+    auto rb = syncWith(b, server);
+    CHECK(rb.librariesRemoved == 1);
+    CHECK(!b.libraryByUid(extraUid));
+    REQUIRE(b.libraryByUid(keepUid));
+    REQUIRE(server.libs.count(keepUid));
+    syncWith(a, server);
+    REQUIRE(a.libraryByUid(keepUid));
+    CHECK(a.allItems(a.libraryByUid(keepUid)->id).size() == 1);
+
+    // a server that cannot delete libraries says so
+    server.canDelete = false;
+    CHECK_THROWS_AS(engineA.deleteRemoteLibrary(uidOf(a, la)), SyncError);
+}
+
+TEST_CASE("a fresh install's empty default library is not uploaded next to the user's own")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    a.createItem(la, Json{{"itemType", "book"}, {"title", "Book"}});
+    syncWith(a, server);
+
+    b.defaultLibrary();  // "don't import" at first start
+    auto group = b.createLibrary("Empty group", "group");
+    auto rb = syncWith(b, server);
+    CHECK(rb.librariesRemoved == 1);
+    auto libs = b.libraries();
+    REQUIRE(libs.size() == 2);
+    CHECK(b.libraryByUid(a.library(la)->uid));
+    CHECK(b.library(group));  // made on purpose: uploaded
+    CHECK(server.libs.size() == 2);
+
+    // with nothing on the target, it is the user's library and goes up
+    FakeTransport empty;
+    Library c(tmp.path / "c");
+    c.defaultLibrary();
+    syncWith(c, empty);
+    CHECK(c.libraries().size() == 1);
+    CHECK(empty.libs.size() == 1);
 }
 
 TEST_CASE("concurrent edits: last writer wins and the loser is kept as a conflict")

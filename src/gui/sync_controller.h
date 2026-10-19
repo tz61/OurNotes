@@ -26,12 +26,16 @@ public slots:
     void cancel();
     // Download one attachment file from the sync target (on-demand file mode).
     void downloadFile(qint64 libraryId, const QString& key);
+    // Delete an empty library on the sync target (not here): remoteLibraryDeleted tells how
+    // it went.
+    void deleteRemoteLibrary(qint64 libraryId);
 
 signals:
     void started();
     void progress(const QString& message);
     void finished(bool ok, const QString& summary);
     void fileDownloaded(qint64 libraryId, const QString& key, bool ok, const QString& error);
+    void remoteLibraryDeleted(qint64 libraryId, bool ok, const QString& error);
 
 private:
     void join();

@@ -220,6 +220,14 @@ TEST_CASE("http: full round trip")
     CHECK(r.results.at(0).status == "ok");
     CHECK(alice.files("LIB1").empty());
 
+    // Only the owner deletes a library, and only an empty one.
+    CHECK(statusOf([&] { bob.deleteLibrary("LIB1"); }) == 403);
+    CHECK(statusOf([&] { alice.deleteLibrary("LIB1"); }) == 409);
+    CHECK(statusOf([&] { bob.deleteLibrary("PRIVATE1"); }) == 404);
+    alice.deleteLibrary("PRIVATE1");
+    CHECK(statusOf([&] { alice.deleteLibrary("PRIVATE1"); }) == 404);
+    CHECK(statusOf([&] { alice.changes("PRIVATE1", 0, "", 0); }) == 404);
+
     // Logout revokes the token.
     alice.logout();
     CHECK(statusOf([&] { alice.libraries(); }) == 401);
