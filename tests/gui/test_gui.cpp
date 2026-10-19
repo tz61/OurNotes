@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QLabel>
+#include <QTimer>
+#include <QMessageBox>
 #include <QLayout>
 #include <QToolButton>
 #include <QAbstractTextDocumentLayout>
@@ -408,6 +410,44 @@ TEST_CASE("item pane: a paper's notes appear in the Notes tab next to Info")
         pane.grab().save(snapshots + "/item-pane-notes.png");
 }
 
+namespace {
+
+// Answers the "Remove Tag" confirmation once it shows up; *text gets its question.
+void answerTagConfirmation(bool remove, QString* text)
+{
+    auto* timer = new QTimer;
+    timer->setInterval(10);
+    QObject::connect(timer, &QTimer::timeout, [timer, remove, text] {
+        for (auto* w : QApplication::topLevelWidgets()) {
+            auto* box = qobject_cast<QMessageBox*>(w);
+            if (!box || !box->isVisible() || box->objectName() != "confirmRemoveTag")
+                continue;
+            *text = box->text();
+            if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+                box->grab().save(dir + "/tag-remove-confirm.png");
+            for (auto* b : box->buttons())
+                if ((box->buttonRole(b) == QMessageBox::DestructiveRole) == remove) {
+                    b->click();
+                    break;
+                }
+            timer->stop();
+            timer->deleteLater();
+            return;
+        }
+    });
+    timer->start();
+}
+
+bool confirmationVisible()
+{
+    for (auto* w : QApplication::topLevelWidgets())
+        if (qobject_cast<QMessageBox*>(w) && w->isVisible())
+            return true;
+    return false;
+}
+
+} // namespace
+
 TEST_CASE("item pane: tags are shown as visible chips")
 {
     const std::string kLongTag = "Computer Science - Computer Vision and Pattern Recognition and Robotics";
@@ -418,10 +458,17 @@ TEST_CASE("item pane: tags are shown as visible chips")
                                                       {"tags", Json::array({Json{{"tag", "robotics"}},
                                                                             Json{{"tag", "humanoid"}, {"type", 1}},
                                                                             Json{{"tag", kLongTag}, {"type", 1}}})}});
+    auto key = jstr(paper, "key");
+    auto tagsOf = [&] {
+        QStringList out;
+        for (auto& t : env.library.item(env.lib, key)->value("tags", Json::array()))
+            out << qs(jstr(t, "tag"));
+        return out;
+    };
     ItemPane pane;
     pane.resize(420, 900);
     pane.show();
-    pane.showItems(env.lib, {qs(jstr(paper, "key"))});
+    pane.showItems(env.lib, {qs(key)});
     pane.findChild<QTabWidget*>()->setCurrentIndex(0);
     QApplication::processEvents();
     QApplication::processEvents();
@@ -430,19 +477,59 @@ TEST_CASE("item pane: tags are shown as visible chips")
         if (t->isVisible())
             tags = t;
     REQUIRE(tags);
-    int visible = 0;
-    for (auto* chip : tags->findChildren<QAbstractButton*>()) {
-        if (!chip->isVisible() || qobject_cast<QToolButton*>(chip))
-            continue;  // the line edit's clear button
-        ++visible;
+    auto chips = [&] {
+        QList<QWidget*> out;
+        for (auto* chip : tags->findChildren<QWidget*>("tagChip"))
+            if (chip->isVisible())
+                out << chip;
+        return out;
+    };
+    CHECK(chips().size() == 3);
+    for (auto* chip : chips()) {
         CHECK(chip->height() > 10);
         // chips never stick out of the pane, however long the tag
         CHECK(chip->mapTo(&pane, QPoint(chip->width(), 0)).x() <= pane.width());
+        // each has its own remove button inside it
+        auto* remove = chip->findChild<QAbstractButton*>("removeTag");
+        REQUIRE(remove);
+        CHECK(remove->isVisible());
+        CHECK(chip->rect().contains(remove->geometry()));
     }
-    CHECK(visible == 3);
     auto snapshots = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR");
     if (!snapshots.isEmpty())
         tags->grab().save(snapshots + "/tags.png");
+
+    QWidget* robotics = nullptr;
+    for (auto* chip : chips())
+        if (chip->toolTip() == "robotics")
+            robotics = chip;
+    REQUIRE(robotics);
+
+    // clicking the tag itself removes nothing and asks nothing
+    QTest::mouseClick(robotics, Qt::LeftButton, {}, QPoint(12, robotics->height() / 2));
+    QTest::qWait(50);
+    CHECK(!confirmationVisible());
+    CHECK(tagsOf().contains("robotics"));
+
+    // the remove button asks first; Cancel keeps the tag
+    QString question;
+    answerTagConfirmation(false, &question);
+    QTest::mouseClick(robotics->findChild<QAbstractButton*>("removeTag"), Qt::LeftButton);
+    REQUIRE(QTest::qWaitFor([&] { return !question.isEmpty(); }));
+    CHECK(question.contains("robotics"));
+    QApplication::processEvents();
+    CHECK(tagsOf().contains("robotics"));
+    CHECK(chips().size() == 3);
+
+    // confirming removes it
+    question.clear();
+    answerTagConfirmation(true, &question);
+    QTest::mouseClick(robotics->findChild<QAbstractButton*>("removeTag"), Qt::LeftButton);
+    REQUIRE(QTest::qWaitFor([&] { return !question.isEmpty(); }));
+    CHECK(QTest::qWaitFor([&] { return chips().size() == 2; }));
+    CHECK(!tagsOf().contains("robotics"));
+    CHECK(tagsOf().size() == 2);
+    CHECK(chips().size() == 2);
 }
 
 namespace {

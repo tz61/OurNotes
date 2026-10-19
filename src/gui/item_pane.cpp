@@ -415,17 +415,59 @@ void InfoEditor::changeType(const QString& type)
 
 // --- TagChip -----------------------------------------------------------------------------------
 
-// A tag shown as a rounded pill: optional colour dot, elided text, and an × to remove
-// it when the library is editable.
-class TagChip : public QAbstractButton {
+// Round × button inside a tag chip; highlighted when hovered.
+class TagRemoveButton : public QAbstractButton {
+public:
+    explicit TagRemoveButton(QWidget* parent) : QAbstractButton(parent)
+    {
+        setObjectName("removeTag");
+        setToolTip(tr("Remove tag…"));
+        setAccessibleName(tr("Remove tag"));
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::TabFocus);
+        setAttribute(Qt::WA_Hover);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        bool hot = underMouse() || hasFocus() || isDown();
+        QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
+        QColor fill = hot ? palette().color(QPalette::Highlight) : palette().color(QPalette::Mid);
+        if (!hot)
+            fill.setAlphaF(0.6);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fill);
+        p.drawEllipse(r);
+        qreal d = r.width() * 0.22;
+        QPointF c = r.center();
+        p.setPen(QPen(hot ? palette().color(QPalette::HighlightedText) : palette().color(QPalette::ButtonText),
+                      std::max(1.4, r.width() / 9.0), Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(c + QPointF(-d, -d), c + QPointF(d, d));
+        p.drawLine(c + QPointF(d, -d), c + QPointF(-d, d));
+    }
+};
+
+// A tag shown as a rounded pill: optional colour dot, elided text, and a remove
+// button when the library is editable. Clicking the tag itself changes nothing.
+class TagChip : public QWidget {
 public:
     TagChip(const QString& tag, const QString& color, bool automatic, bool removable, QWidget* parent = nullptr)
-        : QAbstractButton(parent), tag_(tag), color_(color), automatic_(automatic), removable_(removable)
+        : QWidget(parent), tag_(tag), color_(color), automatic_(automatic)
     {
-        setToolTip(removable ? tr("%1\nClick × to remove").arg(tag) : tag);
-        setCursor(Qt::ArrowCursor);
-        setMouseTracking(true);
+        setObjectName("tagChip");
+        setToolTip(automatic ? tr("%1 (automatic tag)").arg(tag) : tag);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        setAttribute(Qt::WA_Hover);
+        if (removable) {
+            remove_ = new TagRemoveButton(this);
+            connect(remove_, &QAbstractButton::clicked, this, [this] {
+                if (onRemove)
+                    onRemove();
+            });
+        }
     }
 
     std::function<void()> onRemove;
@@ -435,10 +477,10 @@ public:
         QFontMetrics fm(chipFont());
         // +4: italic glyphs overhang their advance width
         int w = padding() * 2 + fm.horizontalAdvance(tag_) + 4 + (color_.isEmpty() ? 0 : dot() + 6) +
-                (removable_ ? close() + 6 : 0);
-        return {w, fm.height() + 8};
+                (remove_ ? buttonSize() + 2 : 0);
+        return {w, std::max(fm.height() + 8, buttonSize() + 4)};
     }
-    QSize minimumSizeHint() const override { return {padding() * 2 + 24, sizeHint().height()}; }
+    QSize minimumSizeHint() const override { return {padding() * 2 + 24 + (remove_ ? buttonSize() : 0), sizeHint().height()}; }
 
 protected:
     void paintEvent(QPaintEvent*) override
@@ -446,11 +488,8 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        QColor base = palette().color(QPalette::Button);
-        if (underMouse())
-            base = palette().color(QPalette::Midlight);
         p.setPen(QPen(palette().color(QPalette::Mid), 1));
-        p.setBrush(base);
+        p.setBrush(palette().color(QPalette::Button));
         p.drawRoundedRect(r, r.height() / 2, r.height() / 2);
         qreal x = padding();
         if (!color_.isEmpty()) {
@@ -459,7 +498,7 @@ protected:
             p.drawEllipse(QRectF(x, (height() - dot()) / 2.0, dot(), dot()));
             x += dot() + 6;
         }
-        qreal right = width() - padding() - (removable_ ? close() + 6 : 0);
+        qreal right = remove_ ? remove_->geometry().left() - 2 : width() - padding();
         p.setFont(chipFont());
         QColor fg = palette().color(QPalette::ButtonText);
         if (automatic_)
@@ -467,42 +506,20 @@ protected:
         p.setPen(fg);
         QString text = QFontMetrics(chipFont()).elidedText(tag_, Qt::ElideRight, int(right - x));
         p.drawText(QRectF(x, 0, right - x, height()), Qt::AlignVCenter | Qt::AlignLeft, text);
-        if (removable_) {
-            QRectF c = closeRect();
-            p.setPen(QPen(closeHot_ ? palette().color(QPalette::Highlight) : fg, 1.4, Qt::SolidLine, Qt::RoundCap));
-            p.drawLine(c.topLeft() + QPointF(2, 2), c.bottomRight() - QPointF(2, 2));
-            p.drawLine(c.topRight() + QPointF(-2, 2), c.bottomLeft() + QPointF(2, -2));
-        }
     }
-    void mouseMoveEvent(QMouseEvent* e) override
+    void resizeEvent(QResizeEvent* e) override
     {
-        bool hot = removable_ && closeRect().adjusted(-3, -3, 3, 3).contains(e->position());
-        if (hot != closeHot_) {
-            closeHot_ = hot;
-            setCursor(hot ? Qt::PointingHandCursor : Qt::ArrowCursor);
-            update();
+        QWidget::resizeEvent(e);
+        if (remove_) {
+            int s = buttonSize();
+            remove_->setGeometry(width() - s - (height() - s) / 2, (height() - s) / 2, s, s);
         }
-        QAbstractButton::mouseMoveEvent(e);
-    }
-    void mouseReleaseEvent(QMouseEvent* e) override
-    {
-        if (removable_ && closeRect().adjusted(-3, -3, 3, 3).contains(e->position()) && onRemove) {
-            onRemove();
-            return;
-        }
-        QAbstractButton::mouseReleaseEvent(e);
     }
     void changeEvent(QEvent* e) override
     {
         if (e->type() == QEvent::FontChange)
             updateGeometry();
-        QAbstractButton::changeEvent(e);
-    }
-    void leaveEvent(QEvent* e) override
-    {
-        closeHot_ = false;
-        update();
-        QAbstractButton::leaveEvent(e);
+        QWidget::changeEvent(e);
     }
 
 private:
@@ -514,15 +531,11 @@ private:
     }
     int padding() const { return 9; }
     int dot() const { return 8; }
-    int close() const { return 10; }
-    QRectF closeRect() const
-    {
-        return QRectF(width() - padding() - close(), (height() - close()) / 2.0, close(), close());
-    }
+    int buttonSize() const { return QFontMetrics(font()).height(); }
 
     QString tag_, color_;
-    bool automatic_, removable_;
-    bool closeHot_ = false;
+    bool automatic_;
+    TagRemoveButton* remove_ = nullptr;
 };
 
 // --- TagsBox ----------------------------------------------------------------------------------
@@ -586,10 +599,9 @@ void TagsBox::rebuild()
     for (auto& [tag, n] : counts) {
         QString label = qs(tag) + (keys_.size() > 1 && n < keys_.size() ? QString(" (%1)").arg(n) : QString());
         auto* chip = new TagChip(label, colors.count(tag) ? qs(colors[tag]) : QString(), types[tag] == 1, editable);
+        // asked from the box, not the chip: a rebuild while the dialog is open deletes the chip
         chip->onRemove = [this, tag = tag] {
-            QMetaObject::invokeMethod(
-                this, [this, tag] { AppContext::get().library().removeTag(libraryId_, toStdVector(keys_), tag); },
-                Qt::QueuedConnection);
+            QMetaObject::invokeMethod(this, [this, tag] { confirmRemove(qs(tag)); }, Qt::QueuedConnection);
         };
         flow_->addWidget(chip);
     }
@@ -601,6 +613,25 @@ void TagsBox::rebuild()
     completer->setCaseSensitivity(Qt::CaseInsensitive);
     completer->setFilterMode(Qt::MatchContains);
     input_->setCompleter(completer);
+}
+
+void TagsBox::confirmRemove(const QString& tag)
+{
+    if (keys_.isEmpty())
+        return;
+    QMessageBox box(QMessageBox::Question, tr("Remove Tag"),
+                    keys_.size() == 1 ? tr("Remove the tag \"%1\" from this item?").arg(tag)
+                                      : tr("Remove the tag \"%1\" from the %2 selected items?")
+                                            .arg(tag)
+                                            .arg(keys_.size()),
+                    QMessageBox::NoButton, this);
+    box.setObjectName("confirmRemoveTag");
+    auto* remove = box.addButton(tr("Remove"), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(remove);
+    box.exec();
+    if (box.clickedButton() == remove)
+        AppContext::get().library().removeTag(libraryId_, toStdVector(keys_), ss(tag));
 }
 
 // --- RelatedBox ---------------------------------------------------------------------------------

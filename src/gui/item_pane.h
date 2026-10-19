@@ -83,6 +83,8 @@ public:
     void rebuild();
 
 private:
+    void confirmRemove(const QString& tag);
+
     QLabel* header_;
     FlowLayout* flow_;
     QLineEdit* input_;
