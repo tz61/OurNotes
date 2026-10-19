@@ -2752,6 +2752,42 @@ TEST_CASE("main window: Ctrl+Shift+T reopens closed tabs, last closed first, whe
     CHECK(secondTabs->count() == count);
 }
 
+TEST_CASE("library: moving between items does not change the window's minimum height")
+{
+    app();
+    Env env;
+    std::vector<std::string> colls;
+    for (int i = 0; i < 8; ++i)
+        colls.push_back(jstr(env.library.createCollection(env.lib, "Robotics subject " + std::to_string(i)), "key"));
+    auto many = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "In many collections"}});
+    auto one = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "In one collection"}});
+    for (auto& c : colls)  // a location line each, in the item pane
+        env.library.addToCollection(env.lib, c, {jstr(many, "key")});
+    env.library.addToCollection(env.lib, colls[0], {jstr(one, "key")});
+    MainWindow window;
+    window.resize(1200, 600);
+    window.show();
+    QApplication::processEvents();
+    auto* view = window.findChild<LibraryView*>();
+    view->findChild<CollectionTree*>()->selectScope({env.lib, ScopeKind::Collection, colls[0]});
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : view->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    items->setFocus();
+    std::set<int> minimums{window.minimumSizeHint().height()};
+    items->setCurrentIndex(items->model()->index(0, 0));
+    for (int i = 0; i < 6; ++i) {
+        QTest::keyClick(items, i % 2 ? Qt::Key_Up : Qt::Key_Down);
+        QApplication::processEvents();
+        minimums.insert(window.minimumSizeHint().height());
+    }
+    CHECK(minimums.size() == 1);
+    CHECK(view->findChild<LocationBox*>());
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

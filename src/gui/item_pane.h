@@ -167,6 +167,10 @@ public:
     explicit LocationBox(QWidget* parent = nullptr);
     void setItem(int64_t libraryId, const QString& key);
     QStringList paths() const;  // the lines as plain text, e.g. for tests
+    // A line, whatever the item: one line per collection it is in made the window's
+    // minimum height change from item to item, and a short window grew and shrank as
+    // the selection moved. Short of room, the lines below the first are cut off.
+    QSize minimumSizeHint() const override;
 
 signals:
     void scopeRequested(const Scope& scope);

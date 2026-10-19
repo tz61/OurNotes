@@ -1027,6 +1027,11 @@ void LocationBox::setItem(int64_t libraryId, const QString& key)
 
 QStringList LocationBox::paths() const { return paths_; }
 
+QSize LocationBox::minimumSizeHint() const
+{
+    return {QWidget::minimumSizeHint().width(), fontMetrics().height() + 6};
+}
+
 void LocationBox::rebuild()
 {
     // later: rebuilding can be caused by a click on one of these links
