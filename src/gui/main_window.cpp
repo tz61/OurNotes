@@ -433,6 +433,7 @@ void MainWindow::loadPendingTab(int index)
         QApplication::setOverrideCursor(Qt::WaitCursor);
         reader = new ReaderTab(pending->libraryId, pending->key, tabs_);
         connect(reader, &ReaderTab::libraryRequested, this, [this] { tabs_->setCurrentIndex(0); });
+        connect(reader, &ReaderTab::showInLibrary, this, [this](qint64, const QString& key) { selectItem(key); });
         QApplication::restoreOverrideCursor();
     } catch (const std::exception& e) {
         QApplication::restoreOverrideCursor();
@@ -529,6 +530,8 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
             QApplication::setOverrideCursor(Qt::WaitCursor);
             reader = new ReaderTab(libraryId, key, tabs_);
             connect(reader, &ReaderTab::libraryRequested, this, [this] { tabs_->setCurrentIndex(0); });
+            connect(reader, &ReaderTab::showInLibrary, this,
+                    [this](qint64, const QString& key) { selectItem(key); });
             QApplication::restoreOverrideCursor();
         } catch (const std::exception& e) {
             QApplication::restoreOverrideCursor();

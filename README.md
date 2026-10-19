@@ -26,8 +26,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   Annotations* writes yours into a copy of the file. Each document reopens where it was
   left (page, zoom and scroll position, kept in `storage/<KEY>/.zotero-reader-state`
   like Zotero), and the open tabs and the library's selection come back after a
-  restart; restored tabs load when first shown. The paper's top note opens next to the
-  PDF. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
+  restart; restored tabs load when first shown. Beside the PDF the paper's Info (authors,
+  year and the other fields, tags, related items) and its notes, the top note open. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
   width (twice: the page) and H goes back to the library; Ctrl+Shift+T reopens a closed
   tab. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)

@@ -17,7 +17,9 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QSplitter>
+#include <QScrollArea>
 #include <QStackedWidget>
+#include <QTabWidget>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -30,6 +32,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
+#include "gui/item_pane.h"
 #include "gui/note_editor.h"
 #include "gui/reader/annotation_sidebar.h"
 #include "gui/theme.h"
@@ -144,6 +147,10 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     // the paper's notes at hand: the top one is open next to the PDF
     if (!notesList_->currentItem() && notesList_->count() > 0)
         notesList_->setCurrentRow(0);
+    // the side pane on the tab chosen last; at first the notes if there are any, else Info
+    auto tab = AppContext::get().config().get("/reader/contextTab", "").get<std::string>();
+    bool infoTab = !parentKey_.isEmpty() && (tab == "info" || (tab.empty() && notesList_->count() == 0));
+    contextTabs_->setCurrentIndex(infoTab ? 0 : 1);
     // Where the document was left: the local state has the exact position; the synced
     // page wins when the document was read further on another computer (as in Zotero).
     auto state = lib.readerState(ss(key_));
@@ -284,11 +291,46 @@ void ReaderTab::buildSidebar()
 void ReaderTab::buildContextPane()
 {
     contextPane_ = new QWidget(splitter_);
-    auto* v = new QVBoxLayout(contextPane_);
+    auto* outer = new QVBoxLayout(contextPane_);
+    outer->setContentsMargins(0, 0, 0, 0);
+    contextTabs_ = new QTabWidget(contextPane_);
+    contextTabs_->setObjectName("readerContextTabs");
+    contextTabs_->setDocumentMode(true);
+    outer->addWidget(contextTabs_);
+
+    // Info: the paper's fields, tags and related items, here rather than in the library
+    auto* infoPage = new QWidget;
+    auto* iv = new QVBoxLayout(infoPage);
+    iv->setContentsMargins(6, 6, 6, 6);
+    info_ = new InfoEditor(infoPage);
+    iv->addWidget(info_);
+    auto* tags = new TagsBox(infoPage);
+    iv->addWidget(tags);
+    auto* related = new RelatedBox(infoPage);
+    iv->addWidget(related);
+    iv->addStretch();
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(infoPage);
+    contextTabs_->addTab(scroll, tr("Info"));
+    if (parentKey_.isEmpty()) {  // a PDF on its own: no paper to show
+        contextTabs_->setTabEnabled(0, false);
+        contextTabs_->setTabToolTip(0, tr("This file is not filed under an item."));
+    } else {
+        info_->setItem(libraryId_, parentKey_);
+        tags->setItems(libraryId_, {parentKey_});
+        related->setItem(libraryId_, parentKey_);
+    }
+    connect(related, &RelatedBox::itemActivated, this,
+            [this](const QString& key) { emit showInLibrary(libraryId_, key); });
+
+    auto* notesPage = new QWidget;
+    auto* v = new QVBoxLayout(notesPage);
     v->setContentsMargins(4, 4, 4, 4);
     auto* head = new QHBoxLayout;
-    auto* label = new QLabel("<b>" + tr("Notes") + "</b>", contextPane_);
-    auto* add = new QToolButton(contextPane_);
+    auto* add = new QToolButton(notesPage);
     add->setIcon(icon("new-note"));
     add->setToolTip(tr("Add note"));
     add->setPopupMode(QToolButton::InstantPopup);
@@ -298,10 +340,12 @@ void ReaderTab::buildContextPane()
     addMenu->addAction(tr("Add Item Note from Annotations"), this, &ReaderTab::addNoteFromAnnotations);
     add->setMenu(addMenu);
     add->setEnabled(editable_);
-    head->addWidget(label, 1);
+    add->setText(tr("Add Note"));
+    add->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    head->addStretch();
     head->addWidget(add);
     v->addLayout(head);
-    auto* split = new QSplitter(Qt::Vertical, contextPane_);
+    auto* split = new QSplitter(Qt::Vertical, notesPage);
     notesList_ = new QListWidget(split);
     noteEditor_ = new NoteEditor(split);
     split->setSizes({120, 400});
@@ -313,6 +357,11 @@ void ReaderTab::buildContextPane()
             noteEditor_->clear();
     });
     enableNoteTrash(notesList_, [this] { return libraryId_; });
+    contextTabs_->addTab(notesPage, icon("type-note"), tr("Notes"));
+    connect(contextTabs_, &QTabWidget::tabBarClicked, this, [](int index) {
+        if (index >= 0)  // the tab chosen last is the one a PDF opens with
+            AppContext::get().config().set("/reader/contextTab", index == 0 ? "info" : "notes");
+    });
     splitter_->addWidget(contextPane_);
 }
 
@@ -431,7 +480,7 @@ void ReaderTab::buildToolbar()
         emit ctx.appearanceChanged();
     });
     updateDarkPagesAction();
-    auto* paneToggle = tb->addAction(icon("context-pane"), tr("Toggle notes pane"));
+    auto* paneToggle = tb->addAction(icon("context-pane"), tr("Show or hide Info and Notes"));
     paneToggle->setCheckable(true);
     paneToggle->setChecked(true);
     connect(paneToggle, &QAction::toggled, contextPane_, &QWidget::setVisible);

@@ -19,14 +19,16 @@ class QToolButton;
 class QTreeWidget;
 
 class QUndoStack;
+class QTabWidget;
 
 namespace on::gui {
 
 class AnnotationSidebar;
+class InfoEditor;
 class NoteEditor;
 
-// A tab showing one PDF attachment with its annotations, plus the parent
-// item's notes in a context pane.
+// A tab showing one PDF attachment with its annotations, plus the parent item's
+// Info (fields, tags, related) and notes in a side pane.
 class ReaderTab : public QWidget {
     Q_OBJECT
     friend class AnnotationEdit;
@@ -92,6 +94,8 @@ private:
     QListWidget* thumbnails_;
     QTreeWidget* outline_;
     QWidget* contextPane_;
+    QTabWidget* contextTabs_;  // Info, Notes
+    InfoEditor* info_;
     QListWidget* notesList_;
     NoteEditor* noteEditor_;
     QLineEdit* pageEdit_;

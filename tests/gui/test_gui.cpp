@@ -138,6 +138,60 @@ TEST_CASE("reader: the paper's top note opens with the PDF")
     CHECK(!tab.findChild<NoteTextEdit*>()->hasFocus());  // the PDF keeps the keyboard
 }
 
+TEST_CASE("reader: the paper's info is beside the PDF, next to its notes")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(
+        env.lib, Json{{"itemType", "journalArticle"},
+                      {"title", "Deep learning"},
+                      {"date", "2015"},
+                      {"creators", Json::array({Json{{"creatorType", "author"}, {"firstName", "Yann"}, {"lastName", "LeCun"}}})}});
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(paper, "key")), "key"));
+    auto tabsOf = [](ReaderTab& tab) { return tab.findChild<QTabWidget*>("readerContextTabs"); };
+    auto shows = [](ReaderTab& tab, const QString& text) {
+        for (auto* e : tab.findChildren<QLineEdit*>())
+            if (e->text() == text)
+                return true;
+        for (auto* e : tab.findChildren<QPlainTextEdit*>())
+            if (e->toPlainText() == text)
+                return true;
+        return false;
+    };
+    {
+        ReaderTab tab(env.lib, key);  // no notes: Info
+        auto* tabs = tabsOf(tab);
+        REQUIRE(tabs);
+        CHECK(tabs->currentIndex() == 0);
+        CHECK(tabs->tabText(0) == "Info");
+        CHECK(shows(tab, "Deep learning"));
+        CHECK(shows(tab, "LeCun"));
+        CHECK(shows(tab, "2015"));
+    }
+    env.library.createNote(env.lib, "<p>Thoughts</p>", jstr(paper, "key"));
+    {
+        ReaderTab tab(env.lib, key);  // with a note: Notes, until Info is chosen
+        auto* tabs = tabsOf(tab);
+        CHECK(tabs->currentIndex() == 1);
+        tab.show();
+        QApplication::processEvents();
+        QTest::mouseClick(tabs->tabBar(), Qt::LeftButton, {}, tabs->tabBar()->tabRect(0).center());
+        CHECK(tabs->currentIndex() == 0);
+    }
+    {
+        ReaderTab tab(env.lib, key);
+        CHECK(tabsOf(tab)->currentIndex() == 0);
+    }
+    // a PDF of its own has no paper to show
+    auto alone = qs(jstr(env.library.importAttachment(env.lib, file, ""), "key"));
+    ReaderTab tab(env.lib, alone);
+    CHECK(!tabsOf(tab)->isTabEnabled(0));
+    CHECK(tabsOf(tab)->currentIndex() == 1);
+}
+
 TEST_CASE("reader: page thumbnails stay in a grid while their pictures arrive")
 {
     app();
