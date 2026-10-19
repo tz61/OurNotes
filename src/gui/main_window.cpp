@@ -113,6 +113,13 @@ MainWindow::MainWindow()
         if (i == 0)
             return;
         auto* w = tabs_->widget(i);
+        // for Reopen Closed Tab, while this window is open
+        if (auto* r = qobject_cast<ReaderTab*>(w))
+            closedTabs_.push_back({r->libraryId(), r->attachmentKey(), i});
+        else if (auto* p = dynamic_cast<PendingReaderTab*>(w))
+            closedTabs_.push_back({p->libraryId, p->key, i});
+        if (closedTabs_.size() > 50)
+            closedTabs_.erase(closedTabs_.begin());
         tabs_->removeTab(i);
         w->deleteLater();
         releaseFreedMemory();  // a reader tab frees tens of megabytes
@@ -294,6 +301,7 @@ void MainWindow::buildActions()
         if (i > 0)
             emit tabs_->tabCloseRequested(i);
     });
+    file->addAction(tr("Reopen Closed Tab"), QKeySequence("Ctrl+Shift+W"), this, &MainWindow::reopenClosedTab);
     file->addAction(tr("Quit"), QKeySequence::Quit, this, &QWidget::close);
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
@@ -380,6 +388,27 @@ void MainWindow::updateTabActions()
 }
 
 // --- attachments ---------------------------------------------------------------------------------
+
+// The last tab closed, where it was; one already open again is only shown.
+void MainWindow::reopenClosedTab()
+{
+    auto& lib = AppContext::get().library();
+    while (!closedTabs_.empty()) {
+        auto closed = closedTabs_.back();
+        closedTabs_.pop_back();
+        if (!lib.item(closed.libraryId, ss(closed.key)))
+            continue;  // deleted meanwhile
+        if (int open = findTab(closed.libraryId, closed.key); open >= 0) {
+            tabs_->setCurrentIndex(open);
+            return;
+        }
+        openAttachment(closed.libraryId, closed.key);
+        int at = findTab(closed.libraryId, closed.key);
+        if (at > 0 && closed.index < at)
+            tabs_->tabBar()->moveTab(at, std::max(1, closed.index));
+        return;
+    }
+}
 
 int MainWindow::findTab(int64_t libraryId, const QString& key) const
 {

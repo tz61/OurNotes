@@ -2632,6 +2632,55 @@ TEST_CASE("reader: in select mode a drag from beside the text selects it")
     CHECK(!view.hasTextSelection());
 }
 
+TEST_CASE("main window: Ctrl+Shift+W reopens closed tabs, last closed first, where they were")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    std::vector<QString> keys;
+    for (int i = 0; i < 3; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Paper " + std::to_string(i)}});
+        keys.push_back(qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+        window.openAttachment(env.lib, keys.back());
+    }
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 4);
+    auto titles = [&] {
+        QStringList t;
+        for (int i = 1; i < tabs->count(); ++i)
+            t << tabs->tabText(i);
+        return t;
+    };
+    auto before = titles();
+    emit tabs->tabCloseRequested(2);  // the middle one
+    emit tabs->tabCloseRequested(2);  // then the last
+    QApplication::processEvents();
+    REQUIRE(tabs->count() == 2);
+    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    QApplication::processEvents();
+    CHECK(tabs->count() == 3);
+    CHECK(tabs->tabText(tabs->currentIndex()) == before[2]);  // the last closed comes back first
+    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    QApplication::processEvents();
+    CHECK(titles() == before);  // each in its place
+    QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);  // nothing left
+    CHECK(tabs->count() == 4);
+
+    // another window starts with nothing to reopen
+    MainWindow second;
+    second.show();
+    auto* secondTabs = second.findChild<QTabWidget*>("mainTabs");
+    int count = secondTabs->count();
+    QTest::keyClick(&second, Qt::Key_W, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(secondTabs->count() == count);
+}
+
 TEST_CASE("main window: many tabs wrap onto more rows")
 {
     app();

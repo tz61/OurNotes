@@ -2,6 +2,8 @@
 
 #include <QMainWindow>
 
+#include <vector>
+
 class QLabel;
 class QTabWidget;
 class QToolButton;
@@ -36,6 +38,13 @@ protected:
 private:
     void buildActions();
     int findTab(int64_t libraryId, const QString& key) const;  // a reader, loaded or not
+    void reopenClosedTab();
+    struct ClosedTab {
+        int64_t libraryId;
+        QString key;
+        int index;
+    };
+    std::vector<ClosedTab> closedTabs_;  // newest last; this window's only, not kept
     // Open tabs and the library's view are saved on quit and restored on start; restored
     // tabs load when they are first shown.
     void saveSession();
