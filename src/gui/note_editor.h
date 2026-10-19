@@ -12,7 +12,6 @@ class QComboBox;
 class QListWidget;
 class QLabel;
 class QToolBar;
-class QSplitter;
 class QToolButton;
 class QTextDocument;
 
@@ -163,9 +162,5 @@ private:
 // Lets the notes listed in `list` (keys in Qt::UserRole) be moved to the trash, from
 // the context menu or with Delete, after asking.
 void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId);
-
-// The list of notes over the open note: one height for the list in all of them (the
-// library's Notes tab and every PDF's), kept in the settings; dragging one moves all.
-void shareNotesSplit(QSplitter* split);
 
 } // namespace on::gui

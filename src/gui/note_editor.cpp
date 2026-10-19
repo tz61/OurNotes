@@ -3,9 +3,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
-#include <QPointer>
 #include <QScrollBar>
-#include <QSplitter>
 #include <QLabel>
 #include <QFontInfo>
 #include <QFontDatabase>
@@ -1384,43 +1382,6 @@ QString NoteEditor::storeImage(const QImage& image)
              {"mtime", QFileInfo(qpath(file)).lastModified().toMSecsSinceEpoch()}};
     lib.createItem(libraryId_, att);
     return "attachment:" + qs(key);
-}
-
-namespace {
-
-std::vector<QPointer<QSplitter>>& notesSplits()
-{
-    static std::vector<QPointer<QSplitter>> splits;
-    return splits;
-}
-
-void setListHeight(QSplitter* split, int list)
-{
-    int total = std::max(split->height(), list + 200);  // not laid out yet: in proportion
-    QSignalBlocker block(split);
-    split->setSizes({list, std::max(1, total - list)});
-}
-
-} // namespace
-
-void shareNotesSplit(QSplitter* split)
-{
-    split->setStretchFactor(0, 0);  // more room goes to the note
-    split->setStretchFactor(1, 1);
-    split->setCollapsible(1, false);
-    setListHeight(split, AppContext::get().config().get("/ui/notesListHeight", 120).get<int>());
-    auto& splits = notesSplits();
-    splits.erase(std::remove_if(splits.begin(), splits.end(), [](auto& s) { return s.isNull(); }), splits.end());
-    splits.push_back(split);
-    QObject::connect(split, &QSplitter::splitterMoved, split, [split] {
-        auto sizes = split->sizes();
-        if (sizes.size() < 2 || sizes[0] <= 0)
-            return;  // the list hidden (a single note): nothing to share
-        AppContext::get().config().set("/ui/notesListHeight", sizes[0]);
-        for (auto& other : notesSplits())
-            if (other && other != split)
-                setListHeight(other, sizes[0]);
-    });
 }
 
 void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId)

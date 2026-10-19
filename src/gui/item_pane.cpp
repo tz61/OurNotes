@@ -926,7 +926,10 @@ ItemNotesPanel::ItemNotesPanel(QWidget* parent) : QWidget(parent)
     auto* split = new QSplitter(Qt::Vertical, this);
     list_ = new QListWidget(split);
     editor_ = new NoteEditor(split);
-    shareNotesSplit(split);
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setSizes({110, 500});
+    split->setCollapsible(1, false);
     v->addWidget(split, 1);
     empty_ = new QLabel(tr("No notes yet."), this);
     empty_->setAlignment(Qt::AlignCenter);
