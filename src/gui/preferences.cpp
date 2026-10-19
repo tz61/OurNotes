@@ -140,8 +140,8 @@ QWidget* PreferencesDialog::generalPage()
     auto* bands = new QCheckBox(tr("Show a BanG Dream! band behind the item list, a different one every two hours"),
                                 page);
     bands->setObjectName("bandBackground");
-    bands->setToolTip(tr("Poppin'Party from midnight to Ikka Dumb Rock! from 22:00. The pictures are in the data "
-                         "directory under backgrounds/bands; scripts/fetch-band-backgrounds.sh downloads them."));
+    bands->setToolTip(tr("Poppin'Party from midnight to Ikka Dumb Rock! from 22:00. Pictures of your own in the data "
+                         "directory under backgrounds/bands are shown instead."));
     bands->setChecked(cfg.get("/ui/bandBackground", true).get<bool>());
     form->addRow(QString(), bands);
     connect(bands, &QCheckBox::toggled, this, [](bool on) {

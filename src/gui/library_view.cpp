@@ -489,16 +489,23 @@ void LibraryView::addTool(QWidget* tool)
 }
 
 // One of the twelve BanG Dream! bands behind the item list, a different one every two
-// hours (Poppin'Party from midnight to Ikka Dumb Rock! from 22:00): the pictures in
-// <data dir>/backgrounds/bands, in name order (scripts/fetch-band-backgrounds.sh).
+// hours (Poppin'Party from midnight to Ikka Dumb Rock! from 22:00): the pictures built
+// into the program (resources/bands), or those in <data dir>/backgrounds/bands, in name
+// order.
 void LibraryView::updateBandBackground()
 {
     auto* view = static_cast<ItemsTreeView*>(items_);
     bandTimer_.stop();
     QStringList files;
+    const QStringList kinds{"*.png", "*.jpg", "*.jpeg", "*.webp"};
     QDir dir(qpath(AppContext::get().library().dataDir() / "backgrounds" / "bands"));
-    if (AppContext::get().config().get("/ui/bandBackground", true).get<bool>())
-        files = dir.entryList({"*.png", "*.jpg", "*.jpeg", "*.webp"}, QDir::Files, QDir::Name);
+    if (AppContext::get().config().get("/ui/bandBackground", true).get<bool>()) {
+        files = dir.entryList(kinds, QDir::Files, QDir::Name);
+        if (files.isEmpty()) {
+            dir = QDir(":/bands");
+            files = dir.entryList(kinds, QDir::Files, QDir::Name);
+        }
+    }
     if (files.isEmpty()) {
         view->setBackgroundImage({});
         return;

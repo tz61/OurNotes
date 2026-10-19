@@ -2,4 +2,19 @@
     <qresource prefix="/">
         <file alias="ournotes.svg">../../resources/icons/ournotes.svg</file>
     </qresource>
+    <!-- the twelve bands behind the item list, one for every two hours (see library_view.cpp) -->
+    <qresource prefix="/bands">
+        <file alias="01-poppin-party.jpg">../../resources/bands/01-poppin-party.jpg</file>
+        <file alias="02-afterglow.jpg">../../resources/bands/02-afterglow.jpg</file>
+        <file alias="03-pastel-palettes.jpg">../../resources/bands/03-pastel-palettes.jpg</file>
+        <file alias="04-roselia.jpg">../../resources/bands/04-roselia.jpg</file>
+        <file alias="05-hello-happy-world.jpg">../../resources/bands/05-hello-happy-world.jpg</file>
+        <file alias="06-morfonica.jpg">../../resources/bands/06-morfonica.jpg</file>
+        <file alias="07-raise-a-suilen.jpg">../../resources/bands/07-raise-a-suilen.jpg</file>
+        <file alias="08-mygo.jpg">../../resources/bands/08-mygo.jpg</file>
+        <file alias="09-ave-mujica.jpg">../../resources/bands/09-ave-mujica.jpg</file>
+        <file alias="10-mugendai-mewtype.jpg">../../resources/bands/10-mugendai-mewtype.jpg</file>
+        <file alias="11-millsage.jpg">../../resources/bands/11-millsage.jpg</file>
+        <file alias="12-ikka-dumb-rock.jpg">../../resources/bands/12-ikka-dumb-rock.jpg</file>
+    </qresource>
 </RCC>
