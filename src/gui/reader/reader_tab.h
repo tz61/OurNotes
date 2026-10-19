@@ -42,7 +42,12 @@ signals:
     void titleChanged(const QString& title);
     void showInLibrary(qint64 libraryId, const QString& key);
 
+protected:
+    void changeEvent(QEvent* e) override;
+
 private:
+    void updateDarkPagesAction();
+    void requestThumbnails();
     void buildToolbar();
     void buildSidebar();
     void buildContextPane();
@@ -85,6 +90,7 @@ private:
     QTimer reloadTimer_;
     QTimer positionTimer_;
     bool thumbnailsRequested_ = false;
+    QAction* darkPages_ = nullptr;
 };
 
 } // namespace fp::gui

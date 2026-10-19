@@ -7,6 +7,9 @@
 #include <QStyleHints>
 #include <QWidget>
 
+#include <algorithm>
+#include <array>
+
 #include "gui/app_context.h"
 #include "gui/common.h"
 
@@ -100,6 +103,50 @@ void applyAppearance(Appearance a)
 }
 
 bool isDarkTheme() { return QApplication::palette().color(QPalette::Window).lightness() < 128; }
+
+bool darkPdfPages()
+{
+    if (!isDarkTheme())
+        return false;
+    auto* ctx = AppContext::tryGet();
+    if (!ctx)
+        return true;
+    auto v = ctx->config().get("/reader/darkPages", true);
+    return !v.is_boolean() || v.get<bool>();
+}
+
+namespace {
+// paper and ink after recolouring; soft rather than pure black and white
+constexpr int kPaper[3] = {28, 29, 32};
+constexpr int kInk[3] = {226, 226, 226};
+} // namespace
+
+QColor darkPageColor() { return QColor(kPaper[0], kPaper[1], kPaper[2]); }
+
+void darkenPage(QImage& image)
+{
+    if (image.format() != QImage::Format_RGB888)
+        image = image.convertToFormat(QImage::Format_RGB888);
+    // Shifting every channel by 255 - max - min mirrors the HSL lightness and keeps
+    // hue and saturation; the result is then mapped onto the paper..ink range.
+    static const auto lut = [] {
+        std::array<std::array<uchar, 256>, 3> t{};
+        for (int c = 0; c < 3; ++c)
+            for (int v = 0; v < 256; ++v)
+                t[c][v] = uchar(kPaper[c] + (v * (kInk[c] - kPaper[c]) + 127) / 255);
+        return t;
+    }();
+    for (int y = 0; y < image.height(); ++y) {
+        uchar* px = image.scanLine(y);
+        for (int x = 0; x < image.width(); ++x, px += 3) {
+            int r = px[0], g = px[1], b = px[2];
+            int shift = 255 - std::max({r, g, b}) - std::min({r, g, b});
+            px[0] = lut[0][r + shift];
+            px[1] = lut[1][g + shift];
+            px[2] = lut[2][b + shift];
+        }
+    }
+}
 
 QColor formulaColor(const QColor& textColor)
 {

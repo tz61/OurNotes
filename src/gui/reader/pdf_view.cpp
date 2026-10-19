@@ -4,6 +4,7 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QHelpEvent>
 #include <QMenu>
@@ -19,9 +20,11 @@
 #include <cmath>
 
 #include "core/schema.h"
+#include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
 #include "gui/reader/render_worker.h"
+#include "gui/theme.h"
 
 namespace fp::gui {
 
@@ -98,6 +101,9 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
     horizontalScrollBar()->setSingleStep(40);
     popup_ = new SelectionPopup(this, viewport());
     popup_->hide();
+    darkPages_ = darkPdfPages();
+    if (auto* ctx = AppContext::tryGet())
+        connect(ctx, &AppContext::appearanceChanged, this, [this] { setDarkPages(darkPdfPages()); });
     popup_->highlight = [this](const QString& c) { createFromSelection("highlight", c); };
     connect(popup_->underline_, &QToolButton::clicked, this, [this] { createFromSelection("underline", color_); });
     connect(popup_->copy_, &QToolButton::clicked, this, [this] {
@@ -359,7 +365,7 @@ void PdfView::requestRenders()
     });
     std::deque<RenderWorker::Request> q;
     for (int p : pages)
-        q.push_back({p, want, generation_, false});
+        q.push_back({p, want, generation_, false, darkPages_});
     worker_->setQueue(std::move(q));
     // drop images far from the viewport
     for (auto it = cache_.begin(); it != cache_.end();) {
@@ -370,8 +376,10 @@ void PdfView::requestRenders()
     }
 }
 
-void PdfView::onRendered(int page, double scale, quint64 generation, bool thumbnail, const QImage& image)
+void PdfView::onRendered(int page, double scale, quint64 generation, bool thumbnail, bool dark, const QImage& image)
 {
+    if (dark != darkPages_)
+        return;  // rendered before dark mode was switched
     if (thumbnail) {
         emit thumbnailRendered(page, image);
         return;
@@ -395,7 +403,7 @@ void PdfView::requestThumbnails(double scale)
         return;
     std::deque<RenderWorker::Request> q;
     for (int i = 0; i < pageCount(); ++i)
-        q.push_back({i, scale, 0, true});
+        q.push_back({i, scale, 0, true, darkPages_});
     worker_->addRequests(q);
 }
 
@@ -412,6 +420,25 @@ QImage PdfView::annotationImage(const Json& data, double scale)
     }
 }
 
+void PdfView::setDarkPages(bool dark)
+{
+    if (dark == darkPages_)
+        return;
+    darkPages_ = dark;
+    ++generation_;
+    cache_.clear();
+    requestRenders();
+    viewport()->update();
+    emit darkPagesChanged(dark);
+}
+
+void PdfView::changeEvent(QEvent* e)
+{
+    QAbstractScrollArea::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange)
+        setDarkPages(darkPdfPages());
+}
+
 // --- painting --------------------------------------------------------------------------------
 
 void PdfView::paintEvent(QPaintEvent*)
@@ -426,7 +453,7 @@ void PdfView::paintEvent(QPaintEvent*)
     for (int i = first; i <= last; ++i) {
         QRectF r = pageRects_[i].translated(-scrollOffset());
         p.fillRect(r.adjusted(1, 2, 2, 3), QColor(0, 0, 0, 45));
-        p.fillRect(r, Qt::white);
+        p.fillRect(r, darkPages_ ? darkPageColor() : QColor(Qt::white));
         auto it = cache_.find(i);
         if (it != cache_.end())
             p.drawImage(r, it->second.image);
@@ -482,7 +509,9 @@ void PdfView::paintAnnotations(QPainter& p, int page)
                 if (a.type == "highlight") {
                     QColor fill = c;
                     fill.setAlphaF(0.42);
-                    p.setCompositionMode(QPainter::CompositionMode_Multiply);
+                    // multiply darkens the paper under the text; on dark pages, screen lightens it
+                    p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen
+                                                    : QPainter::CompositionMode_Multiply);
                     p.fillRect(v, fill);
                     p.setCompositionMode(QPainter::CompositionMode_SourceOver);
                 } else {

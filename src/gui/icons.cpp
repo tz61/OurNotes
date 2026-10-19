@@ -66,6 +66,7 @@ const QHash<QString, QString>& sources()
         {"copy", R"(<rect x="8" y="8" width="12" height="13" rx="1.5" fill="none" stroke="CUR" stroke-width="1.6"/><path d="M16 8V4.5A1.5 1.5 0 0 0 14.5 3h-9A1.5 1.5 0 0 0 4 4.5v11A1.5 1.5 0 0 0 5.5 17H8" fill="none" stroke="CUR" stroke-width="1.6"/>)"},
         // --- reader -------------------------------------------------------------------------
         {"sidebar", R"(<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="CUR" stroke-width="1.6"/><path d="M9 4v16" stroke="CUR" stroke-width="1.6"/><path d="M5 8h2M5 11h2M5 14h2" stroke="CUR" stroke-width="1.3"/>)"},
+        {"dark-pages", R"(<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="none" stroke="CUR" stroke-width="1.7" stroke-linejoin="round"/>)"},
         {"context-pane", R"(<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="CUR" stroke-width="1.6"/><path d="M15 4v16" stroke="CUR" stroke-width="1.6"/>)"},
         {"zoom-in", R"(<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="CUR" stroke-width="1.7"/><path d="M15.5 15.5l5 5M10.5 7.5v6M7.5 10.5h6" stroke="CUR" stroke-width="1.8" stroke-linecap="round"/>)"},
         {"zoom-out", R"(<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="CUR" stroke-width="1.7"/><path d="M15.5 15.5l5 5M7.5 10.5h6" stroke="CUR" stroke-width="1.8" stroke-linecap="round"/>)"},

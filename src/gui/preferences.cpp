@@ -127,6 +127,16 @@ QWidget* PreferencesDialog::generalPage()
         applyAppearance(appearanceFromConfig(config));
         emit AppContext::get().appearanceChanged();
     });
+    auto* darkPages = new QCheckBox(tr("Show PDF pages in dark colours in dark mode"), page);
+    darkPages->setObjectName("darkPages");
+    darkPages->setChecked(cfg.get("/reader/darkPages", true).get<bool>());
+    form->addRow(QString(), darkPages);
+    connect(darkPages, &QCheckBox::toggled, this, [](bool on) {
+        auto& ctx = AppContext::get();
+        ctx.config().set("/reader/darkPages", on);
+        ctx.config().save();
+        emit ctx.appearanceChanged();
+    });
     form->addRow(tr("Formula colour:"), formulaColorRow(page));
 
     openPdf_ = new QComboBox(page);

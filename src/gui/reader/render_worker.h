@@ -23,6 +23,7 @@ public:
         double scale = 1;  // device pixels per point
         quint64 generation = 0;
         bool thumbnail = false;
+        bool dark = false;  // recolour for dark mode
     };
 
     explicit RenderWorker(const fs::path& path, QObject* parent = nullptr);
@@ -32,7 +33,7 @@ public:
     void addRequests(const std::deque<Request>& requests);  // appended, e.g. thumbnails
 
 signals:
-    void rendered(int page, double scale, quint64 generation, bool thumbnail, const QImage& image);
+    void rendered(int page, double scale, quint64 generation, bool thumbnail, bool dark, const QImage& image);
 
 private:
     void run();

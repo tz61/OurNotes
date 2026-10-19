@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QImage>
 #include <QString>
 
 #include "core/config.h"
@@ -20,5 +21,14 @@ bool isDarkTheme();
 
 // Colour of formulas in notes: "/notes/formulaColor" if set, else the text colour.
 QColor formulaColor(const QColor& textColor);
+
+// Whether PDF pages are shown dark: while the theme is dark, unless "/reader/darkPages"
+// is turned off.
+bool darkPdfPages();
+// Recolours a rendered page for dark mode: lightness is inverted and hues are kept, so
+// black text on white becomes light text on a dark page while colours stay recognisable.
+// Safe to call on any thread.
+void darkenPage(QImage& image);
+QColor darkPageColor();  // what white paper becomes
 
 } // namespace fp::gui

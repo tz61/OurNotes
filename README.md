@@ -117,7 +117,9 @@ freepen-cli import-zotero ~/Zotero
 The interface is scaled to 150% by default; change it in *Preferences → General →
 Interface scale* (100–300%, applied on restart). A `QT_SCALE_FACTOR` set in the
 environment takes precedence. *Appearance* follows the system's light or dark theme by
-default, or can be set to Light or Dark (applied immediately).
+default, or can be set to Light or Dark (applied immediately). In dark mode PDF pages
+are shown dark too (light text on dark paper, colours keep their hue); switch to the
+PDF's own colours with the moon button in the reader toolbar or in Preferences.
 
 Data lives in `~/freePen` (database `freepen.sqlite`, files in `storage/<KEY>/`), like
 Zotero's data directory; change it in *Preferences → General* or with

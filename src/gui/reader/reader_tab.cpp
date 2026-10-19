@@ -1,6 +1,7 @@
 #include "gui/reader/reader_tab.h"
 
 #include <QActionGroup>
+#include <QEvent>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QIntValidator>
@@ -25,6 +26,7 @@
 #include "gui/icons.h"
 #include "gui/note_editor.h"
 #include "gui/reader/annotation_sidebar.h"
+#include "gui/theme.h"
 
 namespace fp::gui {
 
@@ -94,6 +96,11 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     connect(view_, &PdfView::thumbnailRendered, this, [this](int page, const QImage& img) {
         if (auto* item = thumbnails_->item(page))
             item->setIcon(QPixmap::fromImage(img));
+    });
+    connect(view_, &PdfView::darkPagesChanged, this, [this] {
+        updateDarkPagesAction();
+        if (thumbnailsRequested_)
+            requestThumbnails();
     });
     connect(annotations_, &AnnotationSidebar::activated, this, [this](const QString& key) {
         view_->selectAnnotation(key, true);
@@ -204,8 +211,7 @@ void ReaderTab::buildSidebar()
             sidebar_->setCurrentWidget(page);
             if (page == thumbnails_ && !thumbnailsRequested_) {
                 thumbnailsRequested_ = true;
-                auto size = view_->document()->pageSize(0);
-                view_->requestThumbnails(120.0 / std::max(1.0f, size.width) * devicePixelRatioF());
+                requestThumbnails();
             }
         });
         switcher->addWidget(b);
@@ -356,10 +362,44 @@ void ReaderTab::buildToolbar()
         }
     });
     tb->addSeparator();
+    // in dark mode: dark pages, or the PDF's own colours (e.g. for figures)
+    darkPages_ = tb->addAction(icon("dark-pages"), tr("Dark pages"));
+    darkPages_->setObjectName("darkPages");
+    darkPages_->setCheckable(true);
+    connect(darkPages_, &QAction::triggered, this, [](bool on) {
+        auto& ctx = AppContext::get();
+        ctx.config().set("/reader/darkPages", on);
+        ctx.config().save();
+        emit ctx.appearanceChanged();
+    });
+    updateDarkPagesAction();
     auto* paneToggle = tb->addAction(icon("context-pane"), tr("Toggle notes pane"));
     paneToggle->setCheckable(true);
     paneToggle->setChecked(true);
     connect(paneToggle, &QAction::toggled, contextPane_, &QWidget::setVisible);
+}
+
+void ReaderTab::updateDarkPagesAction()
+{
+    if (!darkPages_)
+        return;
+    darkPages_->setVisible(isDarkTheme());
+    darkPages_->setChecked(view_->darkPages());
+    darkPages_->setToolTip(view_->darkPages() ? tr("Showing pages in dark colours; click for the PDF's own colours")
+                                              : tr("Showing the PDF's own colours; click for dark pages"));
+}
+
+void ReaderTab::changeEvent(QEvent* e)
+{
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange)
+        updateDarkPagesAction();
+}
+
+void ReaderTab::requestThumbnails()
+{
+    auto size = view_->document()->pageSize(0);
+    view_->requestThumbnails(120.0 / std::max(1.0f, size.width) * devicePixelRatioF());
 }
 
 // --- behaviour --------------------------------------------------------------------------------

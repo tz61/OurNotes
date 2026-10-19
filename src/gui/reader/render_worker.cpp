@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "gui/theme.h"
 #include "pdf/document.h"
 
 namespace fp::gui {
@@ -67,12 +68,14 @@ void RenderWorker::run()
             continue;
         try {
             auto img = doc->render(req.page, (float)req.scale);
-            QImage image(img.pixels.data(), img.width, img.height, img.stride, QImage::Format_RGB888);
-            emit rendered(req.page, req.scale, req.generation, req.thumbnail, image.copy());
+            QImage image = QImage(img.pixels.data(), img.width, img.height, img.stride, QImage::Format_RGB888).copy();
+            if (req.dark)
+                darkenPage(image);
+            emit rendered(req.page, req.scale, req.generation, req.thumbnail, req.dark, image);
         } catch (const std::exception&) {
             QImage blank(1, 1, QImage::Format_RGB888);
-            blank.fill(Qt::white);
-            emit rendered(req.page, req.scale, req.generation, req.thumbnail, blank);
+            blank.fill(req.dark ? darkPageColor() : QColor(Qt::white));
+            emit rendered(req.page, req.scale, req.generation, req.thumbnail, req.dark, blank);
         }
     }
 }

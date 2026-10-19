@@ -69,7 +69,12 @@ public:
     void clearFind();
     void requestThumbnails(double scale);
 
+    // Dark mode for the pages themselves (see darkPdfPages()); follows the theme.
+    bool darkPages() const { return darkPages_; }
+    void setDarkPages(bool dark);
+
 signals:
+    void darkPagesChanged(bool dark);
     void pageChanged(int page);
     void zoomChanged(double zoom);
     void annotationCreated(const fp::Json& data);
@@ -83,6 +88,7 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent* e) override;
+    void changeEvent(QEvent* e) override;
     void resizeEvent(QResizeEvent* e) override;
     void scrollContentsBy(int dx, int dy) override;
     void mousePressEvent(QMouseEvent* e) override;
@@ -129,7 +135,7 @@ private:
     QPointF toView(int page, QPointF pagePoint) const;
     std::pair<int, int> visiblePages(double margin = 0) const;
     void requestRenders();
-    void onRendered(int page, double scale, quint64 generation, bool thumbnail, const QImage& image);
+    void onRendered(int page, double scale, quint64 generation, bool thumbnail, bool dark, const QImage& image);
 
     // annotations
     AnnView makeView(const Json& data) const;
@@ -161,6 +167,7 @@ private:
     double scale_ = 96.0 / 72.0;     // DIP per point
     Fit fit_ = Fit::Width;
     quint64 generation_ = 0;
+    bool darkPages_ = false;
     std::map<int, Cached> cache_;
     int lastPage_ = -1;
 

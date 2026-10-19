@@ -128,6 +128,83 @@ TEST_CASE("pdf view: double-click selects a word")
     CHECK(view.selectedText() == "World");
 }
 
+TEST_CASE("reader: PDF pages follow dark mode")
+{
+    app();
+    Env env;
+    // paper becomes dark, ink light, and colours keep their hue
+    QImage img(3, 1, QImage::Format_RGB888);
+    img.setPixelColor(0, 0, Qt::white);
+    img.setPixelColor(1, 0, Qt::black);
+    img.setPixelColor(2, 0, QColor(220, 30, 30));
+    darkenPage(img);
+    CHECK(img.pixelColor(0, 0) == darkPageColor());
+    CHECK(img.pixelColor(1, 0).lightness() > 200);
+    CHECK(img.pixelColor(2, 0).red() > img.pixelColor(2, 0).green() + 80);
+
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    applyAppearance(Appearance::Light);
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    auto* view = tab.view();
+    auto paper = [&] {  // a blank spot on the page
+        auto img = view->viewport()->grab().toImage();
+        return img.pixelColor((view->pageToViewport(0, {500, 500}) * img.devicePixelRatio()).toPoint());
+    };
+    auto inkIsLight = [&] {  // the darkest and lightest pixels along the first line of text
+        auto img = view->viewport()->grab().toImage();
+        int lightest = 0;
+        auto a = charCenter(*view, 0) * img.devicePixelRatio(), b = charCenter(*view, 10) * img.devicePixelRatio();
+        for (int x = int(a.x()); x < int(b.x()); ++x)
+            lightest = std::max(lightest, img.pixelColor(x, int(a.y())).lightness());
+        return lightest > 180;
+    };
+    auto* toggle = tab.findChild<QAction*>("darkPages");
+    REQUIRE(toggle);
+    CHECK(!view->darkPages());
+    CHECK(!toggle->isVisible());
+    CHECK(QTest::qWaitFor([&] { return paper().lightness() > 240; }));
+
+    applyAppearance(Appearance::Dark);
+    QApplication::processEvents();
+    CHECK(view->darkPages());
+    CHECK(toggle->isVisible());
+    CHECK(toggle->isChecked());
+    CHECK(QTest::qWaitFor([&] { return paper() == darkPageColor() && inkIsLight(); }));
+    // highlights stay visible on dark paper (multiplying would leave it dark)
+    view->setTool(ReaderTool::Highlight);
+    drag(view->viewport(), charCenter(*view, 0), charCenter(*view, 10));
+    view->setTool(ReaderTool::Select);
+    view->clearTextSelection();
+    QApplication::processEvents();
+    {
+        auto img = view->viewport()->grab().toImage();
+        auto top = charCenter(*view, 2) * img.devicePixelRatio();
+        // just above the glyphs, inside the highlight box
+        QColor c = img.pixelColor(int(top.x()), int(top.y() - 9 * img.devicePixelRatio()));
+        CHECK(c.lightness() > darkPageColor().lightness() + 25);
+        CHECK(c.red() > c.blue() + 30);
+        CHECK(inkIsLight());
+    }
+    if (auto dir = qEnvironmentVariable("FREEPEN_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        tab.grab().save(dir + "/reader-dark.png");
+
+    // the toolbar button shows the PDF's own colours, and is remembered
+    toggle->trigger();
+    CHECK(!view->darkPages());
+    CHECK(env.config.get("/reader/darkPages").get<bool>() == false);
+    CHECK(QTest::qWaitFor([&] { return paper().lightness() > 240; }));
+    toggle->trigger();
+    CHECK(view->darkPages());
+
+    applyAppearance(Appearance::System);
+}
+
 TEST_CASE("reader tab persists annotations in the library")
 {
     app();
