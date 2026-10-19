@@ -35,6 +35,7 @@
 #include "gui/app_context.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
+#include "gui/connector_server.h"
 #include "gui/formats_actions.h"
 #include "gui/fulltext_indexer.h"
 #include "gui/icons.h"
@@ -97,6 +98,16 @@ MainWindow::MainWindow()
     indexer_ = new FulltextIndexer(this);
 
     buildActions();
+
+    // pages saved from the browser (OurNotes Connector)
+    connector_ = new ConnectorServer(this);
+    connector_->targetScope = [this] { return library_->scope(); };
+    connect(connector_, &ConnectorServer::saved, this, [this](qint64, const QString&, const QString& title) {
+        setStatus(tr("Saved from the browser: %1").arg(title), 8000);
+    });
+    connect(connector_, &ConnectorServer::metadataWanted, this,
+            [this](qint64 lib, const QStringList& keys) { retrieveMetadata(lib, keys); });
+    startConnector(AppContext::get().config().get("/connector/enabled", true).get<bool>());
 
     connect(tabs_, &QTabWidget::tabCloseRequested, this, [this](int i) {
         if (i == 0)
@@ -548,9 +559,22 @@ void MainWindow::showPreferences(int page)
     connect(&dlg, &PreferencesDialog::importZoteroRequested, this, &MainWindow::importZotero);
     connect(&dlg, &PreferencesDialog::rebuildIndexRequested, indexer_, &FulltextIndexer::rebuild);
     connect(&dlg, &PreferencesDialog::conflictsRequested, this, &MainWindow::showConflicts);
+    connect(&dlg, &PreferencesDialog::connectorToggled, this, &MainWindow::startConnector);
     dlg.exec();
     if (dlg.restartRequested())
         QTimer::singleShot(0, this, &MainWindow::restartApplication);
+}
+
+void MainWindow::startConnector(bool on)
+{
+    if (!on) {
+        connector_->stop();
+        return;
+    }
+    if (!connector_->isRunning() && !connector_->start())
+        setStatus(tr("The browser connector cannot use port %1: another OurNotes is running?")
+                      .arg(ConnectorServer::kDefaultPort),
+                  10000);
 }
 
 void MainWindow::restartApplication()

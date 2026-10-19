@@ -25,6 +25,7 @@
 #include "core/hash.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
+#include "gui/connector_server.h"
 #include "gui/icons.h"
 #include "gui/note_editor.h"
 #include "gui/sync_controller.h"
@@ -359,6 +360,27 @@ QWidget* PreferencesDialog::advancedPage()
         [this] { emit conflictsRequested(); });
     add(tr("Open Configuration Folder"), qpath(AppContext::get().config().path()), [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(qpath(AppContext::get().config().path().parent_path())));
+    });
+    auto* connector = new QCheckBox(tr("Let the OurNotes Connector browser extension save pages"), page);
+    connector->setObjectName("connectorEnabled");
+    connector->setChecked(AppContext::get().config().get("/connector/enabled", true).get<bool>());
+    v->addWidget(connector);
+    auto* connectorHelp =
+        new QLabel(tr("The extension (in the browser folder of OurNotes' source) sends the page you are reading to "
+                      "OurNotes at 127.0.0.1:%1, into the collection selected in the library. Only browser "
+                      "extensions can use it, and only on this computer.")
+                       .arg(ConnectorServer::kDefaultPort),
+                   page);
+    connectorHelp->setWordWrap(true);
+    QFont small = connectorHelp->font();
+    small.setPointSizeF(small.pointSizeF() * 0.9);
+    connectorHelp->setFont(small);
+    v->addWidget(connectorHelp);
+    connect(connector, &QCheckBox::toggled, this, [this](bool on) {
+        auto& cfg = AppContext::get().config();
+        cfg.set("/connector/enabled", on);
+        cfg.save();
+        emit connectorToggled(on);
     });
     v->addStretch();
     return page;

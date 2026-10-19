@@ -24,6 +24,7 @@ signals:
     void importZoteroRequested();
     void rebuildIndexRequested();
     void conflictsRequested();
+    void connectorToggled(bool on);
 
 private:
     QWidget* generalPage();

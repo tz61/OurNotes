@@ -24,6 +24,8 @@
 #include <QTreeWidget>
 
 #include <array>
+#include <future>
+#include <httplib.h>
 #include <atomic>
 #include <QNativeGestureEvent>
 #include <QTest>
@@ -38,9 +40,11 @@
 #include "../pdf/sample_pdf.h"
 #include "core/config.h"
 #include "core/library.h"
+#include "core/schema.h"
 #include "gui/app_context.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
+#include "gui/connector_server.h"
 #include "gui/fancy_progress.h"
 #include "gui/flow_layout.h"
 #include "gui/item_pane.h"
@@ -2237,6 +2241,139 @@ TEST_CASE("library: a PDF item dragged onto an item becomes its attachment, the 
     lit = shot.pixelColor(QPoint(cr.right() - 4, cr.center().y()) * shot.devicePixelRatio());
     CHECK(std::abs(lit.red() - highlight.red()) + std::abs(lit.green() - highlight.green()) +
               std::abs(lit.blue() - highlight.blue()) >= 60);
+}
+
+TEST_CASE("connector: a page's item is cleaned up to what OurNotes keeps")
+{
+    auto item = connectorItem(Json{{"itemType", "journalArticle"},
+                                   {"title", "  Deep Learning \n"},
+                                   {"publicationTitle", "Nature"},
+                                   {"websiteTitle", "not a journal article field"},
+                                   {"key", "ABCD1234"},
+                                   {"creators", Json::array({Json{{"creatorType", "author"}, {"firstName", "Yann"}, {"lastName", "LeCun"}},
+                                                             Json{{"creatorType", "nonsense"}, {"name", "OpenAI"}},
+                                                             Json{{"firstName", ""}}})},
+                                   {"tags", Json::array({"ml", Json{{"tag", "review"}}, ""})}});
+    CHECK(item["itemType"] == "journalArticle");
+    CHECK(item["title"] == "Deep Learning");
+    CHECK(item["publicationTitle"] == "Nature");
+    CHECK(!item.contains("websiteTitle"));
+    CHECK(!item.contains("key"));
+    REQUIRE(item["creators"].size() == 2);
+    CHECK(item["creators"][1]["creatorType"] == "author");
+    CHECK(item["creators"][1]["name"] == "OpenAI");
+    CHECK(item["tags"].size() == 2);
+    CHECK(!jstr(item, "accessDate").empty() == schema::hasField("journalArticle", "accessDate"));
+    auto page = connectorItem(Json{{"itemType", "spaceship"}, {"url", "https://example.org/a"}});
+    CHECK(page["itemType"] == "webpage");
+    CHECK(page["title"] == "https://example.org/a");
+    CHECK(!jstr(page, "accessDate").empty());
+}
+
+TEST_CASE("connector: the browser extension saves pages, and nothing else gets in")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto reading = jstr(env.library.createCollection(env.lib, "Reading"), "key");
+    auto other = jstr(env.library.createCollection(env.lib, "Other"), "key");
+    ConnectorServer server;
+    server.targetScope = [&] { return Scope{env.lib, ScopeKind::Collection, reading}; };
+    QStringList lookUp;
+    QObject::connect(&server, &ConnectorServer::metadataWanted, [&](qint64, const QStringList& keys) { lookUp = keys; });
+    int port = 0;
+    for (int p = 23190; p < 23290 && !port; ++p)
+        if (server.start(p))
+            port = p;
+    REQUIRE(port);
+    CHECK(!ConnectorServer(nullptr).start(port));  // taken
+
+    // requests block until the GUI thread has done the work: run them aside
+    auto call = [&](std::function<httplib::Result(httplib::Client&)> fn) {
+        auto f = std::async(std::launch::async, [&] {
+            httplib::Client c("127.0.0.1", port);
+            c.set_read_timeout(30);
+            auto r = fn(c);
+            return r ? std::make_pair(r->status, r->body) : std::make_pair(-1, std::string());
+        });
+        REQUIRE(QTest::qWaitFor([&] { return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready; }, 30000));
+        return f.get();
+    };
+    httplib::Headers ext{{"Origin", "chrome-extension://abcdefghijklmnop"}, {"X-OurNotes-Connector", "1"}};
+    Json page{{"item",
+               {{"itemType", "journalArticle"},
+                {"title", "Deep Learning"},
+                {"creators", Json::array({Json{{"creatorType", "author"}, {"firstName", "Yann"}, {"lastName", "LeCun"}}})},
+                {"publicationTitle", "Nature"},
+                {"DOI", "10.1038/nature14539"},
+                {"url", "https://www.nature.com/articles/nature14539"}}}};
+    auto body = page.dump();
+
+    auto [pingStatus, pingBody] = call([&](httplib::Client& c) { return c.Get("/connector/ping", ext); });
+    CHECK(pingStatus == 200);
+    CHECK(Json::parse(pingBody)["app"] == "OurNotes");
+
+    // web pages, other host names and requests without the header are turned away
+    auto count = [&] { return env.library.allItems(env.lib).size(); };
+    auto before = count();
+    httplib::Headers page1{{"Origin", "https://evil.example"}, {"X-OurNotes-Connector", "1"}};
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/save", page1, body, "application/json"); }).first == 403);
+    httplib::Headers rebound{{"Origin", "chrome-extension://abcdefghijklmnop"}, {"X-OurNotes-Connector", "1"},
+                             {"Host", "evil.example:" + std::to_string(port)}};
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/save", rebound, body, "application/json"); }).first == 403);
+    httplib::Headers bare{{"Origin", "chrome-extension://abcdefghijklmnop"}};
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/save", bare, body, "application/json"); }).first == 400);
+    CHECK(count() == before);
+
+    // into the selected collection
+    auto [status, savedBody] = call([&](httplib::Client& c) { return c.Post("/connector/save", ext, body, "application/json"); });
+    REQUIRE(status == 200);
+    auto saved = Json::parse(savedBody);
+    auto key = jstr(saved, "key");
+    auto item = env.library.item(env.lib, key);
+    REQUIRE(item);
+    CHECK(jstr(*item, "title") == "Deep Learning");
+    CHECK(jstr(*item, "publicationTitle") == "Nature");
+    CHECK(env.library.collectionItemKeys(env.lib, reading).count(key));
+    CHECK(saved["target"] == std::to_string(env.lib) + "/" + reading);
+    bool listed = false;
+    for (auto& t : saved["targets"])
+        listed |= t["name"] == "Other" && t["depth"] == 1;
+    CHECK(listed);
+
+    // its PDF, as the browser fetched it
+    auto pdf = tmp.path / "paper.pdf";
+    writeSamplePdf(pdf);
+    auto bytes = readFile(pdf);
+    std::string query = "/connector/attachment?parent=" + key + "&library=" + std::to_string(env.lib) +
+                        "&url=https%3A%2F%2Fwww.nature.com%2Fpaper.pdf&title=Deep%20Learning";
+    CHECK(call([&](httplib::Client& c) { return c.Post(query, ext, "not a pdf", "application/pdf"); }).first == 415);
+    auto [pdfStatus, pdfBody] = call([&](httplib::Client& c) { return c.Post(query, ext, bytes, "application/pdf"); });
+    REQUIRE(pdfStatus == 200);
+    auto att = env.library.item(env.lib, jstr(Json::parse(pdfBody), "key"));
+    REQUIRE(att);
+    CHECK(jstr(*att, "parentItem") == key);
+    CHECK(jstr(*att, "linkMode") == "imported_url");
+    CHECK(jstr(*att, "url") == "https://www.nature.com/paper.pdf");
+    CHECK(fs::exists(env.library.attachmentFile(env.lib, *att)));
+
+    // the popup moves it and tags it
+    Json move{{"key", key}, {"library", env.lib}, {"target", std::to_string(env.lib) + "/" + other}, {"tags", {"ml", "review"}}};
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/update", ext, move.dump(), "application/json"); }).first == 200);
+    CHECK(env.library.collectionItemKeys(env.lib, other).count(key));
+    CHECK(!env.library.collectionItemKeys(env.lib, reading).count(key));
+    CHECK(env.library.item(env.lib, key)->value("tags", Json::array()).size() == 2);
+
+    // a PDF tab: the file on its own, its details looked up afterwards
+    auto [aloneStatus, aloneBody] = call([&](httplib::Client& c) {
+        return c.Post("/connector/attachment?url=https%3A%2F%2Farxiv.org%2Fpdf%2F1234.pdf", ext, bytes, "application/pdf");
+    });
+    REQUIRE(aloneStatus == 200);
+    auto alone = jstr(Json::parse(aloneBody), "key");
+    CHECK(jstr(*env.library.item(env.lib, alone), "parentItem").empty());
+    CHECK(env.library.collectionItemKeys(env.lib, reading).count(alone));
+    CHECK(lookUp == QStringList{qs(alone)});
+    server.stop();
 }
 
 TEST_CASE("main window: only an empty library is deleted, after asking")

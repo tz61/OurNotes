@@ -4,6 +4,7 @@ include(MicroTeX)
 set(OURNOTES_GUI_SOURCES
     app_context.cpp
     collection_tree.cpp
+    connector_server.cpp
     fancy_progress.cpp
     flow_layout.cpp
     formats_actions.cpp

@@ -12,6 +12,7 @@ class LibraryView;
 class ReaderTab;
 class SyncController;
 class SyncHistoryWindow;
+class ConnectorServer;
 class FulltextIndexer;
 struct Scope;
 
@@ -62,6 +63,8 @@ private:
     LibraryView* library_;
     QToolButton* syncButton_ = nullptr;
     SyncHistoryWindow* syncHistory_ = nullptr;
+    ConnectorServer* connector_ = nullptr;
+    void startConnector(bool on);
     QLabel* status_;
     SyncController* sync_ = nullptr;
     FulltextIndexer* indexer_ = nullptr;
