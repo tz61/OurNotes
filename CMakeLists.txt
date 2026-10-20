@@ -6,6 +6,10 @@ project(OurNotes
     HOMEPAGE_URL "https://github.com/ournotes/ournotes"
     LANGUAGES C CXX)
 
+if(APPLE)
+    enable_language(OBJCXX)  # the GUI asks AppKit about full screen (src/gui/mac_fullscreen.mm)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

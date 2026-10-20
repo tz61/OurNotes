@@ -20,6 +20,7 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTextBrowser>
+#include <QCursor>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -40,6 +41,7 @@
 #include "gui/fulltext_indexer.h"
 #include "gui/icons.h"
 #include "gui/library_view.h"
+#include "gui/mac_fullscreen.h"
 #include "gui/memory.h"
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
@@ -91,6 +93,7 @@ MainWindow::MainWindow()
     centralLayout->addWidget(tabs->tabStrip());
     centralLayout->addWidget(tabs_, 1);
     setCentralWidget(central);
+    connect(&titleBarTimer_, &QTimer::timeout, this, &MainWindow::followTitleBar);
     status_ = new QLabel(this);
     statusBar()->addWidget(status_, 1);
 
@@ -870,6 +873,39 @@ void MainWindow::retrieveMetadata(int64_t libraryId, const QStringList& keys)
     if (auto* dlg = on::gui::retrieveMetadata(this, libraryId, keys))
         connect(dlg, &MetadataProgressDialog::itemActivated, this,
                 [this](qint64, const QString& key) { selectItem(key); });
+}
+
+void MainWindow::setTitleBarOverlap(int pixels)
+{
+    auto* layout = centralWidget()->layout();
+    if (layout->contentsMargins().top() != pixels)
+        layout->setContentsMargins(0, pixels, 0, 0);
+}
+
+// With the pointer at the top of the screen, macOS shows its menu and title bar over a
+// full-screen window, where the tabs are; the window makes room for them. AppKit says
+// nothing when they come and go, so the window looks: often while the pointer is near the
+// top or they are shown, seldom otherwise.
+void MainWindow::followTitleBar()
+{
+    int overlap = fullScreenTitleBarOverlap(this);
+    setTitleBarOverlap(overlap);
+    titleBarTimer_.setInterval(overlap > 0 || mapFromGlobal(QCursor::pos()).y() < 40 ? 16 : 200);
+}
+
+void MainWindow::changeEvent(QEvent* e)
+{
+    QMainWindow::changeEvent(e);
+#ifdef Q_OS_MACOS
+    if (e->type() == QEvent::WindowStateChange) {
+        if (isFullScreen()) {
+            titleBarTimer_.start(200);
+        } else {
+            titleBarTimer_.stop();
+            setTitleBarOverlap(0);
+        }
+    }
+#endif
 }
 
 void MainWindow::closeEvent(QCloseEvent* e)
