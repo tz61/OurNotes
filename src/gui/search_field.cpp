@@ -11,15 +11,14 @@
 namespace on::gui {
 
 namespace {
-constexpr const char* kHistoryKey = "/ui/searchHistory";
 constexpr int kMaxHistory = 100;
 constexpr int kMaxListed = 8;  // rows shown at once; the list scrolls for more
 } // namespace
 
-SearchField::SearchField(QWidget* parent) : QLineEdit(parent)
+SearchField::SearchField(QWidget* parent, const QString& historyKey) : QLineEdit(parent), historyKey_(historyKey)
 {
     if (auto* ctx = AppContext::tryGet()) {
-        auto saved = ctx->config().get(kHistoryKey, Json::array());
+        auto saved = ctx->config().get(ss(historyKey_), Json::array());
         if (saved.is_array())
             for (auto& s : saved)
                 if (s.is_string())
@@ -28,6 +27,7 @@ SearchField::SearchField(QWidget* parent) : QLineEdit(parent)
     connect(this, &QLineEdit::editingFinished, this, [this] { remember(text()); });
     connect(this, &QLineEdit::textEdited, this, [this] {
         browsing_ = -1;  // typing again: Up starts from this
+        typedByUser_ = true;
         if (isListShown())
             hideList(false);
     });
@@ -36,6 +36,7 @@ SearchField::SearchField(QWidget* parent) : QLineEdit(parent)
 void SearchField::remember(const QString& text)
 {
     auto t = text.trimmed();
+    typedByUser_ = false;  // kept: no longer what Up looks for
     if (t.isEmpty())
         return;
     history_.removeAll(t);
@@ -46,7 +47,7 @@ void SearchField::remember(const QString& text)
         Json saved = Json::array();
         for (auto& s : history_)
             saved.push_back(ss(s));
-        ctx->config().set(kHistoryKey, saved);
+        ctx->config().set(ss(historyKey_), saved);
     }
 }
 
@@ -72,7 +73,8 @@ void SearchField::browse(int step)
         return;  // at what was typed already
     if (browsing_ < 0) {
         typed_ = text();
-        browsed_ = matching(typed_);
+        browsed_ = matching(typedByUser_ ? typed_ : QString());
+        browsed_.removeAll(typed_);  // (what is shown already)
     }
     int next = browsing_ + step;
     if (next >= browsed_.size())

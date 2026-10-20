@@ -25,6 +25,7 @@ class QTabWidget;
 namespace on::gui {
 
 class AnnotationSidebar;
+class SearchField;
 class InfoEditor;
 class NoteEditor;
 
@@ -102,7 +103,7 @@ private:
     QLineEdit* pageEdit_;
     QLabel* pageCount_;
     QLabel* zoomLabel_;
-    QLineEdit* find_;
+    SearchField* find_;
     QLabel* findStatus_;
     QToolButton* colorButton_;
     QActionGroup* tools_;

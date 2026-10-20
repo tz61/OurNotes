@@ -3860,9 +3860,56 @@ TEST_CASE("search: Up and Down go through earlier searches, those starting with 
     for (auto k : {Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down})
         key(k);
     CHECK(seen == std::vector<QString>{"rocket", "robot", "rocket", "ro"});
+    // the search just made still in the field (not typed now): Up goes through the others
+    field.clear();
+    QTest::keyClicks(&field, "vision");
+    QTest::keyClick(&field, Qt::Key_Return);
+    seen.clear();
+    for (auto k : {Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down})
+        key(k);
+    CHECK(seen == std::vector<QString>{"rocket", "robot", "rocket", "vision"});
     // the next field (the next start) has them too
     SearchField again;
     CHECK(again.history() == QStringList{"robot", "rocket", "vision"});
+}
+
+TEST_CASE("reader: Esc in the find clears it and its hits; it has a history of its own")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    ReaderTab tab(env.lib, key);
+    tab.resize(1200, 900);
+    tab.show();
+    tab.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&tab));
+    auto* find = tab.findChild<SearchField*>("findInDocument");
+    REQUIRE(find);
+    auto status = [&] {
+        for (auto* l : tab.findChildren<QLabel*>())
+            if (l->text().contains(" of ") || l->text() == "No results")
+                return l->text();
+        return QString();
+    };
+    find->setFocus();
+    QTest::keyClicks(find, "line");
+    QTest::keyClick(find, Qt::Key_Return);
+    CHECK(QTest::qWaitFor([&] { return status() == "1 of 1"; }));
+    QTest::keyClick(find, Qt::Key_Escape);
+    CHECK(find->text().isEmpty());
+    CHECK(status().isEmpty());
+    CHECK(tab.view()->hasFocus());  // the page keys work again
+    // Up: the word found before, from the find's own history
+    find->setFocus();
+    QTest::keyClick(find, Qt::Key_Up);
+    CHECK(find->text() == "line");
+    CHECK(find->history() == QStringList{"line"});
+    CHECK(env.config.get("/reader/findHistory", Json()).dump() == R"(["line"])");
+    CHECK(env.config.get("/ui/searchHistory", Json::array()).empty());
 }
 
 TEST_CASE("search: Tab completes from earlier searches, then lists them")

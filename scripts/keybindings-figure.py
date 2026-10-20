@@ -36,14 +36,16 @@ SECTIONS = [
         ("Enter", "Open the PDFs, top to bottom"),
         ("Delete", "To the trash (in a collection: out of it)"),
         ("Shift+Delete", "Delete permanently"),
-        ("Esc", "In the search: clear it and the selection"),
-        ("Up / Down", "In the search: earlier searches"),
-        ("Tab", "In the search: complete; again: the list"),
         ("+ / -", "Expand / collapse all"),
         ("Ctrl+Shift+I", "Add by DOI, ISBN, arXiv id or PMID"),
         ("Ctrl+Shift+O", "New note"),
         ("Ctrl+Shift+A", "Copy citation"),
         ("Ctrl+Shift+C", "Copy bibliography"),
+    ]),
+    ("Search, and find in a PDF", [
+        ("Esc", "Clear it, and the selection or the hits"),
+        ("Up / Down", "Earlier searches"),
+        ("Tab", "Complete from them; again: a list"),
     ]),
     ("Notes", [
         ("Ctrl+B / Ctrl+I / Ctrl+U", "Bold, italic, underline"),
@@ -58,7 +60,7 @@ SECTIONS = [
         ("Alt+Shift+O", "Save the page, with its PDF, to OurNotes"),
     ]),
 ]
-COLUMNS = [[0, 1], [2, 3, 4]]  # sections per column
+COLUMNS = [[0, 1], [2, 3, 4, 5]]  # sections per column
 
 FONT = "-apple-system, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif"
 MONO = "ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace"

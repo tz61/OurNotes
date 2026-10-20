@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1272" height="820" viewBox="0 0 1272 820" font-family="-apple-system, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1272" height="872" viewBox="0 0 1272 872" font-family="-apple-system, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
 <!-- drawn by scripts/keybindings-figure.py -->
-<rect x="0.5" y="0.5" width="1271" height="819" rx="12" fill="#ffffff" stroke="#d1d9e0"/>
+<rect x="0.5" y="0.5" width="1271" height="871" rx="12" fill="#ffffff" stroke="#d1d9e0"/>
 <text x="28" y="48" font-size="20" font-weight="700" fill="#1f2328">OurNotes key bindings</text>
 <text x="1244" y="48" text-anchor="end" font-size="12.5" fill="#59636e">On macOS, Ctrl is ⌘ Command</text>
 <text x="28" y="90" font-size="15" font-weight="600" fill="#3d74d6">PDF reader, on the page</text>
@@ -201,33 +201,53 @@
 <text x="755.2" y="183" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Delete</text>
 <text x="944.0" y="183" font-size="13.5" fill="#1f2328">Delete permanently</text>
 <line x1="664" y1="194.5" x2="1244" y2="194.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="198" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="217" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="681.1" y="213" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
-<text x="944.0" y="213" font-size="13.5" fill="#1f2328">In the search: clear it and the selection</text>
+<rect x="664.0" y="198" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="217" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="675.0" y="213" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">+</text>
+<text x="692.0" y="213" fill="#59636e" font-size="12">/</text>
+<rect x="703.0" y="198" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="703.0" y="217" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="714.0" y="213" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
+<text x="944.0" y="213" font-size="13.5" fill="#1f2328">Expand / collapse all</text>
 <line x1="664" y1="224.5" x2="1244" y2="224.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="228" width="26.8" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="247" width="26.8" height="2" rx="1" fill="#c4ccd4"/>
-<text x="677.4" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Up</text>
-<text x="696.8" y="243" fill="#59636e" font-size="12">/</text>
-<rect x="707.8" y="228" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="707.8" y="247" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="728.6" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Down</text>
-<text x="944.0" y="243" font-size="13.5" fill="#1f2328">In the search: earlier searches</text>
+<rect x="664.0" y="228" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="247" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="243" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="228" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="247" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="744.1" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="772.6" y="243" fill="#59636e" font-size="11">+</text>
+<rect x="782.6" y="228" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="782.6" y="247" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="793.6" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
+<text x="944.0" y="243" font-size="13.5" fill="#1f2328">Add by DOI, ISBN, arXiv id or PMID</text>
 <line x1="664" y1="254.5" x2="1244" y2="254.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="258" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="277" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="681.1" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
-<text x="944.0" y="273" font-size="13.5" fill="#1f2328">In the search: complete; again: the list</text>
+<rect x="664.0" y="258" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="277" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="273" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="258" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="277" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="744.1" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="772.6" y="273" fill="#59636e" font-size="11">+</text>
+<rect x="782.6" y="258" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="782.6" y="277" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="793.6" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">O</text>
+<text x="944.0" y="273" font-size="13.5" fill="#1f2328">New note</text>
 <line x1="664" y1="284.5" x2="1244" y2="284.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="288" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="307" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="675.0" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">+</text>
-<text x="692.0" y="303" fill="#59636e" font-size="12">/</text>
-<rect x="703.0" y="288" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="703.0" y="307" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="714.0" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
-<text x="944.0" y="303" font-size="13.5" fill="#1f2328">Expand / collapse all</text>
+<rect x="664.0" y="288" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="307" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="303" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="288" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="307" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="744.1" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="772.6" y="303" fill="#59636e" font-size="11">+</text>
+<rect x="782.6" y="288" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="782.6" y="307" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="793.6" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">A</text>
+<text x="944.0" y="303" font-size="13.5" fill="#1f2328">Copy citation</text>
 <line x1="664" y1="314.5" x2="1244" y2="314.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="664.0" y="318" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="664.0" y="337" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
@@ -239,176 +259,157 @@
 <text x="772.6" y="333" fill="#59636e" font-size="11">+</text>
 <rect x="782.6" y="318" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="782.6" y="337" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="793.6" y="333" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
-<text x="944.0" y="333" font-size="13.5" fill="#1f2328">Add by DOI, ISBN, arXiv id or PMID</text>
+<text x="793.6" y="333" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">C</text>
+<text x="944.0" y="333" font-size="13.5" fill="#1f2328">Copy bibliography</text>
 <line x1="664" y1="344.5" x2="1244" y2="344.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="348" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="367" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="363" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="348" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="367" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="744.1" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="772.6" y="363" fill="#59636e" font-size="11">+</text>
-<rect x="782.6" y="348" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="782.6" y="367" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="793.6" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">O</text>
-<text x="944.0" y="363" font-size="13.5" fill="#1f2328">New note</text>
-<line x1="664" y1="374.5" x2="1244" y2="374.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="378" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="397" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="393" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="378" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="397" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="744.1" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="772.6" y="393" fill="#59636e" font-size="11">+</text>
-<rect x="782.6" y="378" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="782.6" y="397" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="793.6" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">A</text>
-<text x="944.0" y="393" font-size="13.5" fill="#1f2328">Copy citation</text>
-<line x1="664" y1="404.5" x2="1244" y2="404.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="408" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="427" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="423" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="408" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="427" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="744.1" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="772.6" y="423" fill="#59636e" font-size="11">+</text>
-<rect x="782.6" y="408" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="782.6" y="427" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="793.6" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">C</text>
-<text x="944.0" y="423" font-size="13.5" fill="#1f2328">Copy bibliography</text>
-<line x1="664" y1="434.5" x2="1244" y2="434.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<text x="664" y="472" font-size="15" font-weight="600" fill="#3d74d6">Notes</text>
-<rect x="664.0" y="490" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="509" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="505" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="490" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="509" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="730.6" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">B</text>
-<text x="747.6" y="505" fill="#59636e" font-size="12">/</text>
-<rect x="758.6" y="490" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="758.6" y="509" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="779.4" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="804.2" y="505" fill="#59636e" font-size="11">+</text>
-<rect x="814.2" y="490" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="814.2" y="509" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="825.2" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
-<text x="842.2" y="505" fill="#59636e" font-size="12">/</text>
-<rect x="853.2" y="490" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="853.2" y="509" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="874.0" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="898.8" y="505" fill="#59636e" font-size="11">+</text>
-<rect x="908.8" y="490" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="908.8" y="509" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="919.8" y="505" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">U</text>
-<text x="944.0" y="505" font-size="13.5" fill="#1f2328">Bold, italic, underline</text>
-<line x1="664" y1="516.5" x2="1244" y2="516.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="520" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="539" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="535" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="535" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="520" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="539" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="730.6" y="535" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">K</text>
-<text x="944.0" y="535" font-size="13.5" fill="#1f2328">Link</text>
-<line x1="664" y1="546.5" x2="1244" y2="546.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="550" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="569" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="565" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="550" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="569" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="730.6" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">M</text>
-<text x="747.6" y="565" fill="#59636e" font-size="12">/</text>
-<rect x="758.6" y="550" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="758.6" y="569" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="779.4" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="804.2" y="565" fill="#59636e" font-size="11">+</text>
-<rect x="814.2" y="550" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="814.2" y="569" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="838.7" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="867.2" y="565" fill="#59636e" font-size="11">+</text>
-<rect x="877.2" y="550" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="877.2" y="569" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="888.2" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">M</text>
-<text x="944.0" y="565" font-size="13.5" fill="#1f2328">Inline / display formula (or $…$, $$…$$)</text>
-<line x1="664" y1="576.5" x2="1244" y2="576.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="580" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="599" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="675.0" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">#</text>
-<text x="692.0" y="595" fill="#59636e" font-size="12">/</text>
-<rect x="703.0" y="580" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="703.0" y="599" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="714.0" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
-<text x="731.0" y="595" fill="#59636e" font-size="12">/</text>
-<rect x="742.0" y="580" width="26.8" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="742.0" y="599" width="26.8" height="2" rx="1" fill="#c4ccd4"/>
-<text x="755.4" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">1.</text>
-<text x="774.8" y="595" fill="#59636e" font-size="12">/</text>
-<rect x="785.8" y="580" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="785.8" y="599" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="796.8" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">&gt;</text>
-<text x="944.0" y="595" font-size="13.5" fill="#1f2328">Line start, then space: heading, lists, quote</text>
-<line x1="664" y1="606.5" x2="1244" y2="606.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="610" width="78.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="629" width="78.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="703.3" y="625" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Backspace</text>
-<text x="944.0" y="625" font-size="13.5" fill="#1f2328">At a heading's start: its #s, to edit</text>
-<line x1="664" y1="636.5" x2="1244" y2="636.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="640" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="659" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="655" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="640" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="659" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="730.6" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">=</text>
-<text x="747.6" y="655" fill="#59636e" font-size="12">/</text>
-<rect x="758.6" y="640" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="758.6" y="659" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="779.4" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="804.2" y="655" fill="#59636e" font-size="11">+</text>
-<rect x="814.2" y="640" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="814.2" y="659" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="825.2" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
-<text x="842.2" y="655" fill="#59636e" font-size="12">/</text>
-<rect x="853.2" y="640" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="853.2" y="659" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="874.0" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="898.8" y="655" fill="#59636e" font-size="11">+</text>
-<rect x="908.8" y="640" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="908.8" y="659" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="919.8" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">0</text>
-<text x="944.0" y="655" font-size="13.5" fill="#1f2328">Text size (also Ctrl+wheel)</text>
-<line x1="664" y1="666.5" x2="1244" y2="666.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="664.0" y="670" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="689" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="684.8" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="709.6" y="685" fill="#59636e" font-size="11">+</text>
-<rect x="719.6" y="670" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="719.6" y="689" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="744.1" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="772.6" y="685" fill="#59636e" font-size="11">+</text>
-<rect x="782.6" y="670" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="782.6" y="689" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="793.6" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">V</text>
-<text x="944.0" y="685" font-size="13.5" fill="#1f2328">Paste as plain text</text>
-<line x1="664" y1="696.5" x2="1244" y2="696.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<text x="664" y="734" font-size="15" font-weight="600" fill="#3d74d6">Browser (OurNotes Connector)</text>
-<rect x="664.0" y="752" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="664.0" y="771" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="681.1" y="767" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Alt</text>
-<text x="702.2" y="767" fill="#59636e" font-size="11">+</text>
-<rect x="712.2" y="752" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="712.2" y="771" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="736.7" y="767" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="765.2" y="767" fill="#59636e" font-size="11">+</text>
-<rect x="775.2" y="752" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="775.2" y="771" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="786.2" y="767" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">O</text>
-<text x="944.0" y="767" font-size="13.5" fill="#1f2328">Save the page, with its PDF, to OurNotes</text>
-<line x1="664" y1="778.5" x2="1244" y2="778.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<text x="664" y="382" font-size="15" font-weight="600" fill="#3d74d6">Search, and find in a PDF</text>
+<rect x="664.0" y="400" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="419" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="681.1" y="415" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
+<text x="944.0" y="415" font-size="13.5" fill="#1f2328">Clear it, and the selection or the hits</text>
+<line x1="664" y1="426.5" x2="1244" y2="426.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="430" width="26.8" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="449" width="26.8" height="2" rx="1" fill="#c4ccd4"/>
+<text x="677.4" y="445" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Up</text>
+<text x="696.8" y="445" fill="#59636e" font-size="12">/</text>
+<rect x="707.8" y="430" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="707.8" y="449" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="728.6" y="445" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Down</text>
+<text x="944.0" y="445" font-size="13.5" fill="#1f2328">Earlier searches</text>
+<line x1="664" y1="456.5" x2="1244" y2="456.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="460" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="479" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="681.1" y="475" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
+<text x="944.0" y="475" font-size="13.5" fill="#1f2328">Complete from them; again: a list</text>
+<line x1="664" y1="486.5" x2="1244" y2="486.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<text x="664" y="524" font-size="15" font-weight="600" fill="#3d74d6">Notes</text>
+<rect x="664.0" y="542" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="561" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="557" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="542" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="561" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="730.6" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">B</text>
+<text x="747.6" y="557" fill="#59636e" font-size="12">/</text>
+<rect x="758.6" y="542" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="758.6" y="561" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="779.4" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="804.2" y="557" fill="#59636e" font-size="11">+</text>
+<rect x="814.2" y="542" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="814.2" y="561" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="825.2" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
+<text x="842.2" y="557" fill="#59636e" font-size="12">/</text>
+<rect x="853.2" y="542" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="853.2" y="561" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="874.0" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="898.8" y="557" fill="#59636e" font-size="11">+</text>
+<rect x="908.8" y="542" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="908.8" y="561" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="919.8" y="557" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">U</text>
+<text x="944.0" y="557" font-size="13.5" fill="#1f2328">Bold, italic, underline</text>
+<line x1="664" y1="568.5" x2="1244" y2="568.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="572" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="591" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="587" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="587" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="572" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="591" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="730.6" y="587" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">K</text>
+<text x="944.0" y="587" font-size="13.5" fill="#1f2328">Link</text>
+<line x1="664" y1="598.5" x2="1244" y2="598.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="602" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="621" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="617" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="617" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="602" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="621" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="730.6" y="617" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">M</text>
+<text x="747.6" y="617" fill="#59636e" font-size="12">/</text>
+<rect x="758.6" y="602" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="758.6" y="621" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="779.4" y="617" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="804.2" y="617" fill="#59636e" font-size="11">+</text>
+<rect x="814.2" y="602" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="814.2" y="621" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="838.7" y="617" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="867.2" y="617" fill="#59636e" font-size="11">+</text>
+<rect x="877.2" y="602" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="877.2" y="621" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="888.2" y="617" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">M</text>
+<text x="944.0" y="617" font-size="13.5" fill="#1f2328">Inline / display formula (or $…$, $$…$$)</text>
+<line x1="664" y1="628.5" x2="1244" y2="628.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="632" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="651" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="675.0" y="647" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">#</text>
+<text x="692.0" y="647" fill="#59636e" font-size="12">/</text>
+<rect x="703.0" y="632" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="703.0" y="651" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="714.0" y="647" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
+<text x="731.0" y="647" fill="#59636e" font-size="12">/</text>
+<rect x="742.0" y="632" width="26.8" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="742.0" y="651" width="26.8" height="2" rx="1" fill="#c4ccd4"/>
+<text x="755.4" y="647" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">1.</text>
+<text x="774.8" y="647" fill="#59636e" font-size="12">/</text>
+<rect x="785.8" y="632" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="785.8" y="651" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="796.8" y="647" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">&gt;</text>
+<text x="944.0" y="647" font-size="13.5" fill="#1f2328">Line start, then space: heading, lists, quote</text>
+<line x1="664" y1="658.5" x2="1244" y2="658.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="662" width="78.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="681" width="78.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="703.3" y="677" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Backspace</text>
+<text x="944.0" y="677" font-size="13.5" fill="#1f2328">At a heading's start: its #s, to edit</text>
+<line x1="664" y1="688.5" x2="1244" y2="688.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="692" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="711" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="707" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="692" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="711" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="730.6" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">=</text>
+<text x="747.6" y="707" fill="#59636e" font-size="12">/</text>
+<rect x="758.6" y="692" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="758.6" y="711" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="779.4" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="804.2" y="707" fill="#59636e" font-size="11">+</text>
+<rect x="814.2" y="692" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="814.2" y="711" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="825.2" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
+<text x="842.2" y="707" fill="#59636e" font-size="12">/</text>
+<rect x="853.2" y="692" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="853.2" y="711" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="874.0" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="898.8" y="707" fill="#59636e" font-size="11">+</text>
+<rect x="908.8" y="692" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="908.8" y="711" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="919.8" y="707" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">0</text>
+<text x="944.0" y="707" font-size="13.5" fill="#1f2328">Text size (also Ctrl+wheel)</text>
+<line x1="664" y1="718.5" x2="1244" y2="718.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="664.0" y="722" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="741" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="684.8" y="737" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="709.6" y="737" fill="#59636e" font-size="11">+</text>
+<rect x="719.6" y="722" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="719.6" y="741" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="744.1" y="737" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="772.6" y="737" fill="#59636e" font-size="11">+</text>
+<rect x="782.6" y="722" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="782.6" y="741" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="793.6" y="737" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">V</text>
+<text x="944.0" y="737" font-size="13.5" fill="#1f2328">Paste as plain text</text>
+<line x1="664" y1="748.5" x2="1244" y2="748.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<text x="664" y="786" font-size="15" font-weight="600" fill="#3d74d6">Browser (OurNotes Connector)</text>
+<rect x="664.0" y="804" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="664.0" y="823" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="681.1" y="819" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Alt</text>
+<text x="702.2" y="819" fill="#59636e" font-size="11">+</text>
+<rect x="712.2" y="804" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="712.2" y="823" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="736.7" y="819" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="765.2" y="819" fill="#59636e" font-size="11">+</text>
+<rect x="775.2" y="804" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="775.2" y="823" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="786.2" y="819" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">O</text>
+<text x="944.0" y="819" font-size="13.5" fill="#1f2328">Save the page, with its PDF, to OurNotes</text>
+<line x1="664" y1="830.5" x2="1244" y2="830.5" stroke="#d1d9e0" stroke-width="0.6"/>
 </svg>

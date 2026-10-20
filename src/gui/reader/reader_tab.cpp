@@ -36,6 +36,7 @@
 #include "gui/icons.h"
 #include "gui/item_pane.h"
 #include "gui/note_editor.h"
+#include "gui/search_field.h"
 #include "gui/side_pane.h"
 #include "gui/reader/annotation_sidebar.h"
 #include "gui/theme.h"
@@ -449,7 +450,8 @@ void ReaderTab::buildToolbar()
     auto* spacer = new QWidget(tb);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tb->addWidget(spacer);
-    find_ = new QLineEdit(tb);
+    find_ = new SearchField(tb, "/reader/findHistory");
+    find_->setObjectName("findInDocument");
     find_->setPlaceholderText(tr("Find in document"));
     find_->setClearButtonEnabled(true);
     find_->setFixedWidth(200);
@@ -460,6 +462,13 @@ void ReaderTab::buildToolbar()
     findStatus_ = new QLabel(tb);
     tb->addWidget(findStatus_);
     connect(find_, &QLineEdit::returnPressed, this, [this] { view_->find(find_->text(), false); });
+    // Esc: no word, no hits, the keys back on the page
+    connect(find_, &SearchField::escapePressed, this, [this] {
+        find_->clear();
+        view_->clearFind();
+        findStatus_->clear();
+        view_->setFocus();
+    });
     connect(find_, &QLineEdit::textChanged, this, [this](const QString& t) {
         if (t.isEmpty()) {
             view_->clearFind();
