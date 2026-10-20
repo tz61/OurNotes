@@ -32,20 +32,27 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   like Zotero), and the open tabs and the library's selection come back after a
   restart; restored tabs load when first shown. Beside the PDF the paper's Info (authors,
   year and the other fields, tags, related items) and its notes, the top note open;
-  Info or Notes, whichever was chosen last, there and in the library alike. Shift+wheel scrolls sideways. On the page, keys 1–8 pick the tools, F fits the
-  width (twice: the page) and H goes back to the library; Ctrl+Shift+T reopens a closed
-  tab. See [Key bindings](#key-bindings).
+  Info or Notes, whichever was chosen last, there and in the library alike. Shift+wheel
+  scrolls sideways. On the page, keys 1–8 pick the tools, F fits the width (twice: the
+  page), H goes back to the library, `[` and `]` show or hide the left and right panels,
+  I and N open Info and Notes, and L turns the pages dark or back to the PDF's own
+  colours (in a light theme too); Ctrl+Shift+T reopens a closed tab. A slider in the
+  toolbar sets the page colour for all PDFs: white to gray, or black to gray for dark
+  pages. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display
   formula) and type its LaTeX in place with a live preview; Ctrl+M / Ctrl+Shift+M do the
   same. Click a formula to edit it in the note; leaving it (arrow keys, Enter, Esc, the
-  closing `$`) renders it again. Rendered with MicroTeX in the text colour (or a colour
+  closing `$`) renders it again. A `$` typed after `$$…` or `$…` in the line closes the
+  formula; pasting into a formula just opened makes it at once; one left empty keeps its
+  `$` signs, and putting the cursor between them opens it again. Rendered with MicroTeX in the text colour (or a colour
   set in Preferences; `\textcolor{red}{…}` for single formulas) and stored like
   Zotero's math. Images are scaled to fit the note width. Selecting a paper shows its
   notes in a tab next to Info. Markdown typed or pasted becomes formatting (`# `, `- `,
   `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the
-  markup). Each note view has its own text size (− / +, Ctrl+wheel), starting at the
+  markup). Backspace at the start of a heading shows its `## ` to change the level;
+  leaving the line makes it a heading again. Each note view has its own text size (− / +, Ctrl+wheel), starting at the
   size set in Preferences.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
   dropping PDFs (metadata is found from the identifiers or title in the file, with a
@@ -60,7 +67,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Citing** — export BibTeX, RIS, CSL JSON; bibliographies and in-text citations in
   APA, Chicago (author-date), IEEE, MLA, Harvard, Nature and Vancouver.
 - **Search** — title/creator/year, all fields and tags, or everything including the
-  full text of PDFs (indexed in the background with SQLite FTS5).
+  full text of PDFs (indexed in the background with SQLite FTS5). The search field keeps
+  a history as a shell does: Up and Down go through earlier searches, Tab completes from
+  them (again: a list to pick from), Esc clears the search and the selection.
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing
   version is kept in *Tools → Sync Conflicts*. *Tools → Sync History* lists what the last
   syncs brought in and sent out. Library names are synced, and deleting an (empty)
@@ -175,7 +184,8 @@ Interface scale* (100–300%, applied on restart). A `QT_SCALE_FACTOR` set in th
 environment takes precedence. *Appearance* follows the system's light or dark theme by
 default, or can be set to Light or Dark (applied immediately). In dark mode PDF pages
 are shown dark too (light text on dark paper, colours keep their hue); switch to the
-PDF's own colours with the moon button in the reader toolbar or in Preferences.
+PDF's own colours with L on the page, the moon button in the reader toolbar or in
+Preferences, and to dark pages in a light theme the same way.
 
 Data lives in `~/OurNotes` (database `ournotes.sqlite`, files in `storage/<KEY>/`), like
 Zotero's data directory; change it in *Preferences → General* or with
