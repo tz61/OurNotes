@@ -20,6 +20,7 @@
 #include <QToolBar>
 #include <QListWidget>
 #include <QProxyStyle>
+#include <QRandomGenerator>
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTreeView>
@@ -3842,7 +3843,8 @@ TEST_CASE("main window: the tab strip never shows a stray or misplaced tab")
     }
 }
 
-// The README's screenshot, of a library of well-known papers (nobody's own). Run again
+// The README's screenshot, of a library of well-known papers (nobody's own), one of the
+// background pictures behind it, picked at random. Run again
 // after changing the look (one command):
 //   OURNOTES_SCREENSHOT=docs/images/screenshot.png QT_SCALE_FACTOR=1.25
 //   ./build/tests/gui/test_gui -tc="docs: *"
@@ -3855,7 +3857,18 @@ TEST_CASE("docs: the README's screenshot" * doctest::skip(!std::getenv("OURNOTES
     writeSamplePdf(file);
     applyAppearance(Appearance::Light);
     QApplication::setFont(QFont("Noto Sans", 10));
-    env.config.set("/ui/bandBackground", false);
+    // one of the pictures behind the item list, any (the tests have none built in)
+    std::vector<fs::path> pictures;
+    auto source = (fs::path(OURNOTES_TEST_DATA_DIR) / ".." / ".." / "..").lexically_normal();
+    for (auto& e : fs::directory_iterator(source / "resources" / "bands"))
+        if (e.path().extension() == ".jpg" || e.path().extension() == ".png")
+            pictures.push_back(e.path());
+    REQUIRE(!pictures.empty());
+    auto behind = env.library.dataDir() / "backgrounds" / "bands";
+    fs::create_directories(behind);
+    auto picture = pictures[QRandomGenerator::global()->bounded(int(pictures.size()))];
+    fs::copy_file(picture, behind / picture.filename());
+    env.config.set("/ui/bandBackground", true);
     env.config.set("/connector/enabled", false);  // no word in the status bar of a running OurNotes's port
     env.config.set("/ui/itemPaneTab", "notes");
     auto& lib = env.library;
