@@ -20,6 +20,8 @@
 #include <QToolBar>
 #include <QListWidget>
 #include <QProxyStyle>
+#include <QStyleFactory>
+#include <QStyleHints>
 #include <QTreeView>
 #include <QUndoStack>
 #include <QTreeWidget>
@@ -1950,6 +1952,38 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     CHECK(appearanceFromConfig(env.config) == Appearance::System);
 }
 
+TEST_CASE("appearance: Follow system follows the system turning light or dark")
+{
+    app();
+    Env env;
+    auto styleBefore = QApplication::style()->name();
+    int changes = 0;
+    QObject::connect(&env.context, &AppContext::appearanceChanged, [&] { ++changes; });
+    applyAppearance(Appearance::Dark);
+    emit QGuiApplication::styleHints()->colorSchemeChanged(Qt::ColorScheme::Light);
+    QApplication::processEvents();
+    CHECK(changes == 0);  // Dark chosen: the system's change does not matter
+    applyAppearance(Appearance::System);
+    QApplication::processEvents();
+    changes = 0;
+    emit QGuiApplication::styleHints()->colorSchemeChanged(Qt::ColorScheme::Dark);
+    QApplication::processEvents();
+    CHECK(changes == 1);  // PDF pages, notes and the rest drawn again in the new colours
+#ifdef Q_OS_WIN
+    // Windows' own styles look unlike Light and Dark (windowsvista has no dark look) and
+    // cover the picture behind the item list: there Follow system is Light or Dark
+    bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    applyAppearance(dark ? Appearance::Dark : Appearance::Light);
+    auto chosen = QApplication::palette().color(QPalette::Window);
+    applyAppearance(Appearance::System);
+    CHECK(QApplication::style()->name().compare("fusion", Qt::CaseInsensitive) == 0);
+    CHECK(QApplication::palette().color(QPalette::Window) == chosen);
+    QApplication::setStyle(QStyleFactory::create(styleBefore));  // as for the other tests
+    QApplication::setPalette(QPalette());
+#endif
+    (void)styleBefore;
+}
+
 TEST_CASE("notes: the toolbar wraps instead of hiding buttons")
 {
     app();
@@ -3753,6 +3787,7 @@ TEST_CASE("docs: the README's screenshot" * doctest::skip(!std::getenv("OURNOTES
     applyAppearance(Appearance::Light);
     QApplication::setFont(QFont("Noto Sans", 10));
     env.config.set("/ui/bandBackground", false);
+    env.config.set("/connector/enabled", false);  // no word in the status bar of a running OurNotes's port
     env.config.set("/ui/itemPaneTab", "notes");
     auto& lib = env.library;
     auto collection = [&](const std::string& name, const std::string& parent = {}) {

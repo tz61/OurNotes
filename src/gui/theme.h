@@ -18,7 +18,8 @@ QString appearanceKey(Appearance appearance);
 
 // Applies the appearance to the running application; can be called again to switch.
 // System follows the platform theme (and its later changes); Light and Dark use the
-// Fusion style with fixed palettes, so they look the same on every platform.
+// Fusion style with fixed palettes, so they look the same on every platform. On Windows,
+// System is Light or Dark, whichever Windows is set to.
 void applyAppearance(Appearance appearance);
 bool isDarkTheme();
 

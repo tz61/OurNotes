@@ -6,6 +6,7 @@
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QPainter>
+#include <QTimer>
 #include <QWidget>
 
 #include <algorithm>
@@ -19,6 +20,39 @@ namespace on::gui {
 namespace {
 
 QString g_systemStyle;  // the platform's default style, captured before any change
+Appearance g_current = Appearance::System;
+
+// Follow system with Windows' own style did not look like Light or Dark: windowsvista
+// has no dark look at all, windows11 has a look of its own, and it covered the picture
+// behind the item list. On Windows the system's light or dark is Light or Dark.
+#ifdef Q_OS_WIN
+constexpr bool kSystemAsLightOrDark = true;
+#else
+constexpr bool kSystemAsLightOrDark = false;
+#endif
+
+bool systemIsDark() { return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark; }
+
+// The system turning light or dark while it is followed: the application follows, and so
+// do what draws in its colours (dark PDF pages, notes, the picture behind the items).
+void watchSystemScheme()
+{
+    static bool watching = false;
+    if (watching)
+        return;
+    watching = true;
+    QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, qApp, [] {
+        if (g_current != Appearance::System)
+            return;
+        QTimer::singleShot(0, qApp, [] {  // after the platform's own palette change
+            if (g_current != Appearance::System)
+                return;
+            applyAppearance(Appearance::System);
+            if (auto* ctx = AppContext::tryGet())
+                emit ctx->appearanceChanged();
+        });
+    });
+}
 
 QPalette makePalette(bool dark)
 {
@@ -79,20 +113,23 @@ void applyAppearance(Appearance a)
 {
     if (g_systemStyle.isEmpty())
         g_systemStyle = QApplication::style()->name();
+    g_current = a;
+    watchSystemScheme();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     // lets platforms that support it (title bars on Windows/macOS) follow along
     QGuiApplication::styleHints()->setColorScheme(a == Appearance::Dark    ? Qt::ColorScheme::Dark
                                                   : a == Appearance::Light ? Qt::ColorScheme::Light
                                                                            : Qt::ColorScheme::Unknown);
 #endif
-    if (a == Appearance::System) {
+    if (a == Appearance::System && !kSystemAsLightOrDark) {
         if (QApplication::style()->name() != g_systemStyle)
             QApplication::setStyle(QStyleFactory::create(g_systemStyle));
         QApplication::setPalette(QPalette());  // back to the platform theme's palette
     } else {
         if (QApplication::style()->name().compare("fusion", Qt::CaseInsensitive) != 0)
             QApplication::setStyle(QStyleFactory::create("Fusion"));
-        QApplication::setPalette(makePalette(a == Appearance::Dark));
+        bool dark = a == Appearance::Dark || (a == Appearance::System && systemIsDark());
+        QApplication::setPalette(makePalette(dark));
     }
     // Qt passes the change to top-level widgets through their native windows, so
     // widgets never shown yet (dialogs, menus) would keep the old colours
