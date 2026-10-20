@@ -18,6 +18,7 @@ class QTextDocument;
 
 namespace on::gui {
 
+class SearchField;
 class WrapToolBar;
 
 class FittedImageHandler;
@@ -37,6 +38,8 @@ public:
     // Formats the cursor's paragraph for a typed "# ", "- ", "1. " or "> ": kind is
     // "heading1".."heading3", "bullet", "numbered" or "quote".
     std::function<void(const QString& kind)> markdownBlock;
+    // Ctrl+F in the note (not the window's search, or a PDF's find), when set
+    std::function<void()> findRequested;
 
     // Starts an empty formula (or one made of the selected text) at the cursor, in place.
     void insertMath(bool display);
@@ -134,6 +137,9 @@ public:
 signals:
     void saved(const QString& key);
 
+protected:
+    void keyPressEvent(QKeyEvent* e) override;  // Esc in the note: the find bar closed first
+
 private:
     // force = false: a change notification, which is skipped when it is this editor's
     // own save (reloading would lose the undo history)
@@ -147,8 +153,22 @@ private:
     void updateToolbar();
     void zoomBy(int steps);
     QString storeImage(const QImage& image);
+    // Find in the note: a bar at the bottom of the note, opened with Ctrl+F there and
+    // closed with Esc, a search field like the others (history, Tab, Aa); the hits are
+    // marked, the current one more, Enter goes to the next one and Shift+Enter back.
+    void buildFindBar();
+    void openFind();
+    void closeFind(bool focusNote);
+    void updateHits(bool fromCursor);
+    void findAgain(bool backwards);
+    void markHits();
 
     NoteTextEdit* edit_;
+    QWidget* findBar_ = nullptr;
+    SearchField* find_ = nullptr;
+    QLabel* findStatus_ = nullptr;
+    std::vector<QTextCursor> hits_;
+    int hit_ = -1;
     WrapToolBar* toolbar_;
     QComboBox* blockStyle_;
     QAction* boldAct_;

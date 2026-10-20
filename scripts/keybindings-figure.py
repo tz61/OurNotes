@@ -49,7 +49,8 @@ SECTIONS = [
         ("Tab", "Complete from them; again (or empty): a list"),
         ("PgUp / PgDn", "In the list: five back / on"),
         ("Ctrl+Backspace", "In the list: forget the one highlighted"),
-        ("Shift+Enter", "In a PDF's find: backwards"),
+        ("Shift+Enter", "In a find: backwards"),
+        ("Alt+C", "Match case (the Aa button)"),
     ]),
     ("Notes", [
         ("Ctrl+B / Ctrl+I / Ctrl+U", "Bold, italic, underline"),
@@ -59,6 +60,7 @@ SECTIONS = [
         ("Backspace", "At a heading's start: its #s, to edit"),
         ("Ctrl+= / Ctrl+- / Ctrl+0", "Text size (also Ctrl+wheel)"),
         ("Ctrl+Shift+V", "Paste as plain text"),
+        ("Ctrl+F", "Find in the note (a bar under it; Esc closes)"),
     ]),
     ("Browser (OurNotes Connector)", [
         ("Alt+Shift+O", "Save the page, with its PDF, to OurNotes"),

@@ -4173,6 +4173,102 @@ TEST_CASE("search fields: Aa (or Alt+C) matches case, in the library and in a PD
     CHECK(again.findChild<SearchField*>("findInDocument")->caseSensitive());
 }
 
+TEST_CASE("notes: Ctrl+F finds in the note, in a bar at its bottom that Esc closes")
+{
+    app();
+    Env env;
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Paper"}});
+    auto note = env.library.createNote(env.lib, "<p>Alpha beta alpha</p><p>gamma Alpha</p>", jstr(parent, "key"));
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    window.findChild<LibraryView*>()->selectItem(qs(jstr(note, "key")));
+    QApplication::processEvents();
+    NoteEditor* editor = nullptr;
+    for (auto* e : window.findChildren<NoteEditor*>())
+        if (e->isVisible() && e->key() == qs(jstr(note, "key")))
+            editor = e;
+    REQUIRE(editor);
+    auto* edit = editor->findChild<NoteTextEdit*>();
+    auto* bar = editor->findChild<QWidget*>("noteFindBar");
+    auto* find = editor->findChild<SearchField*>("findInNote");
+    auto* status = editor->findChild<QLabel*>("noteFindStatus");
+    REQUIRE(bar);
+    CHECK(!bar->isVisible());
+    edit->setFocus();
+    edit->moveCursor(QTextCursor::Start);
+    QTest::keyClick(edit, Qt::Key_F, Qt::ControlModifier);  // the note's, not the library's search
+    REQUIRE(bar->isVisible());
+    CHECK(find->hasFocus());
+    CHECK(window.findChild<SearchField*>("librarySearch")->text().isEmpty());
+    CHECK(bar->geometry().top() > edit->geometry().bottom() - 1);  // under the note
+    QTest::keyClicks(find, "alpha");
+    CHECK(status->text() == "1 of 3");
+    CHECK(edit->extraSelections().size() == 3);
+    CHECK(edit->textCursor().selectedText() == "Alpha");
+    QTest::keyClick(find, Qt::Key_Return);
+    CHECK(status->text() == "2 of 3");
+    QTest::keyClick(find, Qt::Key_Return, Qt::ShiftModifier);
+    QTest::keyClick(find, Qt::Key_Return, Qt::ShiftModifier);  // round to the last
+    CHECK(status->text() == "3 of 3");
+    find->findChild<QAction*>("matchCase")->trigger();
+    CHECK(status->text() == "1 of 1");
+    CHECK(edit->textCursor().selectedText() == "alpha");
+    find->findChild<QAction*>("matchCase")->trigger();
+    // Esc: no bar, no marks, the keys back in the note; the word kept for Up
+    QTest::keyClick(find, Qt::Key_Escape);
+    CHECK(!bar->isVisible());
+    CHECK(edit->extraSelections().isEmpty());
+    CHECK(edit->hasFocus());
+    QTest::keyClick(edit, Qt::Key_F, Qt::ControlModifier);
+    QTest::keyClick(find, Qt::Key_Up);
+    CHECK(find->text() == "alpha");
+    // Esc in the note itself closes the bar as well
+    edit->setFocus();
+    QTest::keyClick(edit, Qt::Key_Escape);
+    CHECK(!bar->isVisible());
+    CHECK(edit->hasFocus());
+}
+
+TEST_CASE("reader: Ctrl+F in the note beside the PDF finds in the note, on the page in the PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>my notes on the paper</p>", jstr(parent, "key"));
+    auto pdf = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    env.config.set("/ui/itemPaneTab", "notes");
+    MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    window.openAttachment(env.lib, pdf);
+    QApplication::processEvents();
+    auto* tab = qobject_cast<ReaderTab*>(window.findChild<QTabWidget*>("mainTabs")->currentWidget());
+    REQUIRE(tab);
+    auto* edit = tab->findChild<NoteTextEdit*>();
+    auto* bar = tab->findChild<QWidget*>("noteFindBar");
+    auto* pdfFind = tab->findChild<SearchField*>("findInDocument");
+    REQUIRE(edit);
+    REQUIRE(bar);
+    edit->setFocus();
+    QTest::keyClick(edit, Qt::Key_F, Qt::ControlModifier);
+    CHECK(bar->isVisible());
+    CHECK(tab->findChild<SearchField*>("findInNote")->hasFocus());
+    QTest::keyClick(tab->findChild<SearchField*>("findInNote"), Qt::Key_Escape);
+    CHECK(!bar->isVisible());
+    tab->view()->setFocus();
+    QTest::keyClick(tab->view(), Qt::Key_F, Qt::ControlModifier);
+    CHECK(pdfFind->hasFocus());
+    CHECK(!bar->isVisible());
+}
+
 TEST_CASE("library: sorting by a column keeps the columns' widths")
 {
     app();

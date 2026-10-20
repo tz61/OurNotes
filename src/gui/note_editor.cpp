@@ -40,6 +40,7 @@
 #include "gui/math_dialog.h"
 #include "gui/math_render.h"
 #include "gui/note_html.h"
+#include "gui/search_field.h"
 #include "gui/rich_text_images.h"
 #include "gui/theme.h"
 #include "gui/wrap_toolbar.h"
@@ -880,6 +881,10 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         redo();
         return;
     }
+    if (findRequested && e->matches(QKeySequence::Find)) {
+        findRequested();
+        return;
+    }
     if (!isReadOnly()) {
         if (auto run = runAtCursor()) {
             auto cursor = textCursor();
@@ -965,7 +970,8 @@ bool NoteTextEdit::event(QEvent* e)
     if (e->type() == QEvent::ShortcutOverride) {
         auto* k = static_cast<QKeyEvent*>(e);
         // the note's, not the window's (zoom applies to the PDF there)
-        if ((k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) || zoomKey(k) != -2) {
+        if ((k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) || zoomKey(k) != -2 ||
+            (findRequested && k->matches(QKeySequence::Find))) {
             e->accept();
             return true;
         }
@@ -1168,6 +1174,9 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     edit_->document()->setDocumentMargin(10);
     layout->addWidget(toolbar_);
     layout->addWidget(edit_, 1);
+    buildFindBar();
+    layout->addWidget(findBar_);
+    edit_->findRequested = [this] { openFind(); };
 
     blockStyle_ = new QComboBox(this);
     blockStyle_->addItems({tr("Paragraph"), tr("Heading 1"), tr("Heading 2"), tr("Heading 3")});
@@ -1315,10 +1324,141 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
 
 NoteEditor::~NoteEditor() { flush(); }
 
+void NoteEditor::buildFindBar()
+{
+    findBar_ = new QWidget(this);
+    findBar_->setObjectName("noteFindBar");
+    auto* h = new QHBoxLayout(findBar_);
+    h->setContentsMargins(6, 3, 6, 3);
+    h->setSpacing(2);
+    find_ = new SearchField(findBar_, "/notes/findHistory");
+    find_->setObjectName("findInNote");
+    find_->setPlaceholderText(tr("Find in note"));
+    find_->setClearButtonEnabled(true);
+    find_->addAction(icon("search"), QLineEdit::LeadingPosition);
+    find_->addCaseToggle("/notes/findCaseSensitive");
+    h->addWidget(find_, 1);
+    auto button = [&](const char* ic, const QString& tip) {
+        auto* b = new QToolButton(findBar_);
+        b->setIcon(icon(ic));
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        h->addWidget(b);
+        return b;
+    };
+    connect(button("up", tr("Previous (Shift+Enter)")), &QToolButton::clicked, this, [this] { findAgain(true); });
+    connect(button("down", tr("Next (Enter)")), &QToolButton::clicked, this, [this] { findAgain(false); });
+    findStatus_ = new QLabel(findBar_);
+    findStatus_->setObjectName("noteFindStatus");
+    h->addWidget(findStatus_);
+    connect(button("close", tr("Close (Esc)")), &QToolButton::clicked, this, [this] { closeFind(true); });
+    findBar_->hide();
+
+    connect(find_, &QLineEdit::textChanged, this, [this] { updateHits(true); });
+    connect(find_, &QLineEdit::returnPressed, this, [this] { findAgain(false); });
+    connect(find_, &SearchField::shiftReturnPressed, this, [this] { findAgain(true); });
+    connect(find_, &SearchField::caseSensitivityChanged, this, [this] { updateHits(true); });
+    connect(find_, &SearchField::escapePressed, this, [this] { closeFind(true); });
+    // the note changed under the hits (typed in, or loaded)
+    connect(edit_->document(), &QTextDocument::contentsChanged, this, [this] {
+        if (findBar_->isVisible())
+            updateHits(false);
+    });
+}
+
+void NoteEditor::keyPressEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Escape && findBar_->isVisible()) {
+        closeFind(true);
+        return;
+    }
+    QWidget::keyPressEvent(e);  // (Esc on to the page or the item list)
+}
+
+void NoteEditor::openFind()
+{
+    findBar_->show();
+    find_->setFocus();
+    find_->selectAll();
+    updateHits(true);
+}
+
+void NoteEditor::closeFind(bool focusNote)
+{
+    if (!findBar_->isVisible())
+        return;
+    find_->clear();
+    hits_.clear();
+    hit_ = -1;
+    markHits();
+    findBar_->hide();
+    if (focusNote)
+        edit_->setFocus();
+}
+
+void NoteEditor::updateHits(bool fromCursor)
+{
+    hits_.clear();
+    auto text = find_->text();
+    if (!text.isEmpty()) {
+        QTextDocument::FindFlags flags;
+        if (find_->caseSensitive())
+            flags |= QTextDocument::FindCaseSensitively;
+        for (auto c = edit_->document()->find(text, 0, flags); !c.isNull(); c = edit_->document()->find(text, c, flags))
+            hits_.push_back(c);
+    }
+    if (hits_.empty()) {
+        hit_ = -1;
+    } else if (fromCursor) {  // the first at the cursor or after it, as typing goes on
+        int at = edit_->textCursor().selectionStart();
+        hit_ = 0;
+        for (int i = 0; i < (int)hits_.size(); ++i)
+            if (hits_[i].selectionStart() >= at) {
+                hit_ = i;
+                break;
+            }
+        edit_->setTextCursor(hits_[hit_]);
+    } else {
+        hit_ = std::clamp(hit_, 0, int(hits_.size()) - 1);
+    }
+    markHits();
+}
+
+void NoteEditor::findAgain(bool backwards)
+{
+    if (hits_.empty())
+        updateHits(true);
+    if (hits_.empty())
+        return;
+    int n = int(hits_.size());
+    hit_ = ((hit_ + (backwards ? -1 : 1)) % n + n) % n;
+    edit_->setTextCursor(hits_[hit_]);
+    find_->remember(find_->text());
+    markHits();
+}
+
+// all hits marked as a PDF's are, the current one more
+void NoteEditor::markHits()
+{
+    QList<QTextEdit::ExtraSelection> marks;
+    for (int i = 0; i < (int)hits_.size(); ++i) {
+        QTextEdit::ExtraSelection m;
+        m.cursor = hits_[i];
+        m.format.setBackground(i == hit_ ? QColor(255, 140, 0, 150) : QColor(255, 220, 0, 110));
+        marks << m;
+    }
+    edit_->setExtraSelections(marks);
+    findStatus_->setText(find_->text().isEmpty() ? QString()
+                         : hits_.empty()         ? tr("No results")
+                                                 : tr("%1 of %2").arg(hit_ + 1).arg(hits_.size()));
+}
+
 void NoteEditor::setNote(int64_t libraryId, const QString& key)
 {
     if (libraryId == libraryId_ && key == key_)
         return;
+    closeFind(false);
     flush();
     libraryId_ = libraryId;
     key_ = key;
@@ -1327,6 +1467,7 @@ void NoteEditor::setNote(int64_t libraryId, const QString& key)
 
 void NoteEditor::clear()
 {
+    closeFind(false);
     flush();
     key_.clear();
     libraryId_ = 0;

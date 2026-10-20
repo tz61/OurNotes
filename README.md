@@ -52,7 +52,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   notes in a tab next to Info. Markdown typed or pasted becomes formatting (`# `, `- `,
   `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the
   markup). Backspace at the start of a heading shows its `## ` to change the level;
-  leaving the line makes it a heading again. Each note view has its own text size (− / +, Ctrl+wheel), starting at the
+  leaving the line makes it a heading again. Ctrl+F in a note finds in it, in a bar at
+  the bottom of the note (with the same history, Tab and Aa as the search; Esc closes it). Each note view has its own text size (− / +, Ctrl+wheel), starting at the
   size set in Preferences.
 - **Adding items** — by DOI, ISBN, arXiv ID or PMID (arXiv PDFs are downloaded), by
   dropping PDFs (metadata is found from the identifiers or title in the file, with a
@@ -73,7 +74,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   in an empty field: a list, five at a time, PgUp/PgDn for more, Ctrl+Backspace to forget
   one), Esc clears the
   search and the selection (in a PDF: the word and its hits). Shift+Enter finds
-  backwards. Esc in any other field gives the keys back to the page or the item list.
+  backwards; the Aa button (Alt+C) matches case. Esc in any other field gives the keys
+  back to the page or the item list.
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing
   version is kept in *Tools → Sync Conflicts*. *Tools → Sync History* lists what the last
   syncs brought in and sent out. Library names are synced, and deleting an (empty)
