@@ -2993,6 +2993,37 @@ TEST_CASE("library: moving between items does not change the window's minimum si
     CHECK(view->findChild<LocationBox*>());
 }
 
+TEST_CASE("library: the collections come back as wide as they were, after a small start")
+{
+    app();
+    Env env;
+    auto splitOf = [](MainWindow& w) {
+        return qobject_cast<QSplitter*>(w.findChild<LibraryView*>()->findChild<ItemPane*>()->parentWidget());
+    };
+    QByteArray state;
+    {
+        MainWindow window;
+        window.resize(1600, 900);
+        window.show();
+        QApplication::processEvents();
+        splitOf(window)->setSizes({300, 880, 420});
+        QApplication::processEvents();
+        state = window.findChild<LibraryView*>()->saveState();
+    }
+    env.config.set("/ui/libraryState", state.toBase64().toStdString());
+    env.config.set("/ui/sidePaneWidth", 420);
+    // shown small first, as before the window manager gives the window its size
+    MainWindow window;
+    window.resize(600, 500);
+    window.show();
+    QApplication::processEvents();
+    window.resize(1600, 900);
+    QApplication::processEvents();
+    auto sizes = splitOf(window)->sizes();
+    CHECK(sizes[0] == 300);
+    CHECK(sizes[2] == 420);
+}
+
 TEST_CASE("main window: the pane beside the PDFs and the library is one width")
 {
     app();
@@ -3709,9 +3740,9 @@ TEST_CASE("main window: the tab strip never shows a stray or misplaced tab")
 }
 
 // The README's screenshot, of a library of well-known papers (nobody's own). Run again
-// after changing the look:
-//   OURNOTES_SCREENSHOT=docs/images/screenshot.png QT_SCALE_FACTOR=1.25 \
-//       ./build/tests/gui/test_gui -tc="docs: *"
+// after changing the look (one command):
+//   OURNOTES_SCREENSHOT=docs/images/screenshot.png QT_SCALE_FACTOR=1.25
+//   ./build/tests/gui/test_gui -tc="docs: *"
 TEST_CASE("docs: the README's screenshot" * doctest::skip(!std::getenv("OURNOTES_SCREENSHOT")))
 {
     app();

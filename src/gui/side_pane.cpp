@@ -1,5 +1,6 @@
 #include "gui/side_pane.h"
 
+#include <QDataStream>
 #include <QEvent>
 #include <QPointer>
 #include <QSplitter>
@@ -25,13 +26,29 @@ std::vector<QPointer<QSplitter>>& sharing()
 
 int sharedWidth() { return AppContext::get().config().get(kWidthKey, 0).get<int>(); }
 
+// The widths `split` gives its widgets when there is room: as set or dragged to. Its
+// sizes() are what they have now, less in a small window (at startup, before the window
+// gets its size); set back as they were, those stayed, and the collections came back
+// narrow every time. saveState() has the widths meant.
+QList<int> intendedSizes(QSplitter* split)
+{
+    QDataStream ds(split->saveState());
+    ds.setVersion(QDataStream::Qt_5_0);
+    qint32 magic = 0, version = 0;
+    QList<int> sizes;
+    ds >> magic >> version >> sizes;
+    if (sizes.size() != split->count() || std::any_of(sizes.begin(), sizes.end(), [](int s) { return s < 0; }))
+        return split->sizes();
+    return sizes;
+}
+
 // The pane `width` wide, the widget before it giving or taking the difference.
 void setPaneWidth(QSplitter* split, int width)
 {
-    auto sizes = split->sizes();
-    int n = (int)sizes.size();
-    if (width <= 0 || n < 2 || sizes[n - 1] <= 0 || sizes[n - 2] <= 0)
-        return;  // nothing shared yet, the pane hidden, or not laid out
+    int n = split->count();
+    if (width <= 0 || n < 2 || split->widget(n - 1)->isHidden())
+        return;  // nothing shared yet, or the pane hidden
+    auto sizes = intendedSizes(split);
     int diff = width - sizes[n - 1];
     if (diff == 0)
         return;
