@@ -1,7 +1,10 @@
 #include "gui/search_field.h"
 
+#include <QFrame>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QListWidget>
+#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -11,8 +14,8 @@
 namespace on::gui {
 
 namespace {
-constexpr int kMaxHistory = 100;
-constexpr int kMaxListed = 8;  // rows shown at once; the list scrolls for more
+constexpr int kMaxHistory = 1000;
+constexpr int kListRows = 5;  // shown at once; PgDn and PgUp go on by as many
 } // namespace
 
 SearchField::SearchField(QWidget* parent, const QString& historyKey) : QLineEdit(parent), historyKey_(historyKey)
@@ -43,6 +46,11 @@ void SearchField::remember(const QString& text)
     history_ << t;
     while (history_.size() > kMaxHistory)
         history_.removeFirst();
+    saveHistory();
+}
+
+void SearchField::saveHistory()
+{
     if (auto* ctx = AppContext::tryGet()) {
         Json saved = Json::array();
         for (auto& s : history_)
@@ -112,12 +120,28 @@ bool SearchField::complete()
 
 void SearchField::showList(const QStringList& searches)
 {
-    if (!list_) {
-        list_ = new QListWidget(window());
-        list_->setObjectName("searchHistoryList");
+    if (!popup_) {
+        popup_ = new QFrame(window());
+        popup_->setObjectName("searchHistoryList");
+        popup_->setFrameShape(QFrame::StyledPanel);
+        popup_->setAutoFillBackground(true);
+        popup_->setBackgroundRole(QPalette::Base);
+        auto* v = new QVBoxLayout(popup_);
+        v->setContentsMargins(1, 1, 1, 1);
+        v->setSpacing(0);
+        list_ = new QListWidget(popup_);
+        list_->setFrameShape(QFrame::NoFrame);
         list_->setFocusPolicy(Qt::NoFocus);  // the keys stay in the field
         list_->setSelectionMode(QAbstractItemView::SingleSelection);
         list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // the count says where
+        v->addWidget(list_);
+        count_ = new QLabel(popup_);
+        count_->setObjectName("searchHistoryCount");
+        count_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        count_->setContentsMargins(6, 1, 6, 2);
+        count_->setForegroundRole(QPalette::PlaceholderText);
+        v->addWidget(count_);
         connect(list_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
             fill(item->text());
             hideList(false);
@@ -126,25 +150,28 @@ void SearchField::showList(const QStringList& searches)
     }
     list_->clear();
     list_->addItems(searches);
-    int rows = std::min<int>(kMaxListed, int(searches.size()));
-    list_->setFixedSize(width(), rows * list_->sizeHintForRow(0) + 2 * list_->frameWidth());
-    list_->move(mapTo(window(), QPoint(0, height())));
-    list_->raise();
-    list_->show();
+    count_->setVisible(searches.size() > kListRows);
+    int rows = std::min<int>(kListRows, int(searches.size()));
+    list_->setFixedHeight(rows * list_->sizeHintForRow(0));
+    popup_->setFixedWidth(width());
+    popup_->adjustSize();
+    popup_->move(mapTo(window(), QPoint(0, height())));
+    popup_->raise();
+    popup_->show();
     list_->setCurrentRow(-1);  // (a list shown again would go on from where it was)
-    moveInList(1);  // the first one, highlighted and in the field
+    moveInList(1);             // the first one, highlighted and in the field
 }
 
 void SearchField::hideList(bool backToTyped)
 {
     if (!isListShown())
         return;
-    list_->hide();
+    popup_->hide();
     if (backToTyped)
         fill(typed_);
 }
 
-bool SearchField::isListShown() const { return list_ && list_->isVisible(); }
+bool SearchField::isListShown() const { return popup_ && popup_->isVisible(); }
 
 QStringList SearchField::listed() const
 {
@@ -157,15 +184,44 @@ QStringList SearchField::listed() const
 
 int SearchField::listedCurrent() const { return isListShown() ? list_->currentRow() : -1; }
 
-void SearchField::moveInList(int step)
+QString SearchField::listedCount() const { return isListShown() && count_->isVisible() ? count_->text() : QString(); }
+
+void SearchField::moveInList(int step, bool wrap)
 {
     int n = list_->count();
     if (n == 0)
         return;
-    int row = list_->currentRow() < 0 ? (step > 0 ? 0 : n - 1) : (list_->currentRow() + step + n) % n;
+    int row = list_->currentRow();
+    if (row < 0)
+        row = step > 0 ? 0 : n - 1;
+    else if (wrap)
+        row = ((row + step) % n + n) % n;
+    else
+        row = std::clamp(row + step, 0, n - 1);
     list_->setCurrentRow(row);
-    list_->scrollToItem(list_->item(row));
+    // the five shown hold it: whole pages of five, as PgDn and PgUp go
+    list_->scrollToItem(list_->item(row / kListRows * kListRows), QAbstractItemView::PositionAtTop);
+    count_->setText(QString("%1/%2").arg(row + 1).arg(n));
     fill(list_->item(row)->text());
+}
+
+void SearchField::forgetCurrent()
+{
+    int row = list_->currentRow();
+    if (row < 0)
+        return;
+    history_.removeAll(list_->item(row)->text());
+    saveHistory();
+    delete list_->takeItem(row);
+    if (list_->count() == 0) {
+        hideList(true);
+        return;
+    }
+    QStringList rest;
+    for (int i = 0; i < list_->count(); ++i)
+        rest << list_->item(i)->text();
+    showList(rest);  // sized and counted again
+    moveInList(std::min(row, int(rest.size()) - 1), false);  // the next one, where it was
 }
 
 bool SearchField::event(QEvent* e)
@@ -178,8 +234,10 @@ bool SearchField::event(QEvent* e)
             moveInList(backtab ? -1 : 1);
             return true;
         }
-        if (tab && !backtab && complete())
-            return true;
+        if (tab && !backtab && !text().isEmpty()) {
+            complete();
+            return true;  // for completing here, not for moving on (also after a completion)
+        }
     }
     return QLineEdit::event(e);
 }
@@ -187,28 +245,42 @@ bool SearchField::event(QEvent* e)
 void SearchField::keyPressEvent(QKeyEvent* e)
 {
     bool plain = !(e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+    bool enter = e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter;
     if (isListShown()) {
         switch (e->key()) {
         case Qt::Key_Up:
         case Qt::Key_Down:
             moveInList(e->key() == Qt::Key_Down ? 1 : -1);
             return;
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+            moveInList(e->key() == Qt::Key_PageDown ? kListRows : -kListRows, false);
+            return;
+        case Qt::Key_Backspace:
+            if (e->modifiers() & Qt::ControlModifier) {
+                forgetCurrent();
+                return;
+            }
+            break;
         case Qt::Key_Escape:
             hideList(true);
             return;
-        case Qt::Key_Return:
-        case Qt::Key_Enter:
-            hideList(false);
-            break;  // and searched for, as Enter does
         default:
             break;
         }
+        if (enter)
+            hideList(false);  // and searched for, as Enter does
     } else if (plain && (e->key() == Qt::Key_Up || e->key() == Qt::Key_Down)) {
         browse(e->key() == Qt::Key_Up ? 1 : -1);
         return;
     } else if (e->key() == Qt::Key_Escape) {
         browsing_ = -1;
         emit escapePressed();
+        return;
+    }
+    if (enter && (e->modifiers() & Qt::ShiftModifier)) {
+        remember(text());
+        emit shiftReturnPressed();
         return;
     }
     QLineEdit::keyPressEvent(e);

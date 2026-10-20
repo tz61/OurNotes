@@ -3903,13 +3903,63 @@ TEST_CASE("reader: Esc in the find clears it and its hits; it has a history of i
     CHECK(find->text().isEmpty());
     CHECK(status().isEmpty());
     CHECK(tab.view()->hasFocus());  // the page keys work again
+    // Shift+Enter: backwards
+    find->setFocus();
+    QTest::keyClicks(find, "o");
+    QTest::keyClick(find, Qt::Key_Return);
+    CHECK(QTest::qWaitFor([&] { return status().startsWith("1 of "); }));
+    QString total = status().mid(5);
+    QTest::keyClick(find, Qt::Key_Return, Qt::ShiftModifier);
+    CHECK(QTest::qWaitFor([&] { return status() == total + " of " + total; }));
+    QTest::keyClick(find, Qt::Key_Escape);
     // Up: the word found before, from the find's own history
     find->setFocus();
     QTest::keyClick(find, Qt::Key_Up);
+    QTest::keyClick(find, Qt::Key_Up);
     CHECK(find->text() == "line");
-    CHECK(find->history() == QStringList{"line"});
-    CHECK(env.config.get("/reader/findHistory", Json()).dump() == R"(["line"])");
+    CHECK(find->history() == QStringList{"line", "o"});
+    CHECK(env.config.get("/reader/findHistory", Json()).dump() == R"(["line","o"])");
     CHECK(env.config.get("/ui/searchHistory", Json::array()).empty());
+    // Esc in any other field: the keys back on the page
+    find->clear();
+    for (auto* field : tab.findChildren<QLineEdit*>()) {
+        if (!field->isVisible() || field == find)
+            continue;
+        field->setFocus();
+        REQUIRE(field->hasFocus());
+        QTest::keyClick(field, Qt::Key_Escape);
+        CHECK(tab.view()->hasFocus());
+    }
+}
+
+TEST_CASE("library: Esc in a field gives the keys back to the item list")
+{
+    app();
+    Env env;
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Alpha"}});
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    QTreeView* items = nullptr;
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    items->setCurrentIndex(items->model()->index(0, 0));
+    QApplication::processEvents();
+    int tried = 0;
+    for (auto* field : window.findChild<LibraryView*>()->findChildren<QLineEdit*>()) {
+        if (!field->isVisible() || field->isReadOnly())
+            continue;
+        field->setFocus();
+        REQUIRE(field->hasFocus());
+        QTest::keyClick(field, Qt::Key_Escape);
+        CHECK(items->hasFocus());
+        ++tried;
+    }
+    CHECK(tried >= 2);  // the search, the tag filter, the item's fields
 }
 
 TEST_CASE("search: Tab completes from earlier searches, then lists them")
@@ -3970,12 +4020,84 @@ TEST_CASE("search: Tab completes from earlier searches, then lists them")
     QTest::keyClicks(field, "s");
     CHECK(!field->isListShown());
     CHECK(field->text() == "humanoid robots");
-    // nothing to complete: Tab moves on, as anywhere else
+    // with text, Tab is for completing: after a completion, or with nothing to complete,
+    // it stays; from an empty field it moves on, as anywhere else
+    field->clear();
+    QTest::keyClicks(field, "vis");
+    QTest::keyClick(field, Qt::Key_Tab);
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->text() == "vision");
+    CHECK(field->hasFocus());
     field->clear();
     QTest::keyClicks(field, "zzz");
     QTest::keyClick(field, Qt::Key_Tab);
     CHECK(field->text() == "zzz");
+    CHECK(field->hasFocus());
+    field->clear();
+    QTest::keyClick(field, Qt::Key_Tab);
     CHECK(next->hasFocus());
+}
+
+TEST_CASE("search: the list shows five, PgDn and PgUp go by five, Ctrl+Backspace forgets one")
+{
+    app();
+    Env env;
+    QWidget window;
+    auto* field = new SearchField(&window);
+    field->setGeometry(10, 10, 300, 30);
+    window.resize(400, 400);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    for (int i = 1; i <= 12; ++i)
+        field->remember(QString("paper %1").arg(i, 2, 10, QChar('0')));
+    field->setFocus();
+    QTest::keyClicks(field, "paper ");
+    QTest::keyClick(field, Qt::Key_Tab);  // "paper 0" and "paper 1" share "paper " only: the list
+    REQUIRE(field->isListShown());
+    CHECK(field->listed().size() == 12);
+    auto* list = window.findChild<QListWidget*>();
+    REQUIRE(list);
+    CHECK(list->height() == 5 * list->sizeHintForRow(0));  // five at a time
+    CHECK(field->listedCount() == "1/12");
+    CHECK(field->text() == "paper 12");  // the latest first
+    QTest::keyClick(field, Qt::Key_PageDown);
+    CHECK(field->listedCount() == "6/12");
+    CHECK(field->text() == "paper 07");
+    QTest::keyClick(field, Qt::Key_PageDown);
+    QTest::keyClick(field, Qt::Key_PageDown);  // no further than the last
+    CHECK(field->listedCount() == "12/12");
+    QTest::keyClick(field, Qt::Key_PageUp);
+    CHECK(field->listedCount() == "7/12");
+    // Ctrl+Backspace: the highlighted one forgotten, the next one highlighted in its place
+    QString gone = field->text();
+    QTest::keyClick(field, Qt::Key_Backspace, Qt::ControlModifier);
+    CHECK(!field->history().contains(gone));
+    CHECK(field->listed().size() == 11);
+    CHECK(field->listedCount() == "7/11");
+    CHECK(field->text() != gone);
+    CHECK(env.config.get("/ui/searchHistory", Json()).dump().find(ss(gone)) == std::string::npos);
+    QTest::keyClick(field, Qt::Key_Escape);
+    field->clear();
+    QTest::keyClicks(field, "paper 0");  // 01 … 09, without the one forgotten
+    QTest::keyClick(field, Qt::Key_Tab);
+    REQUIRE(field->isListShown());
+    CHECK(field->listed().size() == 8);
+    CHECK(field->listedCount() == "1/8");
+    QTest::keyClick(field, Qt::Key_Escape);
+    // five or fewer: no count
+    field->clear();
+    QTest::keyClicks(field, "paper 1");  // 10, 11, 12
+    QTest::keyClick(field, Qt::Key_Tab);
+    REQUIRE(field->isListShown());
+    CHECK(field->listed().size() == 3);
+    CHECK(field->listedCount().isEmpty());
+    QTest::keyClick(field, Qt::Key_Escape);
+    // and the last 1000 kept
+    for (int i = 0; i < 1005; ++i)
+        field->remember(QString("search %1").arg(i));
+    CHECK(field->history().size() == 1000);
+    CHECK(field->history().back() == "search 1004");
 }
 
 TEST_CASE("library: sorting by a column keeps the columns' widths")

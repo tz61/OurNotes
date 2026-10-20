@@ -31,6 +31,7 @@ SECTIONS = [
         ("Ctrl+1", "Library tab"),
         ("F11", "Full screen"),
         ("Ctrl+Shift+S", "Sync now"),
+        ("Esc", "In a field: the keys back to the page or list"),
     ]),
     ("Library", [
         ("Enter", "Open the PDFs, top to bottom"),
@@ -46,6 +47,9 @@ SECTIONS = [
         ("Esc", "Clear it, and the selection or the hits"),
         ("Up / Down", "Earlier searches"),
         ("Tab", "Complete from them; again: a list"),
+        ("PgUp / PgDn", "In the list: five back / on"),
+        ("Ctrl+Backspace", "In the list: forget the one highlighted"),
+        ("Shift+Enter", "In a PDF's find: backwards"),
     ]),
     ("Notes", [
         ("Ctrl+B / Ctrl+I / Ctrl+U", "Bold, italic, underline"),

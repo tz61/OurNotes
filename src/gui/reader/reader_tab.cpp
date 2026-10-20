@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMessageBox>
 #include <QSignalBlocker>
@@ -462,6 +463,7 @@ void ReaderTab::buildToolbar()
     findStatus_ = new QLabel(tb);
     tb->addWidget(findStatus_);
     connect(find_, &QLineEdit::returnPressed, this, [this] { view_->find(find_->text(), false); });
+    connect(find_, &SearchField::shiftReturnPressed, this, [this] { view_->find(find_->text(), true); });
     // Esc: no word, no hits, the keys back on the page
     connect(find_, &SearchField::escapePressed, this, [this] {
         find_->clear();
@@ -523,6 +525,15 @@ void ReaderTab::updateDarkPagesAction()
         pageTone_->setToolTip(view_->darkPages() ? tr("Page colour: black to gray, for all PDFs")
                                                  : tr("Page colour: white to gray, for all PDFs"));
     }
+}
+
+void ReaderTab::keyPressEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Escape && e->modifiers() == Qt::NoModifier) {
+        view_->setFocus();
+        return;
+    }
+    QWidget::keyPressEvent(e);
 }
 
 void ReaderTab::changeEvent(QEvent* e)

@@ -58,6 +58,9 @@ signals:
 
 protected:
     void changeEvent(QEvent* e) override;
+    // Esc in a field (the annotations' search, the page number, Info, a note…) that has no
+    // use for it: the keys back on the page ([, ], I, N…)
+    void keyPressEvent(QKeyEvent* e) override;
 
 private:
     void updateDarkPagesAction();

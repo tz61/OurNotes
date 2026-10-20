@@ -74,6 +74,9 @@ signals:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* e) override;
+    // Esc in a field that has no use for it (the tag filter, the item's fields, a note…):
+    // the keys back on the item list
+    void keyPressEvent(QKeyEvent* e) override;
 
 private:
     void importFilesTo(const Scope& target, const QStringList& files, const QString& parentKey);

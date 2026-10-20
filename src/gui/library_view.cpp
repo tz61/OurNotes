@@ -350,12 +350,13 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             items_->expandAll();
     };
     connect(&searchTimer_, &QTimer::timeout, this, applySearch);
-    // Esc in the search: no search, nothing selected
+    // Esc in the search: no search, nothing selected, the keys back on the item list
     connect(search_, &SearchField::escapePressed, this, [this, applySearch] {
         search_->clear();
         searchTimer_.stop();
         applySearch();
         items_->selectionModel()->clearSelection();
+        items_->setFocus();
     });
     connect(searchMode_, &QComboBox::currentIndexChanged, this, [this, applySearch] {
         AppContext::get().config().set("/ui/searchMode", searchMode_->currentData().toInt());
@@ -661,6 +662,15 @@ void LibraryView::setItemPaneVisible(bool visible)
 }
 
 bool LibraryView::isItemPaneVisible() const { return pane_->isVisible(); }
+
+void LibraryView::keyPressEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Escape && e->modifiers() == Qt::NoModifier) {
+        items_->setFocus();
+        return;
+    }
+    QWidget::keyPressEvent(e);
+}
 
 bool LibraryView::eventFilter(QObject* watched, QEvent* e)
 {
