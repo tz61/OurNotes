@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QTimer>
 
 #include <vector>
 
@@ -29,13 +30,18 @@ public:
     void offerZoteroImport();
     void selectItem(const QString& key);
     void importZotero();
+    // Moves the tabs and everything below them down by this much: in macOS full screen,
+    // for the menu and title bar macOS shows over the window (see followTitleBar()).
+    void setTitleBarOverlap(int pixels);
 
 protected:
+    void changeEvent(QEvent* e) override;
     void closeEvent(QCloseEvent* e) override;
     void dragEnterEvent(QDragEnterEvent* e) override;
     void dropEvent(QDropEvent* e) override;
 
 private:
+    void followTitleBar();
     void buildActions();
     int findTab(int64_t libraryId, const QString& key) const;  // a reader, loaded or not
     void reopenClosedTab();
@@ -78,6 +84,7 @@ private:
     SyncController* sync_ = nullptr;
     FulltextIndexer* indexer_ = nullptr;
     bool shutDown_ = false;
+    QTimer titleBarTimer_;  // while full screen on macOS
 };
 
 } // namespace on::gui

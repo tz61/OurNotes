@@ -3361,6 +3361,30 @@ TEST_CASE("main window: Control-Command-F (F11 elsewhere) enters and leaves full
     CHECK(QTest::qWaitFor([&] { return !window.isFullScreen(); }, 5000));
 }
 
+TEST_CASE("main window: the tabs make room for the title bar macOS slides over a full-screen window")
+{
+    app();
+    Env env;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QApplication::processEvents();
+    auto* strip = window.findChild<QWidget*>("tabStrip");
+    REQUIRE(strip);
+    int top = strip->mapTo(&window, QPoint(0, 0)).y();
+    int height = window.centralWidget()->height();
+    // with the pointer at the top of the screen, macOS shows the menu and title bar over the
+    // window; the window moves its content below them, and back when they go
+    window.setTitleBarOverlap(27);
+    QApplication::processEvents();
+    CHECK(strip->mapTo(&window, QPoint(0, 0)).y() == top + 27);
+    CHECK(window.size() == QSize(900, 600));
+    CHECK(window.centralWidget()->height() == height);  // the rest of the window gets shorter
+    window.setTitleBarOverlap(0);
+    QApplication::processEvents();
+    CHECK(strip->mapTo(&window, QPoint(0, 0)).y() == top);
+}
+
 TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")
 {
     app();

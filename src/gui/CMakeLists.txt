@@ -44,6 +44,10 @@ set_target_properties(ournotes_gui PROPERTIES AUTOMOC ON AUTORCC ON)
 target_link_libraries(ournotes_gui PUBLIC ournotes_core ournotes_sync ournotes_pdf ournotes_formats Qt6::Widgets Qt6::Svg
     PRIVATE on_microtex)
 target_compile_definitions(ournotes_gui PRIVATE OURNOTES_MICROTEX_BUILD_RES="${OURNOTES_MICROTEX_RES}")
+if(APPLE)
+    target_sources(ournotes_gui PRIVATE mac_fullscreen.mm)
+    target_link_libraries(ournotes_gui PRIVATE "-framework AppKit")
+endif()
 
 set(OURNOTES_ICON_DIR "${PROJECT_SOURCE_DIR}/resources/icons")
 set(OURNOTES_PLATFORM_SOURCES)
