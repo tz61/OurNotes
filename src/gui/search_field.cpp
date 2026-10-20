@@ -234,8 +234,14 @@ bool SearchField::event(QEvent* e)
             moveInList(backtab ? -1 : 1);
             return true;
         }
-        if (tab && !backtab && !text().isEmpty()) {
-            complete();
+        if (tab && !backtab) {
+            if (text().isEmpty()) {  // nothing typed (just after Ctrl+F, say): all of them
+                typed_.clear();
+                if (auto all = matching({}); !all.isEmpty())
+                    showList(all);
+            } else {
+                complete();
+            }
             return true;  // for completing here, not for moving on (also after a completion)
         }
     }

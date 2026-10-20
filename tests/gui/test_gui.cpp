@@ -4020,8 +4020,7 @@ TEST_CASE("search: Tab completes from earlier searches, then lists them")
     QTest::keyClicks(field, "s");
     CHECK(!field->isListShown());
     CHECK(field->text() == "humanoid robots");
-    // with text, Tab is for completing: after a completion, or with nothing to complete,
-    // it stays; from an empty field it moves on, as anywhere else
+    // Tab is for completing: after a completion, or with nothing to complete, it stays
     field->clear();
     QTest::keyClicks(field, "vis");
     QTest::keyClick(field, Qt::Key_Tab);
@@ -4033,9 +4032,21 @@ TEST_CASE("search: Tab completes from earlier searches, then lists them")
     QTest::keyClick(field, Qt::Key_Tab);
     CHECK(field->text() == "zzz");
     CHECK(field->hasFocus());
+    // nothing typed (just after Ctrl+F, say): all of them, the latest first
     field->clear();
     QTest::keyClick(field, Qt::Key_Tab);
-    CHECK(next->hasFocus());
+    REQUIRE(field->isListShown());
+    QStringList latestFirst = field->history();
+    std::reverse(latestFirst.begin(), latestFirst.end());
+    CHECK(field->listed() == latestFirst);
+    CHECK(field->text() == latestFirst.front());
+    QTest::keyClick(field, Qt::Key_Escape);  // back to nothing
+    CHECK(field->text().isEmpty());
+    CHECK(field->hasFocus());
+    // Shift+Tab, outside the list, moves on as anywhere else
+    QTest::keyClick(field, Qt::Key_Tab, Qt::ShiftModifier);
+    CHECK(!field->hasFocus());
+    (void)next;
 }
 
 TEST_CASE("search: the list shows five, PgDn and PgUp go by five, Ctrl+Backspace forgets one")

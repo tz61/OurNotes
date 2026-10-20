@@ -19,8 +19,8 @@ namespace on::gui {
 //   corner when there are more, the first highlighted and in the field; more Tabs
 //   (Shift+Tab back) or the arrow keys go through the list, PgDn and PgUp five at a
 //   time, Ctrl+Backspace forgets the highlighted one, Enter or a click takes one, Esc
-//   goes back to what was typed. With text in the field Tab stays there (it is for
-//   completing); in an empty one it moves on.
+//   goes back to what was typed. In an empty field Tab lists all of them. Tab never
+//   moves on from the field (Shift+Tab, outside the list, does; Esc gives the keys back).
 // - Esc otherwise: escapePressed (the library clears the search and the selection, a PDF
 //   its find and the hits).
 // - Shift+Enter: shiftReturnPressed (a PDF finds backwards), not returnPressed.

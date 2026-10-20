@@ -69,8 +69,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Search** — title/creator/year, all fields and tags, or everything including the
   full text of PDFs (indexed in the background with SQLite FTS5). The search field, and
   a PDF's find, keep a history as a shell does (the last 1000 searches, on this
-  computer): Up and Down go through earlier searches, Tab completes from them (again: a
-  list, five at a time, PgUp/PgDn for more, Ctrl+Backspace to forget one), Esc clears the
+  computer): Up and Down go through earlier searches, Tab completes from them (again, or
+  in an empty field: a list, five at a time, PgUp/PgDn for more, Ctrl+Backspace to forget
+  one), Esc clears the
   search and the selection (in a PDF: the word and its hits). Shift+Enter finds
   backwards. Esc in any other field gives the keys back to the page or the item list.
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing

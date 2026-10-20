@@ -46,7 +46,7 @@ SECTIONS = [
     ("Search, and find in a PDF", [
         ("Esc", "Clear it, and the selection or the hits"),
         ("Up / Down", "Earlier searches"),
-        ("Tab", "Complete from them; again: a list"),
+        ("Tab", "Complete from them; again (or empty): a list"),
         ("PgUp / PgDn", "In the list: five back / on"),
         ("Ctrl+Backspace", "In the list: forget the one highlighted"),
         ("Shift+Enter", "In a PDF's find: backwards"),
