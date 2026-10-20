@@ -237,8 +237,9 @@ public:
     void setReaderState(const std::string& attachmentKey, const Json& state);
 
     // --- search --------------------------------------------------------------------------
-    // Keys of all items (any level) matching every token of `query`.
-    std::set<std::string> search(int64_t lib, const std::string& query, SearchMode mode);
+    // Keys of all items (any level) matching every token of `query`; caseSensitive: each
+    // word as typed (otherwise in any case, and with or without accents).
+    std::set<std::string> search(int64_t lib, const std::string& query, SearchMode mode, bool caseSensitive = false);
 
     // --- sync support (used by SyncEngine) -------------------------------------------------
     std::optional<StoredObject> getObject(int64_t lib, const std::string& type, const std::string& key);

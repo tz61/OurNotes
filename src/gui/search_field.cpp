@@ -1,9 +1,11 @@
 #include "gui/search_field.h"
 
+#include <QAction>
 #include <QFrame>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QListWidget>
+#include <QPainter>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -34,6 +36,65 @@ SearchField::SearchField(QWidget* parent, const QString& historyKey) : QLineEdit
         if (isListShown())
             hideList(false);
     });
+}
+
+void SearchField::addCaseToggle(const QString& key)
+{
+    caseKey_ = key;
+    if (auto* ctx = AppContext::tryGet())
+        caseSensitive_ = ctx->config().get(ss(key), false).get<bool>();
+    caseButton_ = addAction(QIcon(), QLineEdit::TrailingPosition);
+    caseButton_->setObjectName("matchCase");
+    connect(caseButton_, &QAction::triggered, this, [this] { setCaseSensitive(!caseSensitive_); });
+    updateCaseButton();
+}
+
+void SearchField::setCaseSensitive(bool on)
+{
+    if (on == caseSensitive_)
+        return;
+    caseSensitive_ = on;
+    if (auto* ctx = AppContext::tryGet(); ctx && !caseKey_.isEmpty())
+        ctx->config().set(ss(caseKey_), on);
+    updateCaseButton();
+    emit caseSensitivityChanged(on);
+}
+
+// "Aa": faint when off; on, in the highlight's colours (the field's buttons show no
+// pressed state of their own)
+void SearchField::updateCaseButton()
+{
+    if (!caseButton_)
+        return;
+    qreal dpr = devicePixelRatioF();
+    QPixmap pm(QSize(18, 16) * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    QRectF box(0, 0, 18, 16);
+    if (caseSensitive_) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(palette().color(QPalette::Highlight));
+        p.drawRoundedRect(box, 3, 3);
+    }
+    QFont f = font();
+    f.setPixelSize(11);
+    f.setBold(caseSensitive_);
+    p.setFont(f);
+    p.setPen(palette().color(caseSensitive_ ? QPalette::HighlightedText : QPalette::PlaceholderText));
+    p.drawText(box, Qt::AlignCenter, "Aa");
+    p.end();
+    caseButton_->setIcon(QIcon(pm));
+    caseButton_->setToolTip(caseSensitive_ ? tr("Matching case (Alt+C): click to match any case")
+                                           : tr("Match case (Alt+C)"));
+}
+
+void SearchField::changeEvent(QEvent* e)
+{
+    QLineEdit::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange)
+        updateCaseButton();
 }
 
 void SearchField::remember(const QString& text)
@@ -282,6 +343,10 @@ void SearchField::keyPressEvent(QKeyEvent* e)
     } else if (e->key() == Qt::Key_Escape) {
         browsing_ = -1;
         emit escapePressed();
+        return;
+    }
+    if (caseButton_ && e->key() == Qt::Key_C && e->modifiers() == Qt::AltModifier) {
+        setCaseSensitive(!caseSensitive_);
         return;
     }
     if (enter && (e->modifiers() & Qt::ShiftModifier)) {

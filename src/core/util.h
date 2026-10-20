@@ -45,8 +45,9 @@ std::vector<std::string> split(std::string_view s, char sep, bool skipEmpty = tr
 std::string join(const std::vector<std::string>& parts, std::string_view sep);
 std::string replaceAll(std::string s, std::string_view from, std::string_view to);
 
-// Split a quick-search string into words, keeping "quoted phrases" together.
-std::vector<std::string> searchTokens(std::string_view query);
+// Split a quick-search string into words, keeping "quoted phrases" together; folded
+// (lowercase, no accents: as the stored search text is) unless fold is false.
+std::vector<std::string> searchTokens(std::string_view query, bool fold = true);
 
 std::string htmlEscape(std::string_view s);
 std::string htmlUnescape(std::string_view s);

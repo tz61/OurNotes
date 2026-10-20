@@ -618,7 +618,7 @@ std::string Document::fullText(int maxPages)
     return out;
 }
 
-std::vector<std::vector<Rect>> Document::search(int n, const std::string& needle, int maxHits)
+std::vector<std::vector<Rect>> Document::search(int n, const std::string& needle, int maxHits, bool caseSensitive)
 {
     std::vector<std::vector<Rect>> hits;
     if (needle.empty())
@@ -628,7 +628,12 @@ std::vector<std::vector<Rect>> Document::search(int n, const std::string& needle
     std::vector<int> marks((size_t)maxHits);
     int count = 0;
     fz_var(count);
-    fz_try(d_->ctx) { count = fz_search_page(d_->ctx, page, needle.c_str(), marks.data(), quads.data(), maxHits); }
+    fz_try(d_->ctx)
+    {
+        count = caseSensitive ? fz_match_page(d_->ctx, page, needle.c_str(), marks.data(), quads.data(), maxHits,
+                                              FZ_SEARCH_EXACT)
+                              : fz_search_page(d_->ctx, page, needle.c_str(), marks.data(), quads.data(), maxHits);
+    }
     fz_catch(d_->ctx) { count = 0; }
     for (int i = 0; i < count; ++i) {
         if (marks[i] || hits.empty())

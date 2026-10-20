@@ -464,6 +464,13 @@ void ReaderTab::buildToolbar()
     tb->addWidget(findStatus_);
     connect(find_, &QLineEdit::returnPressed, this, [this] { view_->find(find_->text(), false); });
     connect(find_, &SearchField::shiftReturnPressed, this, [this] { view_->find(find_->text(), true); });
+    find_->addCaseToggle("/reader/findCaseSensitive");
+    view_->setFindCaseSensitive(find_->caseSensitive());
+    connect(find_, &SearchField::caseSensitivityChanged, this, [this](bool on) {
+        view_->setFindCaseSensitive(on);
+        if (!find_->text().trimmed().isEmpty())
+            view_->find(find_->text(), false);  // the hits as they are now
+    });
     // Esc: no word, no hits, the keys back on the page
     connect(find_, &SearchField::escapePressed, this, [this] {
         find_->clear();

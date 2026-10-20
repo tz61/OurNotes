@@ -350,6 +350,13 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             items_->expandAll();
     };
     connect(&searchTimer_, &QTimer::timeout, this, applySearch);
+    search_->addCaseToggle("/ui/searchCaseSensitive");
+    model_->setSearchCaseSensitive(search_->caseSensitive());
+    connect(search_, &SearchField::caseSensitivityChanged, this, [this](bool on) {
+        model_->setSearchCaseSensitive(on);
+        if (model_->isSearching())
+            items_->expandAll();
+    });
     // Esc in the search: no search, nothing selected, the keys back on the item list
     connect(search_, &SearchField::escapePressed, this, [this, applySearch] {
         search_->clear();

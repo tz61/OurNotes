@@ -42,6 +42,10 @@ TEST_CASE("open, text, hit testing, search")
     auto hits = doc->search(0, "line of");
     REQUIRE(hits.size() == 1);
     CHECK(hits[0][0].y0 > 100);  // second line: baseline at 132, 24pt font
+    // in any case, or as written
+    CHECK(doc->search(0, "hello world").size() == 1);
+    CHECK(doc->search(0, "hello world", 512, true).empty());
+    CHECK(doc->search(0, "Hello World", 512, true).size() == 1);
 
     auto img = doc->render(0, 0.5f);
     CHECK(img.width == 306);

@@ -24,6 +24,7 @@ namespace on::gui {
 // - Esc otherwise: escapePressed (the library clears the search and the selection, a PDF
 //   its find and the hits).
 // - Shift+Enter: shiftReturnPressed (a PDF finds backwards), not returnPressed.
+// - With addCaseToggle, an "Aa" button at its end (and Alt+C) to match case.
 // A search is kept when Enter is pressed or the field is left with it, the last 1000 in
 // the settings under historyKey (the latest last).
 class SearchField : public QLineEdit {
@@ -36,15 +37,21 @@ public:
     QStringList listed() const;   // the searches in the list, all of them
     int listedCurrent() const;    // the highlighted one, -1 for none
     QString listedCount() const;  // what the corner shows ("7/51"; empty for five or fewer)
+    // The "match case" button, its state kept in the settings under key.
+    void addCaseToggle(const QString& key);
+    bool caseSensitive() const { return caseSensitive_; }
+    void setCaseSensitive(bool on);
 
 signals:
     void escapePressed();
     void shiftReturnPressed();
+    void caseSensitivityChanged(bool on);
 
 protected:
     bool event(QEvent* e) override;  // Tab and Shift+Tab, before they move the focus
     void keyPressEvent(QKeyEvent* e) override;
     void focusOutEvent(QFocusEvent* e) override;
+    void changeEvent(QEvent* e) override;  // the button's colours
 
 private:
     QStringList matching(const QString& prefix) const;  // latest first, each once
@@ -57,7 +64,12 @@ private:
     void browse(int step);  // Up (+1, older) or Down (-1)
     void fill(const QString& text);  // in the field, as if typed there
 
+    void updateCaseButton();
+
     QString historyKey_;
+    QString caseKey_;
+    QAction* caseButton_ = nullptr;
+    bool caseSensitive_ = false;
     QStringList history_;
     QFrame* popup_ = nullptr;  // the list and its count
     QListWidget* list_ = nullptr;

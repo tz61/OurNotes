@@ -36,6 +36,15 @@ void ItemsModel::setSearch(const QString& text, SearchMode mode)
     reload();
 }
 
+void ItemsModel::setSearchCaseSensitive(bool on)
+{
+    if (on == caseSensitive_)
+        return;
+    caseSensitive_ = on;
+    if (!search_.trimmed().isEmpty())
+        reload();
+}
+
 void ItemsModel::setTagFilter(const QStringList& tags)
 {
     if (tags == tags_)
@@ -116,7 +125,7 @@ void ItemsModel::reload()
         std::set<std::string> keys;
         bool first = true;
         if (!search_.trimmed().isEmpty()) {
-            keys = lib.search(scope_.libraryId, ss(search_), mode_);
+            keys = lib.search(scope_.libraryId, ss(search_), mode_, caseSensitive_);
             first = false;
         }
         if (!tags_.isEmpty()) {

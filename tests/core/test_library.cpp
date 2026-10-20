@@ -212,6 +212,26 @@ TEST_CASE("fulltext search")
     CHECK(lib.search(id, "\"the cell\"", SearchMode::Everything).count(key));
 }
 
+TEST_CASE("search minding case: each word as typed, in the fields and the full text")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto id = lib.defaultLibrary();
+    auto upper = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "Robot Arms"}}), "key");
+    auto lower = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "robot legs"}, {"publisher", "MIT Press"}}), "key");
+    auto pdf = jstr(lib.createItem(id, Json{{"itemType", "attachment"}, {"linkMode", "imported_file"}, {"title", "PDF"}}), "key");
+    lib.fulltext().store(id, pdf, "abc", "Training a Transformer on DNA", 1);
+    CHECK(lib.search(id, "robot", SearchMode::TitleCreatorYear) == std::set<std::string>{upper, lower});
+    CHECK(lib.search(id, "Robot", SearchMode::TitleCreatorYear, true) == std::set<std::string>{upper});
+    CHECK(lib.search(id, "robot", SearchMode::TitleCreatorYear, true) == std::set<std::string>{lower});
+    CHECK(lib.search(id, "robot Arms", SearchMode::TitleCreatorYear, true).empty());  // every word
+    CHECK(lib.search(id, "MIT", SearchMode::AllFields, true) == std::set<std::string>{lower});
+    CHECK(lib.search(id, "mit", SearchMode::AllFields, true).empty());
+    CHECK(lib.search(id, "DNA", SearchMode::Everything, true) == std::set<std::string>{pdf});
+    CHECK(lib.search(id, "dna", SearchMode::Everything, true).empty());
+    CHECK(lib.search(id, "dna", SearchMode::Everything) == std::set<std::string>{pdf});
+}
+
 TEST_CASE("reader state is kept next to the attachment, like Zotero's")
 {
     TempDir tmp;

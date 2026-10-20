@@ -83,6 +83,7 @@ public:
 
     void find(const QString& text, bool backwards);
     void clearFind();
+    void setFindCaseSensitive(bool on);  // the next find searches again
     void requestThumbnails(double scale);
 
     // While hidden, the view drops its rendered pages after imagesMs and its render
@@ -250,6 +251,7 @@ private:
     std::map<int, std::vector<pdf::Link>> links_;
 
     QString findText_;
+    bool findCaseSensitive_ = false;
     std::vector<std::pair<int, std::vector<QRectF>>> hits_;
     int hitIndex_ = -1;
 

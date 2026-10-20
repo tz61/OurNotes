@@ -290,27 +290,28 @@ std::string replaceAll(std::string s, std::string_view from, std::string_view to
     return s;
 }
 
-std::vector<std::string> searchTokens(std::string_view q)
+std::vector<std::string> searchTokens(std::string_view q, bool fold)
 {
     std::vector<std::string> out;
+    auto add = [&](std::string_view token) { out.push_back(fold ? normalize(token) : std::string(token)); };
     std::string cur;
     bool quoted = false;
     for (char c : q) {
         if (c == '"') {
             if (!cur.empty())
-                out.push_back(normalize(cur));
+                add(cur);
             cur.clear();
             quoted = !quoted;
         } else if (!quoted && std::isspace((unsigned char)c)) {
             if (!cur.empty())
-                out.push_back(normalize(cur));
+                add(cur);
             cur.clear();
         } else {
             cur += c;
         }
     }
     if (!trim(cur).empty())
-        out.push_back(normalize(trim(cur)));
+        add(trim(cur));
     return out;
 }
 

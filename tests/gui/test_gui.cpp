@@ -4111,6 +4111,68 @@ TEST_CASE("search: the list shows five, PgDn and PgUp go by five, Ctrl+Backspace
     CHECK(field->history().back() == "search 1004");
 }
 
+TEST_CASE("search fields: Aa (or Alt+C) matches case, in the library and in a PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Robot Arms"}});
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "robot legs"}});
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Vision"}});  // (the search applied: 2)
+    auto pdf = qs(jstr(env.library.importAttachment(env.lib, file, jstr(paper, "key")), "key"));
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    QApplication::processEvents();
+    auto* search = window.findChild<SearchField*>("librarySearch");
+    REQUIRE(search);
+    auto* button = search->findChild<QAction*>("matchCase");
+    REQUIRE(button);
+    QTreeView* items = nullptr;
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    search->setFocus();
+    QTest::keyClicks(search, "Robot");
+    CHECK(QTest::qWaitFor([&] { return items->model()->rowCount() == 2; }));
+    button->trigger();  // as written now
+    CHECK(search->caseSensitive());
+    CHECK(items->model()->rowCount() == 1);
+    CHECK(env.config.get("/ui/searchCaseSensitive", false).get<bool>());
+    QTest::keyClick(search, Qt::Key_C, Qt::AltModifier);  // and back
+    CHECK(!search->caseSensitive());
+    CHECK(items->model()->rowCount() == 2);
+
+    // a PDF's find
+    ReaderTab tab(env.lib, pdf);
+    tab.resize(1000, 800);
+    tab.show();
+    auto* find = tab.findChild<SearchField*>("findInDocument");
+    REQUIRE(find);
+    auto status = [&] {
+        for (auto* l : tab.findChildren<QLabel*>())
+            if (l->text().contains(" of ") || l->text() == "No results")
+                return l->text();
+        return QString();
+    };
+    find->setFocus();
+    QTest::keyClicks(find, "hello");
+    QTest::keyClick(find, Qt::Key_Return);
+    CHECK(QTest::qWaitFor([&] { return status() == "1 of 1"; }));
+    find->findChild<QAction*>("matchCase")->trigger();  // the hits again, as written
+    CHECK(QTest::qWaitFor([&] { return status() == "No results"; }));
+    find->clear();
+    QTest::keyClicks(find, "Hello");
+    QTest::keyClick(find, Qt::Key_Return);
+    CHECK(QTest::qWaitFor([&] { return status() == "1 of 1"; }));
+    CHECK(env.config.get("/reader/findCaseSensitive", false).get<bool>());
+    // the next PDF opens matching case too
+    ReaderTab again(env.lib, pdf);
+    CHECK(again.findChild<SearchField*>("findInDocument")->caseSensitive());
+}
+
 TEST_CASE("library: sorting by a column keeps the columns' widths")
 {
     app();

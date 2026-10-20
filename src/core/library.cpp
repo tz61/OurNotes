@@ -123,7 +123,8 @@ const std::set<std::string> kMetaKeys = {"key",       "version",   "itemType", "
 struct Derived {
     std::string title, creator, year, date, publication, contentType, linkMode, parentKey;
     bool trashed = false;
-    std::string quick, search;
+    std::string quick, search;        // as stored, folded (see normalize)
+    std::string quickRaw, searchRaw;  // the same as written, for a search that minds case
 };
 
 std::string creatorsText(const Json& creators)
@@ -153,23 +154,23 @@ Derived derive(const Json& d)
     r.year = yearOf(r.date);
     if (type == "note") {
         r.title = noteTitle(jstr(d, "note"));
-        r.quick = normalize(r.title);
-        r.search = normalize(htmlToText(jstr(d, "note")) + tagsText(d));
+        r.quickRaw = r.title;
+        r.searchRaw = htmlToText(jstr(d, "note")) + tagsText(d);
     } else if (type == "attachment") {
         r.title = jstr(d, "title");
         if (r.title.empty())
             r.title = jstr(d, "filename");
         r.contentType = jstr(d, "contentType");
         r.linkMode = jstr(d, "linkMode");
-        r.quick = normalize(r.title);
-        r.search = normalize(r.title + ' ' + jstr(d, "filename") + ' ' + jstr(d, "url") + ' ' +
-                             htmlToText(jstr(d, "note")) + tagsText(d));
+        r.quickRaw = r.title;
+        r.searchRaw = r.title + ' ' + jstr(d, "filename") + ' ' + jstr(d, "url") + ' ' + htmlToText(jstr(d, "note")) +
+                      tagsText(d);
     } else if (type == "annotation") {
         r.title = jstr(d, "annotationText");
         if (r.title.empty())
             r.title = jstr(d, "annotationComment");
-        r.quick = normalize(r.title);
-        r.search = normalize(jstr(d, "annotationText") + ' ' + jstr(d, "annotationComment") + tagsText(d));
+        r.quickRaw = r.title;
+        r.searchRaw = jstr(d, "annotationText") + ' ' + jstr(d, "annotationComment") + tagsText(d);
     } else {
         r.title = jstr(d, "title");
         r.creator = creatorSummary(d.value("creators", Json::array()), schema::primaryCreatorType(type));
@@ -181,9 +182,11 @@ Derived derive(const Json& d)
             if (!kMetaKeys.count(k) && v.is_string())
                 all += ' ' + v.get<std::string>();
         auto creators = creatorsText(d.value("creators", Json::array()));
-        r.quick = normalize(r.title + ' ' + creators + ' ' + r.year);
-        r.search = normalize(all + ' ' + creators + tagsText(d));
+        r.quickRaw = r.title + ' ' + creators + ' ' + r.year;
+        r.searchRaw = all + ' ' + creators + tagsText(d);
     }
+    r.quick = normalize(r.quickRaw);
+    r.search = normalize(r.searchRaw);
     return r;
 }
 
@@ -1491,25 +1494,38 @@ void Library::setReaderState(const std::string& key, const Json& state)
 
 // --- search -----------------------------------------------------------------------------------
 
-std::set<std::string> Library::search(int64_t lib, const std::string& query, SearchMode mode)
+std::set<std::string> Library::search(int64_t lib, const std::string& query, SearchMode mode, bool caseSensitive)
 {
     std::set<std::string> out;
     auto tokens = searchTokens(query);
     if (tokens.empty())
         return out;
     std::string column = mode == SearchMode::TitleCreatorYear ? "quick_text" : "search_text";
-    std::string sql = "SELECT key FROM items WHERE library_id=?";
+    std::string sql = "SELECT key, data FROM items WHERE library_id=?";
     for (size_t i = 0; i < tokens.size(); ++i)
         sql += " AND " + column + " LIKE ? ESCAPE '\\'";
     auto st = db_.prepare(sql);
     st.bind(1, lib);
     for (size_t i = 0; i < tokens.size(); ++i)
         st.bind((int)i + 2, likePattern(tokens[i]));
-    while (st.step())
+    // Minding case: the stored text is folded, so of what matches it only those whose own
+    // text has every word as typed.
+    auto exact = searchTokens(query, false);
+    auto hasAll = [&](const std::string& text) {
+        return std::all_of(exact.begin(), exact.end(), [&](auto& t) { return text.find(t) != std::string::npos; });
+    };
+    while (st.step()) {
+        if (caseSensitive) {
+            auto d = derive(Json::parse(st.str(1)));
+            if (!hasAll(mode == SearchMode::TitleCreatorYear ? d.quickRaw : d.searchRaw))
+                continue;
+        }
         out.insert(st.str(0));
+    }
     if (mode == SearchMode::Everything)
         for (auto& k : fulltext().search(lib, tokens))
-            out.insert(k);
+            if (!caseSensitive || hasAll(fulltext().text(lib, k)))
+                out.insert(k);
     return out;
 }
 

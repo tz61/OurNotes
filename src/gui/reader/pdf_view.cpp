@@ -1948,6 +1948,14 @@ bool PdfView::eventFilter(QObject* watched, QEvent* e)
 
 // --- find --------------------------------------------------------------------------------------
 
+void PdfView::setFindCaseSensitive(bool on)
+{
+    if (on == findCaseSensitive_)
+        return;
+    findCaseSensitive_ = on;
+    findText_.clear();
+}
+
 void PdfView::find(const QString& text, bool backwards)
 {
     if (!doc_ || text.trimmed().isEmpty()) {
@@ -1960,7 +1968,7 @@ void PdfView::find(const QString& text, bool backwards)
         hitIndex_ = -1;
         auto needle = ss(text);
         for (int i = 0; i < pageCount(); ++i)
-            for (auto& hit : doc_->search(i, needle)) {
+            for (auto& hit : doc_->search(i, needle, 512, findCaseSensitive_)) {
                 std::vector<QRectF> rects;
                 for (auto& r : hit)
                     rects.push_back(toQ(r));

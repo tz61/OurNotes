@@ -121,7 +121,9 @@ public:
     std::string pageText(int page);
     std::string fullText(int maxPages = 0);  // for indexing
     // One entry per hit; a hit spanning several lines has several rects.
-    std::vector<std::vector<Rect>> search(int page, const std::string& needle, int maxHits = 512);
+    // caseSensitive: as written (otherwise in any case, as MuPDF searches)
+    std::vector<std::vector<Rect>> search(int page, const std::string& needle, int maxHits = 512,
+                                          bool caseSensitive = false);
     std::vector<OutlineEntry> outline();
     std::vector<Link> links(int page);
 

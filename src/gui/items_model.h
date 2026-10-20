@@ -39,6 +39,7 @@ public:
     void setScope(const Scope& scope);
     const Scope& scope() const { return scope_; }
     void setSearch(const QString& text, SearchMode mode);
+    void setSearchCaseSensitive(bool on);  // each word as typed, case and accents
     void setTagFilter(const QStringList& tags);
     void reload();
 
@@ -96,6 +97,7 @@ private:
     Scope scope_;
     QString search_;
     SearchMode mode_ = SearchMode::AllFields;
+    bool caseSensitive_ = false;
     QStringList tags_;
     int sortColumn_ = Title;
     Qt::SortOrder sortOrder_ = Qt::AscendingOrder;
