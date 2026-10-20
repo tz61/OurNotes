@@ -3,6 +3,8 @@
 #include <QTimer>
 #include <QWidget>
 
+#include <vector>
+
 #include "gui/items_model.h"
 
 class QComboBox;
@@ -92,6 +94,8 @@ private:
     QWidget* middle_;
     QToolButton* paneToggle_;
     bool fitting_ = false;
+    bool relayout_ = false;              // the rows rearranged (sorted): widths kept as below
+    std::vector<int> relayoutWidths_;    // the columns' widths before, -1 for hidden ones
     int leftMinimum_ = 0;  // the collections pane's own minimum, while it is pinned
     int listMinimum_ = 0;  // room the list needs for the title's minimum
     int tools_ = 0;

@@ -256,8 +256,27 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     paneToggle_->setChecked(AppContext::get().config().get("/ui/itemPaneVisible", true).get<bool>());
     setItemPaneVisible(paneToggle_->isChecked());
 
+    // Sorting rearranges the rows, and the header then puts its sections back one at a
+    // time, the hidden ones shown at their old width for a moment: taken for drags, each
+    // moved the title's edge, and the columns ended short of the list's right edge. The
+    // widths stay as they were.
+    connect(model_, &QAbstractItemModel::layoutAboutToBeChanged, this, [this, header] {
+        relayoutWidths_.clear();
+        for (int c = 0; c < header->count(); ++c)
+            relayoutWidths_.push_back(header->isSectionHidden(c) ? -1 : header->sectionSize(c));
+        relayout_ = true;
+    });
+    connect(model_, &QAbstractItemModel::layoutChanged, this, [this, header] {  // after the header's
+        fitting_ = true;
+        for (int c = 0; c < header->count() && c < (int)relayoutWidths_.size(); ++c)
+            if (relayoutWidths_[c] > 0 && header->sectionSize(c) != relayoutWidths_[c])
+                header->resizeSection(c, relayoutWidths_[c]);
+        fitting_ = false;
+        relayout_ = false;
+        fitColumns();
+    });
     connect(header, &QHeaderView::sectionResized, this, [this, header](int section, int oldSize, int newSize) {
-        if (fitting_)
+        if (fitting_ || relayout_)
             return;
         if (newSize > 0 && oldSize > 0) {
             // The dragged edge follows the mouse: the columns after it give the width (the

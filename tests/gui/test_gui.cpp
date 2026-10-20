@@ -3480,6 +3480,51 @@ TEST_CASE("library: with a band picture the list has no stripes, in light and da
     applyAppearance(Appearance::System);
 }
 
+TEST_CASE("library: sorting by a column keeps the columns' widths")
+{
+    app();
+    Env env;
+    for (int i = 0; i < 30; ++i)
+        env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper " + std::to_string(i)},
+                                             {"date", "202" + std::to_string(i % 7) + "-0" + std::to_string(1 + i % 9)}});
+    MainWindow window;
+    window.resize(1500, 800);
+    window.show();
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* header = items->header();
+    header->showSection(ItemsModel::Date);  // with columns hidden on either side of it
+    header->showSection(ItemsModel::Notes);
+    QApplication::processEvents();
+    auto widths = [&] {
+        std::vector<int> w;
+        for (int c = 0; c < header->count(); ++c)
+            w.push_back(header->isSectionHidden(c) ? -1 : header->sectionSize(c));
+        return w;
+    };
+    auto total = [&] {
+        int t = 0;
+        for (int w : widths())
+            t += std::max(0, w);
+        return t;
+    };
+    auto before = widths();
+    REQUIRE(total() == items->viewport()->width());
+    // the header clicked, as by the mouse: Date, Date again (descending), Creator, Title
+    for (int c : {ItemsModel::Date, ItemsModel::Date, ItemsModel::Creator, ItemsModel::Title}) {
+        QPoint at(header->sectionViewportPosition(c) + header->sectionSize(c) / 2, header->height() / 2);
+        QTest::mouseClick(header->viewport(), Qt::LeftButton, {}, at);
+        QApplication::processEvents();
+        CHECK(header->sortIndicatorSection() == c);
+        CHECK(widths() == before);
+        CHECK(total() == items->viewport()->width());  // the last column ends where the list does
+    }
+}
+
 TEST_CASE("library: columns fill the list, the title column gives way, the item pane can be hidden")
 {
     app();
