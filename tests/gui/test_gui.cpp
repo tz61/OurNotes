@@ -1826,6 +1826,174 @@ TEST_CASE("notes: $$ starts a formula that is typed in place")
     CHECK(edit.toPlainText() == "$$");
 }
 
+TEST_CASE("notes: a formula left empty keeps its signs, and opens again between them")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    const QString formula(QChar::ObjectReplacementCharacter);
+    QTest::keyClicks(&edit, "Intro");
+    QTest::keyClick(&edit, Qt::Key_Return);
+    QTest::keyClicks(&edit, "$$");  // on an empty line: $$|$$
+    CHECK(mathSource(edit.document()) == "$$$$");
+    QTest::keyClick(&edit, Qt::Key_Up);  // somewhere else: the signs stay, as text
+    CHECK(mathSource(edit.document()).isEmpty());
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(edit.toPlainText() == "Intro\n$$$$");
+    CHECK(!documentToNoteHtml(edit.document()).contains("math"));
+    // back between them, it is a formula again: typed into and left, rendered
+    QTest::keyClick(&edit, Qt::Key_End, Qt::ControlModifier);
+    QTest::keyClick(&edit, Qt::Key_Left);
+    CHECK(mathSource(edit.document()).isEmpty());  // ($$$|$: not between them)
+    QTest::keyClick(&edit, Qt::Key_Left);
+    CHECK(mathSource(edit.document()) == "$$$$");
+    CHECK(documentToNoteHtml(edit.document()).contains("$$$$"));  // saved as it shows
+    QTest::keyClicks(&edit, "a^2");
+    QTest::keyClick(&edit, Qt::Key_Up);
+    QStringList latex;
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"a^2"});
+    QTest::keyClick(&edit, Qt::Key_Z, Qt::ControlModifier);  // one step: back to the signs
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(edit.toPlainText() == "Intro\n$$$$");
+
+    // in a line, $$ is an inline formula, $|$; left empty, "$$" stays; a click between
+    // the signs opens it
+    edit.clear();
+    QTest::keyClicks(&edit, "Area $$");
+    CHECK(mathSource(edit.document()) == "$$");
+    QTest::keyClick(&edit, Qt::Key_Home);
+    CHECK(mathSource(edit.document()).isEmpty());
+    CHECK(edit.toPlainText() == "Area $$");
+    QTextCursor between(edit.document());
+    between.setPosition(6);
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, edit.cursorRect(between).center());
+    REQUIRE(edit.textCursor().position() == 6);
+    CHECK(mathSource(edit.document()) == "$$");
+    QTest::keyClicks(&edit, "r$");
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"r"});
+    CHECK(edit.toPlainText() == "Area " + formula);
+}
+
+TEST_CASE("notes: pasting into a formula just opened makes it at once")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    QStringList latex;
+    QApplication::clipboard()->setText("\\frac{a}{b}");
+    QTest::keyClicks(&edit, "$$");
+    QTest::keyClick(&edit, Qt::Key_V, Qt::ControlModifier);
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"\\frac{a}{b}"});
+    CHECK(mathSource(edit.document()).isEmpty());
+    CHECK((edit.document()->begin().blockFormat().alignment() & Qt::AlignHCenter) != 0);
+    CHECK(edit.textCursor().blockNumber() == 1);  // on the next line, as after typing $$
+
+    // in a line, an inline one; the pasted text's own $ signs are not doubled
+    edit.clear();
+    QApplication::clipboard()->setText("$x_1$");
+    QTest::keyClicks(&edit, "Let $$");
+    QTest::keyClick(&edit, Qt::Key_V, Qt::ControlModifier);
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x_1"});
+    CHECK(edit.toPlainText() == "Let " + QString(QChar::ObjectReplacementCharacter));
+
+    // into a formula already being typed: part of it, still being typed
+    edit.clear();
+    QApplication::clipboard()->setText("+b");
+    QTest::keyClicks(&edit, "Let $$a");
+    QTest::keyClick(&edit, Qt::Key_V, Qt::ControlModifier);
+    CHECK(countMath(edit.document()) == 0);
+    CHECK(mathSource(edit.document()) == "$a+b$");
+}
+
+TEST_CASE("notes: a typed $ closes the formula the $$ or $ before it opened")
+{
+    app();
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    const QString formula(QChar::ObjectReplacementCharacter);
+    QStringList latex;
+    // "$$" before and one $ typed: a display formula; the second $ typed is not text
+    edit.setPlainText("Then $$\\sum x");
+    edit.moveCursor(QTextCursor::End);
+    QTest::keyClicks(&edit, "$");
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"\\sum x"});
+    QTest::keyClicks(&edit, "$ ok");
+    CHECK(edit.toPlainText() == "Then " + formula + " ok");
+    CHECK(edit.document()->blockCount() == 1);  // in its line, which is not split
+
+    // the whole line: centred, on a line of its own
+    edit.setPlainText("$$z");
+    edit.moveCursor(QTextCursor::End);
+    QTest::keyClicks(&edit, "$$");
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"z"});
+    CHECK((edit.document()->begin().blockFormat().alignment() & Qt::AlignHCenter) != 0);
+    CHECK(edit.document()->blockCount() == 2);
+    CHECK(edit.document()->lastBlock().text().isEmpty());
+
+    // "$$x$$" typed in a line: an inline formula, and no $ left over
+    edit.clear();
+    QTest::keyClicks(&edit, "so $$x$$ then");
+    latex.clear();
+    CHECK(countMath(edit.document(), &latex) == 1);
+    CHECK(latex == QStringList{"x"});
+    CHECK(edit.toPlainText() == "so " + formula + " then");
+}
+
+TEST_CASE("notes: Backspace at a heading's start shows its #s; the line left, a heading again")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<h2>Results</h2><p>text</p>");
+    NoteEditor editor;
+    editor.resize(600, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    edit->setFocus();
+    auto* doc = edit->document();
+    REQUIRE(doc->begin().blockFormat().headingLevel() == 2);
+    edit->moveCursor(QTextCursor::Start);
+    QTest::keyClick(edit, Qt::Key_Backspace);
+    CHECK(doc->begin().text() == "## Results");
+    CHECK(doc->begin().blockFormat().headingLevel() == 0);
+    CHECK(edit->textCursor().position() == 3);  // after the "## "
+    // left unchanged: the same heading
+    QTest::keyClick(edit, Qt::Key_Down);
+    CHECK(doc->begin().text() == "Results");
+    CHECK(doc->begin().blockFormat().headingLevel() == 2);
+    // one # less: a level up
+    edit->moveCursor(QTextCursor::Start);
+    QTest::keyClick(edit, Qt::Key_Backspace);
+    edit->moveCursor(QTextCursor::Start);
+    QTest::keyClick(edit, Qt::Key_Delete);
+    CHECK(doc->begin().text() == "# Results");
+    QTest::keyClick(edit, Qt::Key_Down);
+    CHECK(doc->begin().text() == "Results");
+    CHECK(doc->begin().blockFormat().headingLevel() == 1);
+    // the space after the #s deleted: text, as it is
+    edit->moveCursor(QTextCursor::Start);
+    QTest::keyClick(edit, Qt::Key_Backspace);
+    QTest::keyClick(edit, Qt::Key_Backspace);
+    CHECK(doc->begin().text() == "#Results");
+    QTest::keyClick(edit, Qt::Key_Down);
+    CHECK(doc->begin().text() == "#Results");
+    CHECK(doc->begin().blockFormat().headingLevel() == 0);
+    CHECK(documentToNoteHtml(doc).contains("<p>#Results</p>"));
+}
+
 TEST_CASE("notes: clicking a formula edits it in place with a live preview")
 {
     app();
@@ -1875,14 +2043,15 @@ TEST_CASE("notes: clicking a formula edits it in place with a live preview")
     CHECK(countMath(edit.document(), &latex) == 1);
     CHECK(latex == QStringList{"x^2+1"});
 
-    // a formula left empty is removed
+    // a formula left empty leaves its signs, as text
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, formulaCenter(edit));
     for (int i = 0; i < 5; ++i)
         QTest::keyClick(&edit, Qt::Key_Backspace);
     CHECK(mathSource(edit.document()) == "$$");
     QTest::keyClick(&edit, Qt::Key_Return);
     CHECK(countMath(edit.document()) == 0);
-    CHECK(edit.toPlainText() == "Let  be.");
+    CHECK(mathSource(edit.document()).isEmpty());
+    CHECK(edit.toPlainText() == "Let $$ be.");
 }
 
 TEST_CASE("appearance: dark mode, formula colour and readable note text")

@@ -72,7 +72,11 @@ private:
         bool display = false;
     };
     bool convertTypedMath();
-    void commitAs(QTextCursor selection, const QString& latex, bool display);
+    // ownLine: a display formula that is its line, centred, the cursor on the next one
+    void commitAs(QTextCursor selection, const QString& latex, bool display, bool ownLine = true);
+    bool reopenEmptyMath();
+    void revealHeading(QTextCursor cursor, int level);
+    void finishHeading();
     QTextCursor mathAt(const QPoint& viewportPos);  // selects the formula under the point
     void editMathInPlace(QTextCursor selection);
     bool editMathInDialog(QTextCursor selection);
@@ -93,6 +97,9 @@ private:
     int internal_ = 0;
     bool committing_ = false;
     bool editingMath_ = false;  // the cursor was inside a formula's source
+    bool pairTyped_ = false;    // the formula being typed was opened with "$$" in a line
+    bool swallowDollar_ = false;  // a formula was just closed with "$": a second one is not text
+    QTextCursor revealed_;      // the heading shown as "## …" (see revealHeading)
     // A formula being edited is one step in the undo history: when it is rendered, the
     // steps since it was opened are undone and the result is applied as one edit.
     struct MathSession {

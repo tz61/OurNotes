@@ -12,6 +12,7 @@ namespace on::gui {
 // Character format properties used by the note editor.
 constexpr int kMathSourceProperty = QTextFormat::UserProperty + 11;          // 1 inline / 2 display formula source
 constexpr int kOriginalForegroundProperty = QTextFormat::UserProperty + 12;  // colour hidden for contrast
+constexpr int kHeadingMarkersProperty = QTextFormat::UserProperty + 13;     // block: a heading shown as "## …"
 
 // Prepare stored note HTML for a QTextDocument: embedded images
 // (<img data-attachment-key="KEY">) become "attachment:KEY" resources.

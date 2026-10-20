@@ -30,6 +30,8 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include <utility>
+
 #include "core/hash.h"
 #include "core/schema.h"
 #include "gui/app_context.h"
@@ -60,6 +62,10 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
     connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
         if (committing_)
             return;
+        if (textCursor().block().blockFormat().hasProperty(kHeadingMarkersProperty))
+            revealed_ = QTextCursor(textCursor().block());  // (back in it after an undo, say)
+        else if (!revealed_.isNull())
+            finishHeading();
         // only leaving a formula renders it, so undo can bring back the source text
         if (editingMath_)
             commitMathEdits(false);
@@ -78,6 +84,42 @@ void NoteTextEdit::changeEvent(QEvent* e)
         adaptColors();
         viewport()->update();
     }
+}
+
+// Character format for text in a heading of `level` (0: a paragraph): sizes relative to
+// the note's font, as loading <h1>… gives them (so they look the same after a reload and
+// follow the note's text size).
+static QTextCharFormat headingCharFormat(QTextCharFormat f, int level)
+{
+    f.clearProperty(QTextFormat::FontPointSize);
+    f.clearProperty(QTextFormat::FontPixelSize);
+    if (level > 0)
+        f.setProperty(QTextFormat::FontSizeAdjustment, std::max(0, 4 - level));
+    else
+        f.clearProperty(QTextFormat::FontSizeAdjustment);
+    f.setFontWeight(level ? QFont::Bold : QFont::Normal);
+    return f;
+}
+
+// Makes the cursor's paragraph a heading of `level`, or a plain paragraph (0).
+static void applyHeading(QTextCursor cursor, int level)
+{
+    cursor.beginEditBlock();
+    QTextBlockFormat bf = cursor.blockFormat();
+    bf.setHeadingLevel(level);
+    cursor.setBlockFormat(bf);
+    auto block = cursor.block();
+    std::vector<QTextFragment> fragments;
+    for (auto it = block.begin(); !it.atEnd(); ++it)
+        fragments.push_back(it.fragment());
+    for (auto& fragment : fragments) {
+        QTextCursor c(cursor.document());
+        c.setPosition(fragment.position());
+        c.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
+        c.setCharFormat(headingCharFormat(fragment.charFormat(), level));
+    }
+    cursor.setBlockCharFormat(headingCharFormat(block.charFormat(), level));
+    cursor.endEditBlock();
 }
 
 static QTextImageFormat mathFormat(const QString& latex, bool display)
@@ -166,6 +208,7 @@ void NoteTextEdit::startMathEdit(QTextCursor cursor, const QString& latex, bool 
     if (isReadOnly())
         return;
     commitMathEdits(true);  // one formula at a time
+    pairTyped_ = false;
     if (document()->isUndoRedoEnabled())
         session_ = {document()->availableUndoSteps(), cursor.selectionStart(),
                     cursor.selectionEnd() - cursor.selectionStart(), display, original};
@@ -190,6 +233,46 @@ void NoteTextEdit::startMathEdit(QTextCursor cursor, const QString& latex, bool 
     committing_ = false;
     editingMath_ = true;
     updateMathPreview();
+}
+
+// The cursor put between the signs of a formula left empty ($$|$$, or $|$ in a line): it
+// opens again, to be typed into. Only when the user puts it there (a click, the arrow
+// keys), not when an undo does, or undoing past it would open it again at once.
+bool NoteTextEdit::reopenEmptyMath()
+{
+    auto cursor = textCursor();
+    if (isReadOnly() || internal_ || committing_ || cursor.hasSelection() || runAtCursor())
+        return false;
+    auto block = cursor.block();
+    QString text = block.text();
+    int at = cursor.positionInBlock();
+    int left = 0, right = 0;
+    while (at - left > 0 && text[at - left - 1] == '$')
+        ++left;
+    while (at + right < text.size() && text[at + right] == '$')
+        ++right;
+    if (left != right || (left != 1 && left != 2) || (at - left > 0 && text[at - left - 1] == '\\'))
+        return false;  // (\$ is a dollar sign)
+    QTextCursor signs(document());
+    signs.setPosition(block.position() + at - left);
+    signs.setPosition(block.position() + at + right, QTextCursor::KeepAnchor);
+    for (auto it = block.begin(); !it.atEnd(); ++it) {  // text, not a formula's source already
+        auto frag = it.fragment();
+        if (frag.position() < signs.selectionEnd() && frag.position() + frag.length() > signs.selectionStart() &&
+            (frag.charFormat().hasProperty(kMathSourceProperty) || frag.charFormat().isImageFormat()))
+            return false;
+    }
+    bool display = left == 2;
+    commitMathEdits(true);
+    pairTyped_ = false;
+    if (document()->isUndoRedoEnabled())
+        session_ = {document()->availableUndoSteps(), signs.selectionStart(), 2 * left, display, QString()};
+    committing_ = true;
+    signs.setCharFormat(sourceFormat(display, signs.charFormat()));
+    committing_ = false;
+    editingMath_ = true;
+    updateMathPreview();
+    return true;
 }
 
 void NoteTextEdit::insertMath(bool display)
@@ -259,8 +342,8 @@ void NoteTextEdit::commitMathEdits(bool all)
         c.setPosition(it->end, QTextCursor::KeepAnchor);
         QString latex = stripDelimiters(c.selectedText(), it->display);
         c.beginEditBlock();
-        if (latex.isEmpty())
-            c.removeSelectedText();
+        if (latex.isEmpty())  // its signs stay, as text (see finishMathSession)
+            c.insertText(it->display ? "$$$$" : "$$", outerFormat(c.block(), c.selectionStart() - c.block().position()));
         else
             c.insertImage(mathFormat(latex, it->display));
         c.endEditBlock();
@@ -313,9 +396,20 @@ bool NoteTextEdit::finishMathSession(const QString& latex, QTextCursor* after)
         return true;
     }
     c.setPosition(session.start + session.length, QTextCursor::KeepAnchor);
+    // Left empty, its signs stay as text ($$$$, or $$ in a line), to type the formula into
+    // later: the cursor put between them opens it again (reopenEmptyMath).
+    QString signs = session.display ? "$$$$" : "$$";
+    if (latex.isEmpty() && c.selectedText() == signs) {
+        c.setPosition(session.start + session.length);  // as they were: no step
+        *after = c;
+        return true;
+    }
     c.beginEditBlock();
+    auto textFormat = outerFormat(c.block(), c.selectionStart() - c.block().position());
     c.removeSelectedText();
-    if (!latex.isEmpty()) {
+    if (latex.isEmpty()) {
+        c.insertText(signs, textFormat);
+    } else {
         if (session.display) {
             if (c.positionInBlock() > 0)
                 c.insertBlock();
@@ -484,8 +578,10 @@ void NoteTextEdit::adaptColors()
     --internal_;
 }
 
-// Typing the closing $ of $…$ (or $$…$$ on its own line) turns it into a formula.
-// Like Zotero, inline math must not start or end with a space, so "$5 and $10" stays text.
+// Typing a $ that closes a formula turns it into one: matched up with the $$ or $ before
+// it in the line, $$…$$ (or $$… and a single $) is a display formula, centred on a line of
+// its own when it is the line; $…$ an inline one. Like Zotero, inline math must not start
+// or end with a space, so "$5 and $10" stays text.
 bool NoteTextEdit::convertTypedMath()
 {
     auto cursor = textCursor();
@@ -493,13 +589,16 @@ bool NoteTextEdit::convertTypedMath()
         return false;
     auto block = cursor.block();
     QString before = block.text().left(cursor.positionInBlock());
-    static const QRegularExpression displayRe(R"(^\$\$([^$]*\S[^$]*)\$\$$)");
+    bool lineEnds = cursor.atBlockEnd();
+    static const QRegularExpression displayRe(R"((^|[^\\$])\$\$([^$]*\S[^$]*)\$(\$?)$)");
     static const QRegularExpression inlineRe(R"((?:^|[^\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$$)");
     QTextCursor sel(document());
     if (auto m = displayRe.match(before); m.hasMatch()) {
-        sel.setPosition(block.position());
+        int start = int(m.capturedStart(0) + m.capturedLength(1));
+        sel.setPosition(block.position() + start);
         sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
-        commitAs(sel, m.captured(1).trimmed(), true);
+        commitAs(sel, m.captured(2).trimmed(), true, start == 0 && lineEnds);
+        swallowDollar_ = m.captured(3).isEmpty();  // closed with one $: the second one typed is not text
         return true;
     }
     if (auto m = inlineRe.match(before); m.hasMatch()) {
@@ -516,6 +615,7 @@ bool NoteTextEdit::convertTypedMath()
         sel.setPosition(cursor.position(), QTextCursor::KeepAnchor);
         bool display = before == "$$" && block.length() - 1 == 2;
         startMathEdit(sel, {}, display);
+        pairTyped_ = !display;
         return true;
     }
     return false;
@@ -627,6 +727,51 @@ bool NoteTextEdit::convertTypedMarkdown(const QString& typed)
     return false;
 }
 
+// Backspace at the start of a heading shows its "## " before the text, as typed: the level
+// can be changed there (a # more or less), or the heading taken back to text (the space
+// after the #s deleted). Leaving the line makes it a heading again (finishHeading).
+void NoteTextEdit::revealHeading(QTextCursor cursor, int level)
+{
+    commitMathEdits(true);
+    cursor.beginEditBlock();
+    applyHeading(cursor, 0);
+    auto bf = cursor.blockFormat();
+    bf.setProperty(kHeadingMarkersProperty, level);
+    cursor.setBlockFormat(bf);
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    auto f = cursor.charFormat();  // the first character's
+    if (f.isImageFormat() || f.hasProperty(kMathSourceProperty))
+        f = cursor.block().charFormat();
+    cursor.insertText(QString(level, '#') + ' ', f);
+    cursor.endEditBlock();
+    setTextCursor(cursor);  // after the "## "
+}
+
+// The line shown as "## …" left: a heading of as many levels as #s before a space, or
+// text as it is.
+void NoteTextEdit::finishHeading()
+{
+    auto block = revealed_.block();
+    revealed_ = QTextCursor();
+    if (!block.isValid() || !block.blockFormat().hasProperty(kHeadingMarkersProperty) || isReadOnly())
+        return;
+    static const QRegularExpression markers(R"(^(#{1,6}) )");
+    auto m = markers.match(block.text());
+    QTextCursor c(block);
+    committing_ = true;  // the cursor is moving elsewhere: no more of this on the way
+    c.beginEditBlock();
+    auto bf = block.blockFormat();
+    bf.clearProperty(kHeadingMarkersProperty);
+    c.setBlockFormat(bf);
+    if (m.hasMatch()) {
+        c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, int(m.capturedLength()));
+        c.removeSelectedText();
+        applyHeading(c, int(m.captured(1).size()));
+    }
+    c.endEditBlock();
+    committing_ = false;
+}
+
 // Markdown text as rich text in `out`; formulas ($…$, $$…$$) become formulas.
 void NoteTextEdit::markdownDocument(const QString& markdown, QTextDocument* out) const
 {
@@ -662,20 +807,20 @@ void NoteTextEdit::markdownDocument(const QString& markdown, QTextDocument* out)
     }
 }
 
-void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool display)
+void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool display, bool ownLine)
 {
     QTextCharFormat textFormat = selection.charFormat();
     if (textFormat.isImageFormat() || textFormat.hasProperty(kMathSourceProperty))
         textFormat = QTextCharFormat();
     selection.beginEditBlock();
     selection.removeSelectedText();
-    if (display) {
+    if (display && ownLine) {
         QTextBlockFormat centred = selection.blockFormat();
         centred.setAlignment(Qt::AlignHCenter);
         selection.setBlockFormat(centred);
     }
     selection.insertImage(mathFormat(latex, display));
-    if (display) {
+    if (display && ownLine) {
         selection.insertBlock();
         QTextBlockFormat normal = selection.blockFormat();
         normal.setAlignment(Qt::AlignLeft);
@@ -719,6 +864,17 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         zoomBy(zoom);
         return;
     }
+    bool swallow = std::exchange(swallowDollar_, false);
+    if (swallow && e->text() == "$")
+        return;  // the second $ of a $$ that one $ already closed
+    if (markdown_ && !isReadOnly() && e->key() == Qt::Key_Backspace && e->modifiers() == Qt::NoModifier) {
+        auto cursor = textCursor();
+        int level = cursor.blockFormat().headingLevel();
+        if (level > 0 && !cursor.hasSelection() && cursor.atBlockStart() && !runAtCursor()) {
+            revealHeading(cursor, level);
+            return;
+        }
+    }
     if (e->key() == Qt::Key_Y && e->modifiers() == Qt::ControlModifier) {
         commitMathEdits(true);
         redo();
@@ -732,9 +888,12 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
                          ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && !(e->modifiers() & Qt::ShiftModifier));
             if (e->text() == "$" && cursor.position() >= closing) {
                 // type over the closing delimiter; leaving the formula renders it
-                if (cursor.position() + 1 >= run->end)
+                if (cursor.position() + 1 >= run->end) {
+                    // opened with $$ in a line (an inline formula, $…$): "$$" typed to close
+                    // it is not one $ too many
+                    swallowDollar_ = std::exchange(pairTyped_, false) && !run->display;
                     leaveMath(*run, run->display);
-                else {
+                } else {
                     cursor.movePosition(QTextCursor::NextCharacter);
                     setTextCursor(cursor);
                 }
@@ -751,6 +910,20 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         return;
     }
     QTextEdit::keyPressEvent(e);
+    switch (e->key()) {  // the cursor moved between the signs of an empty formula
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+    case Qt::Key_PageUp:
+    case Qt::Key_PageDown:
+        reopenEmptyMath();
+        return;
+    default:
+        break;
+    }
     if (e->text() == "$" && !isReadOnly() && !runAtCursor())
         convertTypedMath();
     else if (markdown_ && !e->text().isEmpty() && e->text()[0].isPrint() &&
@@ -846,6 +1019,29 @@ bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 
 void NoteTextEdit::insertFromMimeData(const QMimeData* source)
 {
+    // Into a formula being typed, text is its LaTeX (without $ signs of its own); into an
+    // empty one, just opened with $$, the formula is done at once.
+    if (auto run = runAtCursor(); run && source->hasText() && !isReadOnly()) {
+        QTextCursor whole(document());
+        whole.setPosition(run->start);
+        whole.setPosition(run->end, QTextCursor::KeepAnchor);
+        bool empty = stripDelimiters(whole.selectedText(), run->display).isEmpty();
+        static const QRegularExpression lineBreaks(R"(\s*[\r\n]+\s*)");
+        QString latex = source->text().replace(lineBreaks, " ").trimmed();
+        while (latex.startsWith('$'))
+            latex.remove(0, 1);
+        while (latex.endsWith('$') && !latex.endsWith("\\$"))
+            latex.chop(1);
+        QTextCursor inside(document());
+        inside.setPosition(run->start + 1);
+        auto cursor = textCursor();
+        cursor.insertText(latex.trimmed(), inside.charFormat());
+        setTextCursor(cursor);
+        if (empty && !latex.trimmed().isEmpty())
+            if (auto now = runAtCursor())
+                leaveMath(*now, now->display);
+        return;
+    }
     if (storeImage && source->hasImage()) {
         auto image = qvariant_cast<QImage>(source->imageData());
         if (!image.isNull()) {
@@ -932,6 +1128,8 @@ void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
         auto math = mathAt(e->position().toPoint());
         if (!math.isNull())
             editMathInPlace(math);
+        else
+            reopenEmptyMath();
     }
 }
 
@@ -1247,36 +1445,8 @@ void NoteEditor::zoomBy(int steps)
 
 void NoteEditor::setHeading(int level)
 {
-    auto cursor = edit_->textCursor();
-    cursor.beginEditBlock();
-    QTextBlockFormat bf = cursor.blockFormat();
-    bf.setHeadingLevel(level);
-    cursor.setBlockFormat(bf);
-    // sizes relative to the note's font, as loading <h1>… gives them (so they look the
-    // same after a reload and follow the note's text size)
-    auto restyle = [level](QTextCharFormat f) {
-        f.clearProperty(QTextFormat::FontPointSize);
-        f.clearProperty(QTextFormat::FontPixelSize);
-        if (level > 0)
-            f.setProperty(QTextFormat::FontSizeAdjustment, 4 - level);
-        else
-            f.clearProperty(QTextFormat::FontSizeAdjustment);
-        f.setFontWeight(level ? QFont::Bold : QFont::Normal);
-        return f;
-    };
-    auto block = cursor.block();
-    std::vector<QTextFragment> fragments;
-    for (auto it = block.begin(); !it.atEnd(); ++it)
-        fragments.push_back(it.fragment());
-    for (auto& fragment : fragments) {
-        QTextCursor c(edit_->document());
-        c.setPosition(fragment.position());
-        c.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
-        c.setCharFormat(restyle(fragment.charFormat()));
-    }
-    cursor.setBlockCharFormat(restyle(block.charFormat()));
-    cursor.endEditBlock();
-    edit_->setCurrentCharFormat(restyle(edit_->currentCharFormat()));
+    applyHeading(edit_->textCursor(), level);
+    edit_->setCurrentCharFormat(headingCharFormat(edit_->currentCharFormat(), level));
 }
 
 void NoteEditor::toggleList(bool ordered)

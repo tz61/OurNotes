@@ -111,7 +111,8 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     auto f = frag.charFormat();
     if (int kind = f.property(kMathSourceProperty).toInt()) {
         auto latex = mathSourceLatex(frag.text(), kind == 2);
-        return latex.isEmpty() ? QString() : "<span class=\"math\">$" + esc(latex) + "$</span>";
+        // an empty one is its signs, as text: what stays when it is left so
+        return latex.isEmpty() ? esc(kind == 2 ? "$$$$" : "$$") : "<span class=\"math\">$" + esc(latex) + "$</span>";
     }
     if (f.isImageFormat()) {
         auto img = f.toImageFormat();
@@ -275,10 +276,9 @@ void serializeFrame(QTextFrame* frame, QString& out)
         openList = nullptr;
         // a paragraph holding only a display formula (rendered, or being edited)
         if (auto first = block.begin(); !first.atEnd() && first.fragment().charFormat().property(kMathSourceProperty).toInt() == 2 &&
-                                        first.fragment().length() == block.length() - 1) {
-            auto latex = mathSourceLatex(first.fragment().text(), true);
-            if (!latex.isEmpty())
-                out += "<pre class=\"math\">$$" + esc(latex) + "$$</pre>";
+                                        first.fragment().length() == block.length() - 1 &&
+                                        !mathSourceLatex(first.fragment().text(), true).isEmpty()) {
+            out += "<pre class=\"math\">$$" + esc(mathSourceLatex(first.fragment().text(), true)) + "$$</pre>";
             continue;
         }
         if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
