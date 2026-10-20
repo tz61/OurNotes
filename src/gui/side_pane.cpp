@@ -85,6 +85,24 @@ protected:
 
 } // namespace
 
+QSize PaneSplitter::minimumSizeHint() const
+{
+    // What QSplitter adds up, but for every widget and the handles between them, shown or
+    // hidden. (QSplitter shows a handle again only a moment after its widget: until then
+    // its minimum left the handle out, a few pixels less.)
+    ensurePolished();
+    bool across = orientation() == Qt::Horizontal;
+    int along = 0, other = 0;
+    for (int i = 0; i < count(); ++i) {
+        QWidget* w = widget(i);
+        QSize m = w->minimumSizeHint().expandedTo(w->minimumSize()).boundedTo(w->maximumSize());
+        QSize h = i > 0 ? handle(i)->sizeHint() : QSize(0, 0);
+        along += across ? m.width() + h.width() : m.height() + h.height();
+        other = std::max(other, across ? m.height() : m.width());
+    }
+    return across ? QSize(along, other) : QSize(other, along);
+}
+
 void shareSidePaneWidth(QSplitter* split)
 {
     auto& splits = sharing();

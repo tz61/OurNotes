@@ -65,7 +65,7 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     toolbar_ = new QToolBar(this);
     toolbar_->setIconSize(QSize(18, 18));
     layout->addWidget(toolbar_);
-    splitter_ = new QSplitter(Qt::Horizontal, this);
+    splitter_ = new PaneSplitter(Qt::Horizontal, this);
     layout->addWidget(splitter_, 1);
 
     buildSidebar();

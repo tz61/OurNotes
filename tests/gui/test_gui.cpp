@@ -3299,6 +3299,63 @@ TEST_CASE("library: moving between items does not change the window's minimum si
     CHECK(view->findChild<LocationBox*>());
 }
 
+TEST_CASE("reader: [ and ] again and again never change the window's minimum size")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>A note</p>", jstr(paper, "key"));
+    env.library.createNote(env.lib, "<p>Another note</p>", jstr(paper, "key"));
+    auto att = env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    window.openAttachment(env.lib, qs(jstr(att, "key")));
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    auto* view = reader->view();
+    view->setFocus();
+    QApplication::processEvents();
+    QSize size = window.size();
+    // (each change of the minimum moved the window's edge at a 150% scale: hiding Info
+    // and Notes let the window be less tall)
+    std::set<int> widths{window.minimumWidth()}, heights{window.minimumHeight()};
+    for (auto key : {Qt::Key_I, Qt::Key_N}) {  // in the Info tab and in the Notes tab
+        QTest::keyClick(view, key);
+        for (int i = 0; i < 8; ++i) {
+            QTest::keyClick(view, i % 4 < 2 ? Qt::Key_BracketLeft : Qt::Key_BracketRight);
+            QApplication::processEvents();
+            widths.insert(window.minimumWidth());
+            heights.insert(window.minimumHeight());
+        }
+    }
+    CHECK(widths.size() == 1);
+    CHECK(heights.size() == 1);
+    CHECK(window.size() == size);
+
+    // the library's item pane, hidden and shown with its button
+    tabs->setCurrentIndex(0);
+    QApplication::processEvents();
+    auto* paneButton = window.findChild<QToolButton*>("itemPaneToggle");
+    REQUIRE(paneButton);
+    widths = {window.minimumWidth()};
+    heights = {window.minimumHeight()};
+    for (int i = 0; i < 8; ++i) {
+        paneButton->click();
+        QApplication::processEvents();
+        widths.insert(window.minimumWidth());
+        heights.insert(window.minimumHeight());
+    }
+    CHECK(widths.size() == 1);
+    CHECK(heights.size() == 1);
+    CHECK(window.size() == size);
+}
+
 TEST_CASE("library: the collections come back as wide as they were, after a small start")
 {
     app();

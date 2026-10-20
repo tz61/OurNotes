@@ -175,7 +175,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
 {
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    splitter_ = new QSplitter(Qt::Horizontal, this);
+    splitter_ = new PaneSplitter(Qt::Horizontal, this);
     layout->addWidget(splitter_);
 
     // left: collections + tags

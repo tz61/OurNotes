@@ -1,9 +1,20 @@
 #pragma once
 
-class QSplitter;
+#include <QSplitter>
+
 class QTabWidget;
 
 namespace on::gui {
+
+// A splitter with panels that a button or a key hides (the panels beside a PDF, the item
+// pane): its minimum size is the same with them shown or hidden, as if all were shown.
+// Each change of the window's minimum made the window manager move the window's edge
+// (a pixel at a 150% scale), at every [ or ].
+class PaneSplitter : public QSplitter {
+public:
+    using QSplitter::QSplitter;
+    QSize minimumSizeHint() const override;
+};
 
 // The pane on the right of the library (the item pane) and of every PDF (Info and
 // Notes): one width for all of them, kept in the settings. Dragging the edge of one
