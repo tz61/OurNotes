@@ -44,6 +44,7 @@ public:
     using QTreeView::QTreeView;
     std::function<void(bool permanently)> onDelete;  // Delete; with Shift, not to the trash
     std::function<void()> onOpen;
+    std::function<void(int tab)> onInfoNotes;  // I and N: Info (0) or Notes (1) in the item pane
 
     // Drawn faintly behind the rows, whole and centred; a null image shows none. Over a
     // picture the rows do not alternate, in light and dark mode and on every platform: the
@@ -151,6 +152,11 @@ protected:
         }
         if (e->key() == Qt::Key_Minus) {
             collapseAll();
+            return;
+        }
+        // as on a PDF's page (the list's jump to an item by its first letter loses I and N)
+        if ((e->key() == Qt::Key_I || e->key() == Qt::Key_N) && e->modifiers() == Qt::NoModifier && onInfoNotes) {
+            onInfoNotes(e->key() == Qt::Key_N ? 1 : 0);
             return;
         }
         QTreeView::keyPressEvent(e);
@@ -328,6 +334,10 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             trashSelected();
     };
     view->onOpen = [this] { openSelected(); };
+    view->onInfoNotes = [this](int tab) {
+        setItemPaneVisible(true);
+        pane_->showInfoOrNotes(tab);
+    };
 
     connect(tree_, &CollectionTree::scopeChanged, this, &LibraryView::onScopeChanged);
     connect(tree_, &CollectionTree::exportRequested, this, [this](const Scope& s) { emit exportRequested(s, {}); });
@@ -672,8 +682,12 @@ bool LibraryView::isItemPaneVisible() const { return pane_->isVisible(); }
 
 void LibraryView::keyPressEvent(QKeyEvent* e)
 {
+    // from a field, the item list; on the item list, nothing selected
     if (e->key() == Qt::Key_Escape && e->modifiers() == Qt::NoModifier) {
-        items_->setFocus();
+        if (items_->hasFocus())
+            items_->selectionModel()->clearSelection();
+        else
+            items_->setFocus();
         return;
     }
     QWidget::keyPressEvent(e);

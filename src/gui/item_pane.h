@@ -199,6 +199,9 @@ public:
     explicit ItemPane(QWidget* parent = nullptr);
     void showItems(int64_t libraryId, const QStringList& keys);
     NoteEditor* noteEditor() const { return note_; }
+    // Info (0) or Notes (1) beside a regular item, as a click on the tab does (for every
+    // item and PDF)
+    void showInfoOrNotes(int tab);
 
 signals:
     void openAttachment(const QString& key);

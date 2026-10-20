@@ -75,7 +75,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   one), Esc clears the
   search and the selection (in a PDF: the word and its hits). Shift+Enter finds
   backwards; the Aa button (Alt+C) matches case. Esc in any other field gives the keys
-  back to the page or the item list.
+  back to the page or the item list (there, Esc again selects nothing; I and N open Info
+  and Notes, as on a PDF's page).
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing
   version is kept in *Tools → Sync Conflicts*. *Tools → Sync History* lists what the last
   syncs brought in and sent out. Library names are synced, and deleting an (empty)

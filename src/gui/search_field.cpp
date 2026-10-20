@@ -216,7 +216,10 @@ void SearchField::showList(const QStringList& searches)
     list_->setFixedHeight(rows * list_->sizeHintForRow(0));
     popup_->setFixedWidth(width());
     popup_->adjustSize();
-    popup_->move(mapTo(window(), QPoint(0, height())));
+    // under the field, or over it when there is no room below (a note's find, at the bottom)
+    QPoint below = mapTo(window(), QPoint(0, height()));
+    QPoint above = mapTo(window(), QPoint(0, -popup_->height()));
+    popup_->move(below.y() + popup_->height() > window()->height() && above.y() >= 0 ? above : below);
     popup_->raise();
     popup_->show();
     list_->setCurrentRow(-1);  // (a list shown again would go on from where it was)
@@ -287,6 +290,16 @@ void SearchField::forgetCurrent()
 
 bool SearchField::event(QEvent* e)
 {
+    // Ctrl+F here: this field's (not another find, a PDF's, the window's)
+    if (e->type() == QEvent::ShortcutOverride && static_cast<QKeyEvent*>(e)->matches(QKeySequence::Find)) {
+        e->accept();
+        return true;
+    }
+    if (e->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(e)->matches(QKeySequence::Find)) {
+        hideList(false);
+        selectAll();
+        return true;
+    }
     if (e->type() == QEvent::KeyPress) {
         auto* k = static_cast<QKeyEvent*>(e);
         bool tab = k->key() == Qt::Key_Tab && !(k->modifiers() & (Qt::ControlModifier | Qt::AltModifier));

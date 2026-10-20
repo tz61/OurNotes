@@ -3932,6 +3932,36 @@ TEST_CASE("reader: Esc in the find clears it and its hits; it has a history of i
     }
 }
 
+TEST_CASE("library: I and N open Info and Notes, Esc on the list selects nothing")
+{
+    app();
+    Env env;
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Alpha"}});
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    QTreeView* items = nullptr;
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* tabs = window.findChild<ItemPane*>()->findChild<QTabWidget*>();
+    items->setFocus();
+    items->setCurrentIndex(items->model()->index(0, 0));
+    QApplication::processEvents();
+    QTest::keyClick(items, Qt::Key_N);
+    CHECK(tabs->currentIndex() == 1);
+    CHECK(env.config.get("/ui/itemPaneTab", "").get<std::string>() == "notes");
+    QTest::keyClick(items, Qt::Key_I);
+    CHECK(tabs->currentIndex() == 0);
+    CHECK(items->hasFocus());
+    REQUIRE(items->selectionModel()->hasSelection());
+    QTest::keyClick(items, Qt::Key_Escape);
+    CHECK(!items->selectionModel()->hasSelection());
+}
+
 TEST_CASE("library: Esc in a field gives the keys back to the item list")
 {
     app();
@@ -4047,6 +4077,39 @@ TEST_CASE("search: Tab completes from earlier searches, then lists them")
     QTest::keyClick(field, Qt::Key_Tab, Qt::ShiftModifier);
     CHECK(!field->hasFocus());
     (void)next;
+}
+
+TEST_CASE("search: the list opens over a field with no room below it")
+{
+    app();
+    Env env;
+    QWidget window;
+    auto* top = new SearchField(&window);
+    auto* bottom = new SearchField(&window);
+    top->setGeometry(10, 10, 300, 30);
+    bottom->setGeometry(10, 360, 300, 30);
+    window.resize(400, 400);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    for (auto* f : {top, bottom}) {
+        for (auto s : {"one", "two", "three"})
+            f->remember(s);
+        f->setFocus();
+        QTest::keyClick(f, Qt::Key_Tab);  // all of them
+        REQUIRE(f->isListShown());
+        QWidget* list = nullptr;
+        for (auto* w : window.findChildren<QWidget*>("searchHistoryList"))
+            if (w->isVisible())
+                list = w;
+        REQUIRE(list);
+        if (f == top)
+            CHECK(list->geometry().top() >= f->geometry().bottom());
+        else
+            CHECK(list->geometry().bottom() <= f->geometry().top());
+        CHECK(window.rect().contains(list->geometry()));
+        QTest::keyClick(f, Qt::Key_Escape);
+    }
 }
 
 TEST_CASE("search: the list shows five, PgDn and PgUp go by five, Ctrl+Backspace forgets one")
@@ -4260,8 +4323,14 @@ TEST_CASE("reader: Ctrl+F in the note beside the PDF finds in the note, on the p
     edit->setFocus();
     QTest::keyClick(edit, Qt::Key_F, Qt::ControlModifier);
     CHECK(bar->isVisible());
-    CHECK(tab->findChild<SearchField*>("findInNote")->hasFocus());
-    QTest::keyClick(tab->findChild<SearchField*>("findInNote"), Qt::Key_Escape);
+    auto* noteFind = tab->findChild<SearchField*>("findInNote");
+    CHECK(noteFind->hasFocus());
+    QTest::keyClicks(noteFind, "notes");
+    QTest::keyClick(noteFind, Qt::Key_F, Qt::ControlModifier);  // again: still the note's
+    CHECK(noteFind->hasFocus());
+    CHECK(noteFind->selectedText() == "notes");
+    CHECK(!pdfFind->hasFocus());
+    QTest::keyClick(noteFind, Qt::Key_Escape);
     CHECK(!bar->isVisible());
     tab->view()->setFocus();
     QTest::keyClick(tab->view(), Qt::Key_F, Qt::ControlModifier);

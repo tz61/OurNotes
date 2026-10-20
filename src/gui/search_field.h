@@ -25,6 +25,8 @@ namespace on::gui {
 //   its find and the hits).
 // - Shift+Enter: shiftReturnPressed (a PDF finds backwards), not returnPressed.
 // - With addCaseToggle, an "Aa" button at its end (and Alt+C) to match case.
+// - Ctrl+F in it selects what is in it (it does not go to another search).
+// The list opens under the field, or over it when there is no room below.
 // A search is kept when Enter is pressed or the field is left with it, the last 1000 in
 // the settings under historyKey (the latest last).
 class SearchField : public QLineEdit {

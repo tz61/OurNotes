@@ -1289,6 +1289,8 @@ ItemPane::ItemPane(QWidget* parent) : QStackedWidget(parent)
     showItems(0, {});
 }
 
+void ItemPane::showInfoOrNotes(int tab) { chooseInfoNotesTab(itemPage_, tab); }
+
 void ItemPane::showItems(int64_t libraryId, const QStringList& keys)
 {
     if (keys.size() != 1) {

@@ -38,6 +38,8 @@ SECTIONS = [
         ("Delete", "To the trash (in a collection: out of it)"),
         ("Shift+Delete", "Delete permanently"),
         ("+ / -", "Expand / collapse all"),
+        ("I / N", "Info / Notes in the item pane"),
+        ("Esc", "Select nothing"),
         ("Ctrl+Shift+I", "Add by DOI, ISBN, arXiv id or PMID"),
         ("Ctrl+Shift+O", "New note"),
         ("Ctrl+Shift+A", "Copy citation"),
