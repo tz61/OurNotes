@@ -29,6 +29,7 @@
 #include "gui/icons.h"
 #include "gui/item_pane.h"
 #include "gui/note_editor.h"
+#include "gui/search_field.h"
 #include "gui/side_pane.h"
 #include "gui/tag_selector.h"
 #include "gui/theme.h"
@@ -192,7 +193,8 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
     searchMode_->addItem(tr("Everything"), (int)SearchMode::Everything);
     searchMode_->setCurrentIndex(
         (int)AppContext::get().config().get("/ui/searchMode", (int)SearchMode::AllFields).get<int>());
-    search_ = new QLineEdit(middle);
+    search_ = new SearchField(middle);
+    search_->setObjectName("librarySearch");
     search_->setPlaceholderText(tr("Search"));
     search_->setClearButtonEnabled(true);
     search_->addAction(icon("search"), QLineEdit::LeadingPosition);
@@ -348,6 +350,13 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             items_->expandAll();
     };
     connect(&searchTimer_, &QTimer::timeout, this, applySearch);
+    // Esc in the search: no search, nothing selected
+    connect(search_, &SearchField::escapePressed, this, [this, applySearch] {
+        search_->clear();
+        searchTimer_.stop();
+        applySearch();
+        items_->selectionModel()->clearSelection();
+    });
     connect(searchMode_, &QComboBox::currentIndexChanged, this, [this, applySearch] {
         AppContext::get().config().set("/ui/searchMode", searchMode_->currentData().toInt());
         applySearch();

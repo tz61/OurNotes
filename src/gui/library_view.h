@@ -17,6 +17,7 @@ class QTreeView;
 namespace on::gui {
 
 class CollectionTree;
+class SearchField;
 class ItemPane;
 class TagSelector;
 
@@ -88,7 +89,7 @@ private:
 
     CollectionTree* tree_;
     TagSelector* tags_;
-    QLineEdit* search_;
+    SearchField* search_;
     QComboBox* searchMode_;
     QHBoxLayout* searchRow_;
     QWidget* middle_;

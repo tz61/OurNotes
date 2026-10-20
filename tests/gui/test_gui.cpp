@@ -71,6 +71,7 @@
 #include "gui/note_editor.h"
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
+#include "gui/search_field.h"
 #include "gui/shift_wheel.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
@@ -3801,6 +3802,133 @@ TEST_CASE("library: a new selection leaves no line of the old one")
         if (!painted.isNull())
             CHECK(painted == fresh);
     }
+}
+
+TEST_CASE("library: Esc in the search clears it and the selection")
+{
+    app();
+    Env env;
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Alpha"}});
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Beta"}});
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    QApplication::processEvents();
+    auto* search = window.findChild<SearchField*>("librarySearch");
+    REQUIRE(search);
+    QTreeView* items = nullptr;
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    search->setFocus();
+    QTest::keyClicks(search, "Alp");
+    CHECK(QTest::qWaitFor([&] { return items->model()->rowCount() == 1; }));
+    items->setCurrentIndex(items->model()->index(0, 0));
+    REQUIRE(items->selectionModel()->hasSelection());
+    QTest::keyClick(search, Qt::Key_Escape);
+    CHECK(search->text().isEmpty());
+    CHECK(items->model()->rowCount() == 2);  // at once
+    CHECK(!items->selectionModel()->hasSelection());
+}
+
+TEST_CASE("search: Up and Down go through earlier searches, those starting with what was typed")
+{
+    app();
+    Env env;
+    SearchField field;
+    field.show();
+    field.setFocus();
+    for (auto s : {"robot", "rocket", "vision"}) {
+        QTest::keyClicks(&field, s);
+        QTest::keyClick(&field, Qt::Key_Return);  // kept
+        field.clear();
+    }
+    CHECK(field.history() == QStringList{"robot", "rocket", "vision"});
+    CHECK(env.config.get("/ui/searchHistory", Json()).dump() == R"(["robot","rocket","vision"])");
+    std::vector<QString> seen;
+    auto key = [&](Qt::Key k) {
+        QTest::keyClick(&field, k);
+        seen.push_back(field.text());
+    };
+    for (auto k : {Qt::Key_Up, Qt::Key_Up, Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down, Qt::Key_Down})
+        key(k);
+    CHECK(seen == std::vector<QString>{"vision", "rocket", "robot", "robot", "rocket", "vision", ""});
+    // with "ro" typed, only those starting with it, and back to "ro"
+    seen.clear();
+    QTest::keyClicks(&field, "ro");
+    for (auto k : {Qt::Key_Up, Qt::Key_Up, Qt::Key_Down, Qt::Key_Down})
+        key(k);
+    CHECK(seen == std::vector<QString>{"rocket", "robot", "rocket", "ro"});
+    // the next field (the next start) has them too
+    SearchField again;
+    CHECK(again.history() == QStringList{"robot", "rocket", "vision"});
+}
+
+TEST_CASE("search: Tab completes from earlier searches, then lists them")
+{
+    app();
+    Env env;
+    QWidget window;
+    auto* field = new SearchField(&window);
+    auto* next = new QLineEdit(&window);
+    field->setGeometry(10, 10, 300, 30);
+    next->setGeometry(10, 300, 300, 30);
+    window.resize(400, 400);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    for (auto s : {"humanoid robot", "humanoid control", "vision"})
+        field->remember(s);
+    field->setFocus();
+    // one search starting with it: the whole of it
+    QTest::keyClicks(field, "vis");
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->text() == "vision");
+    CHECK(field->hasFocus());
+    // two: as far as both agree
+    field->clear();
+    QTest::keyClicks(field, "hum");
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->text() == "humanoid ");
+    CHECK(!field->isListShown());
+    // and Tab again: the list, the latest first, highlighted and in the field
+    QTest::keyClick(field, Qt::Key_Tab);
+    REQUIRE(field->isListShown());
+    CHECK(field->listed() == QStringList{"humanoid control", "humanoid robot"});
+    CHECK(field->listedCurrent() == 0);
+    CHECK(field->text() == "humanoid control");
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->listedCurrent() == 1);
+    CHECK(field->text() == "humanoid robot");
+    QTest::keyClick(field, Qt::Key_Tab);  // round again
+    CHECK(field->listedCurrent() == 0);
+    QTest::keyClick(field, Qt::Key_Tab, Qt::ShiftModifier);
+    CHECK(field->text() == "humanoid robot");
+    QTest::keyClick(field, Qt::Key_Return);  // taken
+    CHECK(!field->isListShown());
+    CHECK(field->text() == "humanoid robot");
+    // Esc in the list: back to what was typed
+    field->clear();
+    QTest::keyClicks(field, "humanoid ");
+    QTest::keyClick(field, Qt::Key_Tab);
+    REQUIRE(field->isListShown());
+    QTest::keyClick(field, Qt::Key_Escape);
+    CHECK(!field->isListShown());
+    CHECK(field->text() == "humanoid ");
+    // the one taken with Enter was searched again: the latest now, it comes first
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->listed() == QStringList{"humanoid robot", "humanoid control"});
+    // typing goes on from the one shown, without the list
+    QTest::keyClicks(field, "s");
+    CHECK(!field->isListShown());
+    CHECK(field->text() == "humanoid robots");
+    // nothing to complete: Tab moves on, as anywhere else
+    field->clear();
+    QTest::keyClicks(field, "zzz");
+    QTest::keyClick(field, Qt::Key_Tab);
+    CHECK(field->text() == "zzz");
+    CHECK(next->hasFocus());
 }
 
 TEST_CASE("library: sorting by a column keeps the columns' widths")
