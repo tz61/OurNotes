@@ -45,6 +45,10 @@
 #include <QDropEvent>
 #include <QPainter>
 #include <QWheelEvent>
+#ifdef OURNOTES_TEST_BACKING_STORE
+#include <QBackingStore>
+#include <qpa/qplatformbackingstore.h>
+#endif
 
 #include "../core/test_helpers.h"
 #include "../pdf/sample_pdf.h"
@@ -3648,6 +3652,58 @@ TEST_CASE("library: with a band picture the list has no stripes, in light and da
         items->setStyle(nullptr);
     }
     applyAppearance(Appearance::System);
+}
+
+// Run at 150% too (ctest: test_gui_scaled), where it failed: a row's edge is inside a pixel
+// the row above shares, and repainting only the rows whose selection changed left a line
+// of the old highlight behind (and cut one off the new).
+TEST_CASE("library: a new selection leaves no line of the old one")
+{
+    app();
+    Env env;
+    for (int i = 0; i < 15; ++i)
+        env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper " + std::to_string(i)}});
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    QTest::qWait(100);
+    std::vector<QTreeView*> views;  // the items, then the collections (a click there changes the items)
+    for (auto* t : window.findChild<LibraryView*>()->findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            views.push_back(t);
+    views.push_back(window.findChild<CollectionTree*>());
+    REQUIRE(views.size() == 2);
+#ifndef OURNOTES_TEST_BACKING_STORE
+    MESSAGE("Qt's private headers are not there: the pixels are not compared");
+#endif
+    // the window's pixels as they are on the screen (painted bit by bit), not drawn anew; a
+    // screen grab gives only part of them offscreen when scaled
+    auto shown = [&] {
+#ifdef OURNOTES_TEST_BACKING_STORE
+        return window.backingStore()->handle()->toImage();
+#else
+        return QImage();
+#endif
+    };
+    for (auto* view : views) {
+        if (view == views.back())
+            view->expandAll();
+        QTest::qWait(100);
+        std::vector<QModelIndex> rows;  // as shown
+        for (auto i = view->model()->index(0, 0); i.isValid() && rows.size() < 10; i = view->indexBelow(i))
+            rows.push_back(i);
+        REQUIRE(rows.size() >= 4);
+        // one row, then one far from it (drawing a row next to the first would paint over
+        // what it left behind)
+        for (size_t n : {size_t(1), rows.size() - 1}) {
+            QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(rows[n]).center());
+            QTest::qWait(100);
+        }
+        auto painted = shown().convertToFormat(QImage::Format_RGB32);
+        auto fresh = window.grab().toImage().convertToFormat(QImage::Format_RGB32);  // drawn anew
+        if (!painted.isNull())
+            CHECK(painted == fresh);
+    }
 }
 
 TEST_CASE("library: sorting by a column keeps the columns' widths")

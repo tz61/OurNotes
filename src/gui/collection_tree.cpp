@@ -367,6 +367,20 @@ void CollectionTree::setDropTarget(QTreeWidgetItem* item)
     viewport()->update();
 }
 
+// At a fractional scale a row's edge falls inside a pixel it shares with the row above:
+// redrawing only the rows whose selection changed left a line of the old highlight behind.
+void CollectionTree::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
+{
+    QTreeWidget::selectionChanged(selected, deselected);
+    viewport()->update();
+}
+
+void CollectionTree::currentChanged(const QModelIndex& current, const QModelIndex& previous)
+{
+    QTreeWidget::currentChanged(current, previous);
+    viewport()->update();
+}
+
 void CollectionTree::drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     QStyleOptionViewItem o(option);

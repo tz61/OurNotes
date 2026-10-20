@@ -36,6 +36,9 @@ protected:
     void startDrag(Qt::DropActions actions) override;
     void dragLeaveEvent(QDragLeaveEvent* e) override;
     void drawRow(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+    // the rows in view redrawn (see ItemsTreeView, in library_view.cpp)
+    void selectionChanged(const QItemSelection& selected, const QItemSelection& deselected) override;
+    void currentChanged(const QModelIndex& current, const QModelIndex& previous) override;
 
 private:
     enum Roles { KindRole = Qt::UserRole + 1, LibraryRole, CollectionRole };

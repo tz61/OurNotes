@@ -75,6 +75,19 @@ protected:
         }
         QTreeView::paintEvent(e);
     }
+    // At a fractional scale (125%, 150%) a row's edge falls inside a pixel it shares with
+    // the row above; redrawing only the rows whose selection changed left a line of the
+    // old highlight behind, and cut one off the new. The rows in view are redrawn.
+    void selectionChanged(const QItemSelection& selected, const QItemSelection& deselected) override
+    {
+        QTreeView::selectionChanged(selected, deselected);
+        viewport()->update();
+    }
+    void currentChanged(const QModelIndex& current, const QModelIndex& previous) override
+    {
+        QTreeView::currentChanged(current, previous);
+        viewport()->update();
+    }
     // the picture stays put: scrolling moves the rows over it, so everything is redrawn
     void scrollContentsBy(int dx, int dy) override
     {
