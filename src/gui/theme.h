@@ -26,9 +26,18 @@ bool isDarkTheme();
 // Colour of formulas in notes: "/notes/formulaColor" if set, else the text colour.
 QColor formulaColor(const QColor& textColor);
 
-// Whether PDF pages are shown dark: while the theme is dark, unless "/reader/darkPages"
-// is turned off.
+// Whether PDF pages are shown dark, a choice of the PDFs' own (L on a page, or the
+// toolbar), kept for a dark and a light theme each: "/reader/darkPages" (dark by
+// default) and "/reader/darkPagesInLightMode" (light by default).
 bool darkPdfPages();
+void setDarkPdfPages(bool dark);  // for the current theme; every PDF follows
+// The page colour, 0..100, for light pages (white .. gray) and dark ones (black .. gray),
+// shared by all PDFs: "/reader/pageTone/light" and "/reader/pageTone/dark".
+int pageTone(bool darkPages);
+void setPageTone(bool darkPages, int tone);
+// The gray the pages are tinted with at that tone: multiplied onto light pages (white
+// paper becomes it, black text stays), screened onto dark ones (black paper becomes it).
+QColor pageToneColor(bool darkPages, int tone);
 // Recolours a rendered page for dark mode: lightness is inverted and hues are kept, so
 // black text on white becomes light text on a dark page while colours stay recognisable.
 // Safe to call on any thread.

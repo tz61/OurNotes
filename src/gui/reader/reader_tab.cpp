@@ -16,6 +16,8 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QSignalBlocker>
+#include <QSlider>
 #include <QSplitter>
 #include <QScrollArea>
 #include <QStackedWidget>
@@ -363,10 +365,11 @@ void ReaderTab::buildContextPane()
 void ReaderTab::buildToolbar()
 {
     auto* tb = toolbar_;
-    auto* sideToggle = tb->addAction(icon("sidebar"), tr("Toggle sidebar"));
-    sideToggle->setCheckable(true);
-    sideToggle->setChecked(true);
-    connect(sideToggle, &QAction::toggled, this, [this](bool on) { splitter_->widget(0)->setVisible(on); });
+    sideToggle_ = tb->addAction(icon("sidebar"), tr("Show or hide the sidebar ([)"));
+    sideToggle_->setObjectName("sideToggle");
+    sideToggle_->setCheckable(true);
+    sideToggle_->setChecked(true);
+    connect(sideToggle_, &QAction::toggled, this, [this](bool on) { splitter_->widget(0)->setVisible(on); });
     tb->addSeparator();
     tb->addAction(icon("zoom-out"), tr("Zoom out (Ctrl+-)"), view_, &PdfView::zoomOut);
     zoomLabel_ = new QLabel("100%", tb);
@@ -464,31 +467,53 @@ void ReaderTab::buildToolbar()
         }
     });
     tb->addSeparator();
-    // in dark mode: dark pages, or the PDF's own colours (e.g. for figures)
+    // dark pages, or the PDF's own colours (e.g. for figures), in a dark or a light theme
     darkPages_ = tb->addAction(icon("dark-pages"), tr("Dark pages"));
     darkPages_->setObjectName("darkPages");
     darkPages_->setCheckable(true);
-    connect(darkPages_, &QAction::triggered, this, [](bool on) {
-        auto& ctx = AppContext::get();
-        ctx.config().set("/reader/darkPages", on);
-        ctx.config().save();
-        emit ctx.appearanceChanged();
+    connect(darkPages_, &QAction::triggered, this, [](bool on) { setDarkPdfPages(on); });
+    // the page colour: white (or black) paper towards gray, for all PDFs
+    pageTone_ = new QSlider(Qt::Horizontal, tb);
+    pageTone_->setObjectName("pageTone");
+    pageTone_->setRange(0, 100);
+    pageTone_->setFixedWidth(80);
+    pageTone_->setFocusPolicy(Qt::NoFocus);  // the page keeps the keys
+    tb->addWidget(pageTone_);
+    connect(pageTone_, &QSlider::valueChanged, this, [this](int tone) { setPageTone(view_->darkPages(), tone); });
+    connect(pageTone_, &QSlider::sliderReleased, this, [] { AppContext::get().config().save(); });
+    connect(&AppContext::get(), &AppContext::pageToneChanged, this, [this] {
+        QSignalBlocker block(pageTone_);  // another PDF's slider moved
+        pageTone_->setValue(pageTone(view_->darkPages()));
     });
     updateDarkPagesAction();
-    auto* paneToggle = tb->addAction(icon("context-pane"), tr("Show or hide Info and Notes"));
-    paneToggle->setCheckable(true);
-    paneToggle->setChecked(true);
-    connect(paneToggle, &QAction::toggled, contextPane_, &QWidget::setVisible);
+    paneToggle_ = tb->addAction(icon("context-pane"), tr("Show or hide Info and Notes (])"));
+    paneToggle_->setObjectName("paneToggle");
+    paneToggle_->setCheckable(true);
+    paneToggle_->setChecked(true);
+    connect(paneToggle_, &QAction::toggled, contextPane_, &QWidget::setVisible);
+    // the keys on the page
+    connect(view_, &PdfView::panelToggleRequested, this,
+            [this](bool right) { (right ? paneToggle_ : sideToggle_)->toggle(); });
+    connect(view_, &PdfView::contextTabRequested, this, [this](int tab) {
+        paneToggle_->setChecked(true);
+        chooseInfoNotesTab(contextTabs_, tab);
+    });
+    connect(view_, &PdfView::darkPagesToggleRequested, this, [this] { setDarkPdfPages(!view_->darkPages()); });
 }
 
 void ReaderTab::updateDarkPagesAction()
 {
     if (!darkPages_)
         return;
-    darkPages_->setVisible(isDarkTheme());
     darkPages_->setChecked(view_->darkPages());
-    darkPages_->setToolTip(view_->darkPages() ? tr("Showing pages in dark colours; click for the PDF's own colours")
-                                              : tr("Showing the PDF's own colours; click for dark pages"));
+    darkPages_->setToolTip(view_->darkPages() ? tr("Showing pages in dark colours; click for the PDF's own colours (L)")
+                                              : tr("Showing the PDF's own colours; click for dark pages (L)"));
+    if (pageTone_) {
+        QSignalBlocker block(pageTone_);
+        pageTone_->setValue(pageTone(view_->darkPages()));  // the one remembered for these pages
+        pageTone_->setToolTip(view_->darkPages() ? tr("Page colour: black to gray, for all PDFs")
+                                                 : tr("Page colour: white to gray, for all PDFs"));
+    }
 }
 
 void ReaderTab::changeEvent(QEvent* e)

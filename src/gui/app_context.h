@@ -30,6 +30,8 @@ signals:
     void syncFinished();
     // Theme or formula colour settings changed.
     void appearanceChanged();
+    // The PDFs' page colour (pageTone) moved: every PDF repaints, without rendering again.
+    void pageToneChanged();
 
 private:
     Config& config_;

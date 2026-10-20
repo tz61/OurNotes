@@ -14,6 +14,7 @@
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QHeaderView>
+#include <QSlider>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTabBar>
@@ -77,6 +78,7 @@
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
 #include "gui/wrap_toolbar.h"
+#include "gui/reader/annotation_sidebar.h"
 #include "gui/reader/comment_bubble.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
@@ -672,7 +674,7 @@ TEST_CASE("reader: PDF pages follow dark mode")
     auto* toggle = tab.findChild<QAction*>("darkPages");
     REQUIRE(toggle);
     CHECK(!view->darkPages());
-    CHECK(!toggle->isVisible());
+    CHECK(toggle->isVisible());  // (dark pages in a light theme too, see the next test)
     CHECK(QTest::qWaitFor([&] { return paper().lightness() > 240; }));
 
     applyAppearance(Appearance::Dark);
@@ -708,6 +710,101 @@ TEST_CASE("reader: PDF pages follow dark mode")
     CHECK(view->darkPages());
 
     applyAppearance(Appearance::System);
+}
+
+TEST_CASE("reader: L turns the pages dark or light, the page colour tints them, in every PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    applyAppearance(Appearance::Light);
+    ReaderTab a(env.lib, key), b(env.lib, key);
+    for (auto* t : {&a, &b}) {
+        t->resize(1200, 900);
+        t->show();
+    }
+    auto paper = [](ReaderTab& t) {  // a blank spot on the page
+        auto img = t.view()->viewport()->grab().toImage();
+        return img.pixelColor((t.view()->pageToViewport(0, {500, 500}) * img.devicePixelRatio()).toPoint());
+    };
+    auto* tone = a.findChild<QSlider*>("pageTone");
+    REQUIRE(tone);
+    REQUIRE(!a.view()->darkPages());
+    CHECK(QTest::qWaitFor([&] { return paper(a) == QColor(Qt::white); }));
+
+    // L on the page: dark pages, here and in the other PDF; the application stays light
+    a.view()->setFocus();
+    QTest::keyClick(a.view(), Qt::Key_L);
+    CHECK(a.view()->darkPages());
+    CHECK(b.view()->darkPages());
+    CHECK(!isDarkTheme());
+    CHECK(env.config.get("/reader/darkPagesInLightMode", false).get<bool>());
+    CHECK(darkPageColor() == QColor(Qt::black));
+    CHECK(QTest::qWaitFor([&] { return paper(b) == QColor(Qt::black); }));
+    // the page colour: black to gray, for every PDF
+    tone->setValue(100);
+    CHECK(b.findChild<QSlider*>("pageTone")->value() == 100);
+    CHECK(paper(b) == QColor(128, 128, 128));
+
+    // light pages again: their own page colour, white to gray
+    QTest::keyClick(a.view(), Qt::Key_L);
+    CHECK(!a.view()->darkPages());
+    CHECK(tone->value() == 0);
+    CHECK(QTest::qWaitFor([&] { return paper(a) == QColor(Qt::white); }));
+    tone->setValue(50);
+    CHECK(paper(a) == QColor(191, 191, 191));
+    CHECK(paper(b) == QColor(191, 191, 191));
+    CHECK(env.config.get("/reader/pageTone/light", 0).get<int>() == 50);
+    // and the dark pages kept theirs
+    QTest::keyClick(a.view(), Qt::Key_L);
+    CHECK(tone->value() == 100);
+    QTest::keyClick(a.view(), Qt::Key_L);
+    applyAppearance(Appearance::System);
+}
+
+TEST_CASE("reader: [ and ] show or hide the panels, I and N open Info and Notes")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    ReaderTab tab(env.lib, key);
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    auto* left = tab.findChild<AnnotationSidebar*>();
+    auto* right = tab.findChild<QTabWidget*>("readerContextTabs");
+    REQUIRE(left);
+    REQUIRE(right);
+    CHECK(left->isVisible());
+    CHECK(right->isVisible());
+    QTest::keyClick(view, Qt::Key_BracketLeft);  // each press: hidden, shown
+    CHECK(!left->isVisible());
+    CHECK(right->isVisible());
+    QTest::keyClick(view, Qt::Key_BracketLeft);
+    CHECK(left->isVisible());
+    QTest::keyClick(view, Qt::Key_BracketRight);
+    CHECK(!right->isVisible());
+    QTest::keyClick(view, Qt::Key_BracketRight);
+    CHECK(right->isVisible());
+    // N: Notes, the panel shown if it was hidden; I: Info; the choice is everyone's
+    QTest::keyClick(view, Qt::Key_BracketRight);
+    QTest::keyClick(view, Qt::Key_N);
+    CHECK(right->isVisible());
+    CHECK(right->currentIndex() == 1);
+    CHECK(env.config.get("/ui/itemPaneTab", "").get<std::string>() == "notes");
+    QTest::keyClick(view, Qt::Key_I);
+    CHECK(right->currentIndex() == 0);
+    CHECK(view->hasFocus());  // the page keeps the keys
 }
 
 TEST_CASE("reader: annotation cards stay idle and follow the theme")

@@ -160,8 +160,14 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
         emit annotationChanged(data);
     });
     darkPages_ = darkPdfPages();
-    if (auto* ctx = AppContext::tryGet())
+    tone_ = pageTone(darkPages_);
+    if (auto* ctx = AppContext::tryGet()) {
         connect(ctx, &AppContext::appearanceChanged, this, [this] { setDarkPages(darkPdfPages()); });
+        connect(ctx, &AppContext::pageToneChanged, this, [this] {
+            tone_ = pageTone(darkPages_);
+            viewport()->update();
+        });
+    }
     popup_->highlight = [this](const QString& c) { createFromSelection("highlight", c); };
     connect(popup_->underline_, &QToolButton::clicked, this, [this] { createFromSelection("underline", color_); });
     connect(popup_->copy_, &QToolButton::clicked, this, [this] {
@@ -623,6 +629,7 @@ void PdfView::setDarkPages(bool dark)
     if (dark == darkPages_)
         return;
     darkPages_ = dark;
+    tone_ = pageTone(dark);  // the one remembered for these pages
     ++generation_;
     cache_.clear();
     requestRenders();
@@ -664,6 +671,11 @@ void PdfView::paintEvent(QPaintEvent*)
             p.setRenderHint(QPainter::SmoothPixmapTransform);
         } else if (it != cache_.end()) {
             p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
+        }
+        if (tone_ > 0) {  // the page colour: white (or black) paper towards gray
+            p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
+            p.fillRect(r, pageToneColor(darkPages_, tone_));
+            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
         }
         paintAnnotations(p, i);
         paintTextSelection(p, i);
@@ -1770,9 +1782,25 @@ void PdfView::keyPressEvent(QKeyEvent* e)
             emit toolChangeRequested(tool);
         return;
     }
-    if (e->key() == Qt::Key_H && e->modifiers() == Qt::NoModifier) {  // likewise only here
-        emit libraryRequested();
-        return;
+    if (e->modifiers() == Qt::NoModifier) {  // likewise only here
+        switch (e->key()) {
+        case Qt::Key_H:
+            emit libraryRequested();
+            return;
+        case Qt::Key_BracketLeft:
+        case Qt::Key_BracketRight:
+            emit panelToggleRequested(e->key() == Qt::Key_BracketRight);
+            return;
+        case Qt::Key_I:
+        case Qt::Key_N:
+            emit contextTabRequested(e->key() == Qt::Key_N ? 1 : 0);
+            return;
+        case Qt::Key_L:
+            emit darkPagesToggleRequested();
+            return;
+        default:
+            break;
+        }
     }
     // F: fit the width; F again within 10 s, the whole page, and so on. After a while
     // the first F is the width again.

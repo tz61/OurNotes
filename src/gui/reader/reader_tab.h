@@ -11,6 +11,7 @@
 class QActionGroup;
 class QLabel;
 class QLineEdit;
+class QSlider;
 class QListWidget;
 class QSplitter;
 class QStackedWidget;
@@ -112,6 +113,9 @@ private:
     QUndoStack* undo_;
     bool thumbnailsRequested_ = false;
     QAction* darkPages_ = nullptr;
+    QAction* sideToggle_ = nullptr;  // the panel on the left: annotations, thumbnails, outline
+    QAction* paneToggle_ = nullptr;  // the panel on the right: Info and Notes
+    QSlider* pageTone_ = nullptr;
 };
 
 } // namespace on::gui

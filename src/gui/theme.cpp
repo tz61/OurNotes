@@ -144,18 +144,50 @@ bool isDarkTheme() { return QApplication::palette().color(QPalette::Window).ligh
 
 bool darkPdfPages()
 {
-    if (!isDarkTheme())
-        return false;
+    bool dark = isDarkTheme();
     auto* ctx = AppContext::tryGet();
     if (!ctx)
-        return true;
-    auto v = ctx->config().get("/reader/darkPages", true);
-    return !v.is_boolean() || v.get<bool>();
+        return dark;
+    auto v = ctx->config().get(dark ? "/reader/darkPages" : "/reader/darkPagesInLightMode", dark);
+    return v.is_boolean() ? v.get<bool>() : dark;
+}
+
+void setDarkPdfPages(bool dark)
+{
+    auto& ctx = AppContext::get();
+    ctx.config().set(isDarkTheme() ? "/reader/darkPages" : "/reader/darkPagesInLightMode", dark);
+    ctx.config().save();
+    emit ctx.appearanceChanged();
+}
+
+int pageTone(bool darkPages)
+{
+    auto* ctx = AppContext::tryGet();
+    if (!ctx)
+        return 0;
+    auto v = ctx->config().get(darkPages ? "/reader/pageTone/dark" : "/reader/pageTone/light", 0);
+    return v.is_number_integer() ? std::clamp(v.get<int>(), 0, 100) : 0;
+}
+
+void setPageTone(bool darkPages, int tone)
+{
+    auto& ctx = AppContext::get();
+    ctx.config().set(darkPages ? "/reader/pageTone/dark" : "/reader/pageTone/light", std::clamp(tone, 0, 100));
+    emit ctx.pageToneChanged();
+}
+
+QColor pageToneColor(bool darkPages, int tone)
+{
+    constexpr int kGray = 128;  // where both ends meet
+    int t = std::clamp(tone, 0, 100);
+    int g = darkPages ? (kGray * t + 50) / 100 : 255 - ((255 - kGray) * t + 50) / 100;
+    return QColor(g, g, g);
 }
 
 namespace {
-// paper and ink after recolouring; soft rather than pure black and white
-constexpr int kPaper[3] = {28, 29, 32};
+// paper and ink after recolouring: black paper (the page colour lifts it towards gray, see
+// pageToneColor), soft white ink
+constexpr int kPaper[3] = {0, 0, 0};
 constexpr int kInk[3] = {226, 226, 226};
 } // namespace
 

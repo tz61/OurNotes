@@ -17,5 +17,7 @@ void applySidePaneWidth(QSplitter* split);
 // `tabs` has Info first and Notes second; a disabled tab (Info of a PDF filed under no
 // item) gives way to the other.
 void shareInfoNotesTab(QTabWidget* tabs);
+// Shows Info (0) or Notes (1) in `tabs` and everywhere else, as a click on it does.
+void chooseInfoNotesTab(QTabWidget* tabs, int index);
 
 } // namespace on::gui

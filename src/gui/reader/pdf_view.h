@@ -110,6 +110,9 @@ signals:
     void addToNote(const QString& html);
     void toolChangeRequested(on::gui::ReaderTool tool);
     void libraryRequested();  // H: back to the library
+    void panelToggleRequested(bool right);  // [ and ]: the panel on the left, on the right
+    void contextTabRequested(int tab);      // I, N: Info (0) or Notes (1) beside the page
+    void darkPagesToggleRequested();        // L: dark pages or the PDF's own colours
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -218,6 +221,7 @@ private:
     Fit fit_ = Fit::Width;
     quint64 generation_ = 0;
     bool darkPages_ = false;
+    int tone_ = 0;  // the page colour (pageTone) for darkPages_
     std::map<int, Cached> cache_;
     int lastPage_ = -1;
 
