@@ -16,45 +16,49 @@
 <line x1="28" y1="164.5" x2="608" y2="164.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="168" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="187" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="39.0" y="183" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F</text>
-<text x="308.0" y="183" font-size="13.5" fill="#1f2328">Fit width; F again (within 10 s): fit page</text>
+<text x="39.0" y="183" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Q</text>
+<text x="56.0" y="183" fill="#59636e" font-size="12">/</text>
+<rect x="67.0" y="168" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="67.0" y="187" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="78.0" y="183" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">W</text>
+<text x="95.0" y="183" fill="#59636e" font-size="12">/</text>
+<rect x="106.0" y="168" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="106.0" y="187" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="117.0" y="183" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">E</text>
+<text x="308.0" y="183" font-size="13.5" fill="#1f2328">Your three colours (set with the gear)</text>
 <line x1="28" y1="194.5" x2="608" y2="194.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="198" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="217" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="39.0" y="213" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">H</text>
-<text x="308.0" y="213" font-size="13.5" fill="#1f2328">Back to the library</text>
+<text x="39.0" y="213" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F</text>
+<text x="308.0" y="213" font-size="13.5" fill="#1f2328">Fit width; F again (within 10 s): fit page</text>
 <line x1="28" y1="224.5" x2="608" y2="224.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="228" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="247" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="39.0" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">[</text>
-<text x="56.0" y="243" fill="#59636e" font-size="12">/</text>
-<rect x="67.0" y="228" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="67.0" y="247" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="78.0" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">]</text>
-<text x="308.0" y="243" font-size="13.5" fill="#1f2328">Show or hide the left / right panel</text>
+<text x="39.0" y="243" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">H</text>
+<text x="308.0" y="243" font-size="13.5" fill="#1f2328">Back to the library</text>
 <line x1="28" y1="254.5" x2="608" y2="254.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="258" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="277" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="39.0" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
+<text x="39.0" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">[</text>
 <text x="56.0" y="273" fill="#59636e" font-size="12">/</text>
 <rect x="67.0" y="258" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="67.0" y="277" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="78.0" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">N</text>
-<text x="308.0" y="273" font-size="13.5" fill="#1f2328">Info / Notes beside the page</text>
+<text x="78.0" y="273" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">]</text>
+<text x="308.0" y="273" font-size="13.5" fill="#1f2328">Show or hide the left / right panel</text>
 <line x1="28" y1="284.5" x2="608" y2="284.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="288" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="307" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="39.0" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">L</text>
-<text x="308.0" y="303" font-size="13.5" fill="#1f2328">Dark pages, or the PDF's own colours</text>
+<text x="39.0" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">I</text>
+<text x="56.0" y="303" fill="#59636e" font-size="12">/</text>
+<rect x="67.0" y="288" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="67.0" y="307" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="78.0" y="303" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">N</text>
+<text x="308.0" y="303" font-size="13.5" fill="#1f2328">Info / Notes beside the page</text>
 <line x1="28" y1="314.5" x2="608" y2="314.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="318" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="337" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="48.8" y="333" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="73.6" y="333" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="318" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="337" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="94.6" y="333" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F</text>
-<text x="308.0" y="333" font-size="13.5" fill="#1f2328">Find in the document</text>
+<rect x="28.0" y="318" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="337" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="39.0" y="333" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">L</text>
+<text x="308.0" y="333" font-size="13.5" fill="#1f2328">Dark pages, or the PDF's own colours</text>
 <line x1="28" y1="344.5" x2="608" y2="344.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="348" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="367" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
@@ -62,130 +66,139 @@
 <text x="73.6" y="363" fill="#59636e" font-size="11">+</text>
 <rect x="83.6" y="348" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="83.6" y="367" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="94.6" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Z</text>
-<text x="111.6" y="363" fill="#59636e" font-size="12">/</text>
-<rect x="122.6" y="348" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="122.6" y="367" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="143.4" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="168.2" y="363" fill="#59636e" font-size="11">+</text>
-<rect x="178.2" y="348" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="178.2" y="367" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="189.2" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Y</text>
-<text x="308.0" y="363" font-size="13.5" fill="#1f2328">Undo / redo annotation changes</text>
+<text x="94.6" y="363" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F</text>
+<text x="308.0" y="363" font-size="13.5" fill="#1f2328">Find in the document</text>
 <line x1="28" y1="374.5" x2="608" y2="374.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="378" width="56.4" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="397" width="56.4" height="2" rx="1" fill="#c4ccd4"/>
-<text x="56.2" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Delete</text>
-<text x="308.0" y="393" font-size="13.5" fill="#1f2328">Delete the selected annotation</text>
+<rect x="28.0" y="378" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="397" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="48.8" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="73.6" y="393" fill="#59636e" font-size="11">+</text>
+<rect x="83.6" y="378" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="397" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="94.6" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Z</text>
+<text x="111.6" y="393" fill="#59636e" font-size="12">/</text>
+<rect x="122.6" y="378" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="122.6" y="397" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="143.4" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="168.2" y="393" fill="#59636e" font-size="11">+</text>
+<rect x="178.2" y="378" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="178.2" y="397" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="189.2" y="393" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Y</text>
+<text x="308.0" y="393" font-size="13.5" fill="#1f2328">Undo / redo annotation changes</text>
 <line x1="28" y1="404.5" x2="608" y2="404.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="408" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="427" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="48.8" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="73.6" y="423" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="408" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="427" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="94.6" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">=</text>
-<text x="111.6" y="423" fill="#59636e" font-size="12">/</text>
-<rect x="122.6" y="408" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="122.6" y="427" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="143.4" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="168.2" y="423" fill="#59636e" font-size="11">+</text>
-<rect x="178.2" y="408" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="178.2" y="427" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="189.2" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
-<text x="308.0" y="423" font-size="13.5" fill="#1f2328">Zoom in / out (also Ctrl+wheel)</text>
+<rect x="28.0" y="408" width="56.4" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="427" width="56.4" height="2" rx="1" fill="#c4ccd4"/>
+<text x="56.2" y="423" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Delete</text>
+<text x="308.0" y="423" font-size="13.5" fill="#1f2328">Delete the selected annotation</text>
 <line x1="28" y1="434.5" x2="608" y2="434.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="438" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="457" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="52.5" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="81.0" y="453" fill="#59636e" font-size="11">+</text>
-<rect x="91.0" y="438" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="91.0" y="457" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="115.5" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">wheel</text>
-<text x="308.0" y="453" font-size="13.5" fill="#1f2328">Scroll sideways</text>
+<rect x="28.0" y="438" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="457" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="48.8" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="73.6" y="453" fill="#59636e" font-size="11">+</text>
+<rect x="83.6" y="438" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="457" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="94.6" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">=</text>
+<text x="111.6" y="453" fill="#59636e" font-size="12">/</text>
+<rect x="122.6" y="438" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="122.6" y="457" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="143.4" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="168.2" y="453" fill="#59636e" font-size="11">+</text>
+<rect x="178.2" y="438" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="178.2" y="457" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="189.2" y="453" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">-</text>
+<text x="308.0" y="453" font-size="13.5" fill="#1f2328">Zoom in / out (also Ctrl+wheel)</text>
 <line x1="28" y1="464.5" x2="608" y2="464.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="468" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="487" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="45.1" y="483" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
-<text x="308.0" y="483" font-size="13.5" fill="#1f2328">Clear the selection, close a comment</text>
+<rect x="28.0" y="468" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="487" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="52.5" y="483" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="81.0" y="483" fill="#59636e" font-size="11">+</text>
+<rect x="91.0" y="468" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="91.0" y="487" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="115.5" y="483" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">wheel</text>
+<text x="308.0" y="483" font-size="13.5" fill="#1f2328">Scroll sideways</text>
 <line x1="28" y1="494.5" x2="608" y2="494.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<text x="28" y="532" font-size="15" font-weight="600" fill="#3d74d6">Tabs and window</text>
-<rect x="28.0" y="550" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="569" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="48.8" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="73.6" y="565" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="550" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="569" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="94.6" y="565" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">W</text>
-<text x="308.0" y="565" font-size="13.5" fill="#1f2328">Close the tab</text>
-<line x1="28" y1="576.5" x2="608" y2="576.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="28.0" y="498" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="517" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="45.1" y="513" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
+<text x="308.0" y="513" font-size="13.5" fill="#1f2328">Clear the selection, close a comment</text>
+<line x1="28" y1="524.5" x2="608" y2="524.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<text x="28" y="562" font-size="15" font-weight="600" fill="#3d74d6">Tabs and window</text>
 <rect x="28.0" y="580" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="599" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
 <text x="48.8" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
 <text x="73.6" y="595" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="580" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="599" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="108.1" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="136.6" y="595" fill="#59636e" font-size="11">+</text>
-<rect x="146.6" y="580" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="146.6" y="599" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="157.6" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">T</text>
-<text x="308.0" y="595" font-size="13.5" fill="#1f2328">Reopen the last closed tab</text>
+<rect x="83.6" y="580" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="599" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="94.6" y="595" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">W</text>
+<text x="308.0" y="595" font-size="13.5" fill="#1f2328">Close the tab</text>
 <line x1="28" y1="606.5" x2="608" y2="606.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="610" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="629" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
 <text x="48.8" y="625" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
 <text x="73.6" y="625" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="610" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="629" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="100.7" y="625" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
-<text x="308.0" y="625" font-size="13.5" fill="#1f2328">Next tab</text>
+<rect x="83.6" y="610" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="629" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="108.1" y="625" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="136.6" y="625" fill="#59636e" font-size="11">+</text>
+<rect x="146.6" y="610" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="146.6" y="629" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="157.6" y="625" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">T</text>
+<text x="308.0" y="625" font-size="13.5" fill="#1f2328">Reopen the last closed tab</text>
 <line x1="28" y1="636.5" x2="608" y2="636.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="640" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="659" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
 <text x="48.8" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
 <text x="73.6" y="655" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="640" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="659" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="108.1" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="136.6" y="655" fill="#59636e" font-size="11">+</text>
-<rect x="146.6" y="640" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="146.6" y="659" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="163.7" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
-<text x="308.0" y="655" font-size="13.5" fill="#1f2328">Previous tab</text>
+<rect x="83.6" y="640" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="659" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="100.7" y="655" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
+<text x="308.0" y="655" font-size="13.5" fill="#1f2328">Next tab</text>
 <line x1="28" y1="666.5" x2="608" y2="666.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <rect x="28.0" y="670" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="28.0" y="689" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
 <text x="48.8" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
 <text x="73.6" y="685" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="670" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="689" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="94.6" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">1</text>
-<text x="308.0" y="685" font-size="13.5" fill="#1f2328">Library tab</text>
+<rect x="83.6" y="670" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="689" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="108.1" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="136.6" y="685" fill="#59636e" font-size="11">+</text>
+<rect x="146.6" y="670" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="146.6" y="689" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="163.7" y="685" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Tab</text>
+<text x="308.0" y="685" font-size="13.5" fill="#1f2328">Previous tab</text>
 <line x1="28" y1="696.5" x2="608" y2="696.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="700" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="719" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="45.1" y="715" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F11</text>
-<text x="308.0" y="715" font-size="13.5" fill="#1f2328">Full screen</text>
+<rect x="28.0" y="700" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="719" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="48.8" y="715" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="73.6" y="715" fill="#59636e" font-size="11">+</text>
+<rect x="83.6" y="700" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="719" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="94.6" y="715" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">1</text>
+<text x="308.0" y="715" font-size="13.5" fill="#1f2328">Library tab</text>
 <line x1="28" y1="726.5" x2="608" y2="726.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="730" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="749" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
-<text x="48.8" y="745" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
-<text x="73.6" y="745" fill="#59636e" font-size="11">+</text>
-<rect x="83.6" y="730" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="83.6" y="749" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="108.1" y="745" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
-<text x="136.6" y="745" fill="#59636e" font-size="11">+</text>
-<rect x="146.6" y="730" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="146.6" y="749" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
-<text x="157.6" y="745" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">S</text>
-<text x="308.0" y="745" font-size="13.5" fill="#1f2328">Sync now</text>
+<rect x="28.0" y="730" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="749" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="45.1" y="745" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">F11</text>
+<text x="308.0" y="745" font-size="13.5" fill="#1f2328">Full screen</text>
 <line x1="28" y1="756.5" x2="608" y2="756.5" stroke="#d1d9e0" stroke-width="0.6"/>
-<rect x="28.0" y="760" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
-<rect x="28.0" y="779" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
-<text x="45.1" y="775" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
-<text x="308.0" y="775" font-size="13.5" fill="#1f2328">In a field: the keys back to the page or list</text>
+<rect x="28.0" y="760" width="41.6" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="779" width="41.6" height="2" rx="1" fill="#c4ccd4"/>
+<text x="48.8" y="775" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Ctrl</text>
+<text x="73.6" y="775" fill="#59636e" font-size="11">+</text>
+<rect x="83.6" y="760" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="83.6" y="779" width="49.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="108.1" y="775" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Shift</text>
+<text x="136.6" y="775" fill="#59636e" font-size="11">+</text>
+<rect x="146.6" y="760" width="22.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="146.6" y="779" width="22.0" height="2" rx="1" fill="#c4ccd4"/>
+<text x="157.6" y="775" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">S</text>
+<text x="308.0" y="775" font-size="13.5" fill="#1f2328">Sync now</text>
 <line x1="28" y1="786.5" x2="608" y2="786.5" stroke="#d1d9e0" stroke-width="0.6"/>
+<rect x="28.0" y="790" width="34.2" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
+<rect x="28.0" y="809" width="34.2" height="2" rx="1" fill="#c4ccd4"/>
+<text x="45.1" y="805" text-anchor="middle" font-family="ui-monospace, 'SF Mono', 'Cascadia Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#1f2328">Esc</text>
+<text x="308.0" y="805" font-size="13.5" fill="#1f2328">In a field: the keys back to the page or list</text>
+<line x1="28" y1="816.5" x2="608" y2="816.5" stroke="#d1d9e0" stroke-width="0.6"/>
 <text x="664" y="90" font-size="15" font-weight="600" fill="#3d74d6">Library</text>
 <rect x="664.0" y="108" width="49.0" height="21" rx="4" fill="#f6f8fa" stroke="#c4ccd4"/>
 <rect x="664.0" y="127" width="49.0" height="2" rx="1" fill="#c4ccd4"/>

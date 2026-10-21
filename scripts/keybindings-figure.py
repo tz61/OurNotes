@@ -11,6 +11,7 @@ SECTIONS = [
     ("PDF reader, on the page", [
         ("1 … 4", "Select, highlight, underline, note"),
         ("5 … 8", "Text, area, draw, eraser"),
+        ("Q / W / E", "Your three colours (set with the gear)"),
         ("F", "Fit width; F again (within 10 s): fit page"),
         ("H", "Back to the library"),
         ("[ / ]", "Show or hide the left / right panel"),

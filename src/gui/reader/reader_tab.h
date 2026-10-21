@@ -13,6 +13,7 @@ class QLabel;
 class QLineEdit;
 class QSlider;
 class QListWidget;
+class QMenu;
 class QSplitter;
 class QStackedWidget;
 class QToolBar;
@@ -83,6 +84,8 @@ private:
     // Annotation changes go through the undo stack (Ctrl+Z / Ctrl+Y, 50 steps, per tab).
     void pushAnnotationEdit(std::optional<Json> before, std::optional<Json> after, const QString& text);
     bool forwardUndoToText(bool undo);
+    void useColor(const QString& color);  // for the annotations made from now on
+    void updatePalette();
     QString citationFor(const Json& annotation) const;
 
     int64_t libraryId_;
@@ -109,6 +112,8 @@ private:
     SearchField* find_;
     QLabel* findStatus_;
     QToolButton* colorButton_;
+    QToolButton* paletteButton_ = nullptr;  // the colours of Q, W and E
+    QMenu* paletteMenus_[3] = {};
     QActionGroup* tools_;
     QTimer reloadTimer_;
     QTimer positionTimer_;  // the synced last page, after page changes

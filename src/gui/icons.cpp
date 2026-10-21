@@ -1,6 +1,7 @@
 #include "gui/icons.h"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QHash>
 #include <QIconEngine>
 #include <QPixmapCache>
@@ -8,6 +9,9 @@
 #include <QPainterPath>
 #include <QPalette>
 #include <QSvgRenderer>
+#include <QtMath>
+
+#include <algorithm>
 
 namespace on::gui {
 
@@ -236,6 +240,77 @@ QIcon colorIcon(const QString& color, int size, bool round)
         p.drawEllipse(r);
     else
         p.drawRoundedRect(r, 2, 2);
+    return QIcon(pm);
+}
+
+QCursor iconCursor(const QString& name, QPoint hotSpot, qreal dpr)
+{
+    static QHash<QString, QCursor> cache;
+    auto key = QString("%1@%2").arg(name).arg(dpr);
+    if (auto it = cache.find(key); it != cache.end())
+        return *it;
+    constexpr int kSize = 24;  // as the icons are drawn
+    int px = qCeil(kSize * dpr);
+    QImage ink(px, px, QImage::Format_ARGB32_Premultiplied);
+    ink.fill(Qt::transparent);
+    {
+        QSvgRenderer svg(QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")
+                             .arg(QString(sources().value(name)).replace("CUR", "#202020"))
+                             .toUtf8());
+        QPainter p(&ink);
+        p.setRenderHint(QPainter::Antialiasing);
+        svg.render(&p, QRectF(0, 0, px, px));
+    }
+    QImage image(ink.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    {
+        QPainter p(&image);
+        int w = std::max(1, qRound(1.2 * dpr));  // the rim: the icon spread, then white
+        for (int dx = -w; dx <= w; ++dx)
+            for (int dy = -w; dy <= w; ++dy)
+                if (dx * dx + dy * dy <= w * w)
+                    p.drawImage(dx, dy, ink);
+        p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        p.fillRect(image.rect(), Qt::white);
+        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        p.drawImage(0, 0, ink);
+    }
+    auto pm = QPixmap::fromImage(image);
+    pm.setDevicePixelRatio(dpr);
+    // X11 takes the hot spot in the image's own pixels; Windows, macOS and Wayland in the
+    // window's (Qt's platform plugins, 6.8)
+    if (QGuiApplication::platformName() == "xcb")
+        hotSpot = (QPointF(hotSpot) * dpr).toPoint();
+    QCursor cursor(pm, hotSpot.x(), hotSpot.y());
+    cache.insert(key, cursor);
+    return cursor;
+}
+
+QIcon paletteIcon(const QStringList& colors, int size)
+{
+    QPixmap pm(size * 3, size * 3);
+    pm.setDevicePixelRatio(3);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.scale(size / 24.0, size / 24.0);
+    p.translate(12, 12);
+    QColor ink = QApplication::palette().color(QPalette::WindowText);
+    p.setPen(Qt::NoPen);
+    p.setBrush(ink);
+    for (int i = 0; i < 8; ++i) {  // the teeth
+        p.save();
+        p.rotate(i * 45);
+        p.drawRoundedRect(QRectF(-1.8, -11.6, 3.6, 4.5), 0.8, 0.8);
+        p.restore();
+    }
+    p.drawEllipse(QPointF(0, 0), 9, 9);
+    p.setPen(QPen(ink, 0.7));
+    QRectF inside(-6.8, -6.8, 13.6, 13.6);
+    for (int i = 0; i < 3; ++i) {  // centred at 150°, 30° and 270°
+        p.setBrush(QColor(colors.value(i)));
+        p.drawPie(inside, (210 - i * 120) * 16, -120 * 16);
+    }
     return QIcon(pm);
 }
 

@@ -2,6 +2,7 @@
 
 #include <QActionGroup>
 #include <QAction>
+#include <QColorDialog>
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QTextEdit>
@@ -432,21 +433,56 @@ void ReaderTab::buildToolbar()
         connect(a, &QAction::triggered, this, [this, tool = d.tool] { setTool(tool); });
     }
     colorButton_ = new QToolButton(tb);
+    colorButton_->setObjectName("annotationColor");
     colorButton_->setPopupMode(QToolButton::InstantPopup);
-    colorButton_->setToolTip(tr("Annotation colour"));
+    colorButton_->setToolTip(tr("Annotation colour (Q, W, E: your three)"));
     auto* colors = new QMenu(colorButton_);
     for (auto& c : schema::kAnnotationColors)
-        colors->addAction(colorIcon(c.hex, 16), tr(c.name), this, [this, hex = QString(c.hex)] {
-            view_->setColor(hex);
-            colorButton_->setIcon(colorIcon(hex, 18));
-            AppContext::get().config().set("/reader/color", ss(hex));
-        });
+        colors->addAction(colorIcon(c.hex, 16), tr(c.name), this, [this, hex = QString(c.hex)] { useColor(hex); });
     colorButton_->setMenu(colors);
     auto color = qs(AppContext::get().config().get("/reader/color", "#ffd400").get<std::string>());
     view_->setColor(color);
     colorButton_->setIcon(colorIcon(color, 18));
     colorButton_->setEnabled(editable_);
     tb->addWidget(colorButton_);
+    // Q, W and E: three colours of one's own, the same in every PDF, chosen here
+    paletteButton_ = new QToolButton(tb);
+    paletteButton_->setObjectName("colorPalette");
+    paletteButton_->setPopupMode(QToolButton::InstantPopup);
+    auto* palette = new QMenu(paletteButton_);
+    const char* const keys[] = {"Q", "W", "E"};
+    for (int i = 0; i < 3; ++i) {
+        auto setColor = [i](const QString& hex) {
+            auto colors = annotationPalette();
+            colors[i] = hex;
+            setAnnotationPalette(colors);
+        };
+        auto* menu = paletteMenus_[i] = palette->addMenu(QString());
+        menu->setObjectName(QString("palette") + keys[i]);
+        for (auto& c : schema::kAnnotationColors) {
+            auto* a = menu->addAction(colorIcon(c.hex, 16), tr(c.name), this, [setColor, hex = QString(c.hex)] {
+                setColor(hex);
+            });
+            a->setCheckable(true);
+            a->setData(QString(c.hex));
+        }
+        menu->addSeparator();
+        menu->addAction(tr("Other Colour…"), this, [this, i, key = QString(keys[i]), setColor] {
+            auto c = QColorDialog::getColor(QColor(annotationPalette()[i]), this, tr("Colour of %1").arg(key));
+            if (c.isValid())
+                setColor(c.name());
+        });
+    }
+    palette->addSeparator();
+    palette->addAction(tr("Back to Yellow, Red and Green"), this,
+                       [] { setAnnotationPalette({"#ffd400", "#ff6666", "#5fb236"}); });
+    paletteButton_->setMenu(palette);
+    tb->addWidget(paletteButton_);
+    updatePalette();
+    connect(&AppContext::get(), &AppContext::annotationPaletteChanged, this, &ReaderTab::updatePalette);
+    connect(&AppContext::get(), &AppContext::appearanceChanged, this, &ReaderTab::updatePalette);  // the gear's ink
+    connect(view_, &PdfView::paletteColorRequested, this,
+            [this](int i) { useColor(annotationPalette().value(i)); });
 
     auto* spacer = new QWidget(tb);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -517,6 +553,35 @@ void ReaderTab::buildToolbar()
         chooseInfoNotesTab(contextTabs_, tab);
     });
     connect(view_, &PdfView::darkPagesToggleRequested, this, [this] { setDarkPdfPages(!view_->darkPages()); });
+}
+
+void ReaderTab::useColor(const QString& color)
+{
+    view_->setColor(color);
+    colorButton_->setIcon(colorIcon(color, 18));
+    AppContext::get().config().set("/reader/color", ss(color));
+}
+
+void ReaderTab::updatePalette()
+{
+    auto colors = annotationPalette();
+    auto name = [](const QString& hex) {
+        for (auto& c : schema::kAnnotationColors)
+            if (QColor(c.hex) == QColor(hex))
+                return tr(c.name);
+        return QColor(hex).name();
+    };
+    paletteButton_->setIcon(paletteIcon(colors, 18));
+    paletteButton_->setToolTip(tr("Q, W and E on a page: %1, %2 and %3, in every PDF. Click to change them.")
+                                   .arg(name(colors[0]), name(colors[1]), name(colors[2])));
+    const char* const keys[] = {"Q", "W", "E"};
+    for (int i = 0; i < 3; ++i) {
+        paletteMenus_[i]->setTitle(tr("%1: %2").arg(keys[i], name(colors[i])));
+        paletteMenus_[i]->setIcon(colorIcon(colors[i], 16));
+        for (auto* a : paletteMenus_[i]->actions())
+            if (a->isCheckable())
+                a->setChecked(QColor(a->data().toString()) == QColor(colors[i]));
+    }
 }
 
 void ReaderTab::updateDarkPagesAction()

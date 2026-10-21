@@ -114,6 +114,7 @@ signals:
     void panelToggleRequested(bool right);  // [ and ]: the panel on the left, on the right
     void contextTabRequested(int tab);      // I, N: Info (0) or Notes (1) beside the page
     void darkPagesToggleRequested();        // L: dark pages or the PDF's own colours
+    void paletteColorRequested(int index);  // Q, W, E: the first, second, third colour of one's own
 
 protected:
     void paintEvent(QPaintEvent* e) override;

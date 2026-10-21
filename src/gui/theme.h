@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QImage>
 #include <QString>
+#include <QStringList>
 
 #include "core/config.h"
 #include "pdf/document.h"
@@ -35,6 +36,10 @@ void setDarkPdfPages(bool dark);  // for the current theme; every PDF follows
 // shared by all PDFs: "/reader/pageTone/light" and "/reader/pageTone/dark".
 int pageTone(bool darkPages);
 void setPageTone(bool darkPages, int tone);
+// The three colours of Q, W and E on a page (yellow, red and green to begin with), the
+// same for all PDFs: "/reader/palette", in this computer's settings only.
+QStringList annotationPalette();
+void setAnnotationPalette(const QStringList& colors);  // every PDF follows
 // The gray the pages are tinted with at that tone: multiplied onto light pages (white
 // paper becomes it, black text stays), screened onto dark ones (black paper becomes it).
 QColor pageToneColor(bool darkPages, int tone);

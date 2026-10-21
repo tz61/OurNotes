@@ -32,6 +32,8 @@ signals:
     void appearanceChanged();
     // The PDFs' page colour (pageTone) moved: every PDF repaints, without rendering again.
     void pageToneChanged();
+    // The colours of Q, W and E (annotationPalette) changed.
+    void annotationPaletteChanged();
 
 private:
     Config& config_;

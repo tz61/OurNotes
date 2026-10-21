@@ -176,6 +176,28 @@ void setPageTone(bool darkPages, int tone)
     emit ctx.pageToneChanged();
 }
 
+QStringList annotationPalette()
+{
+    QStringList colors = {"#ffd400", "#ff6666", "#5fb236"};  // as kAnnotationColors begins
+    auto* ctx = AppContext::tryGet();
+    auto stored = ctx ? ctx->config().get("/reader/palette", Json()) : Json();
+    for (int i = 0; stored.is_array() && i < 3 && i < (int)stored.size(); ++i)
+        if (stored[i].is_string() && QColor(qs(stored[i].get<std::string>())).isValid())
+            colors[i] = qs(stored[i].get<std::string>());
+    return colors;
+}
+
+void setAnnotationPalette(const QStringList& colors)
+{
+    auto& ctx = AppContext::get();
+    Json list = Json::array();
+    for (auto& c : colors.mid(0, 3))
+        list.push_back(ss(QColor(c).name()));
+    ctx.config().set("/reader/palette", list);
+    ctx.config().save();
+    emit ctx.annotationPaletteChanged();
+}
+
 QColor pageToneColor(bool darkPages, int tone)
 {
     constexpr int kGray = 128;  // where both ends meet

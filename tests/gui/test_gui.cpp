@@ -810,6 +810,110 @@ TEST_CASE("reader: [ and ] show or hide the panels, I and N open Info and Notes"
     CHECK(view->hasFocus());  // the page keeps the keys
 }
 
+TEST_CASE("reader: Q, W and E give three colours of one's own, set with the gear, in every PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    QStringList keys;
+    for (auto name : {"one.pdf", "two.pdf"}) {
+        auto file = tmp.path / name;
+        writeSamplePdf(file);
+        keys << qs(jstr(env.library.importAttachment(env.lib, file), "key"));
+    }
+    ReaderTab tab(env.lib, keys[0]), other(env.lib, keys[1]);
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    CHECK(annotationPalette() == QStringList{"#ffd400", "#ff6666", "#5fb236"});  // yellow, red, green
+    for (auto [key, color] : {std::pair{Qt::Key_W, "#ff6666"}, {Qt::Key_E, "#5fb236"}, {Qt::Key_Q, "#ffd400"}}) {
+        QTest::keyClick(view, key);
+        CHECK(view->color() == color);
+        CHECK(env.config.get("/reader/color", "").get<std::string>() == color);  // kept, as when picked
+    }
+
+    // the gear: W becomes blue, here and in the other PDF at once
+    auto paletteMenu = [](ReaderTab& t, const char* name) {
+        return t.findChild<QToolButton*>("colorPalette")->menu()->findChild<QMenu*>(name);
+    };
+    REQUIRE(paletteMenu(tab, "paletteW"));
+    CHECK(paletteMenu(tab, "paletteW")->title() == "W: Red");
+    QAction* blue = nullptr;
+    for (auto* a : paletteMenu(tab, "paletteW")->actions())
+        if (a->text() == "Blue")
+            blue = a;
+    REQUIRE(blue);
+    blue->trigger();
+    CHECK(env.config.get("/reader/palette", Json())[1] == "#2ea8e5");
+    CHECK(paletteMenu(tab, "paletteW")->title() == "W: Blue");
+    CHECK(blue->isChecked());
+    CHECK(paletteMenu(other, "paletteW")->title() == "W: Blue");
+    other.view()->setFocus();
+    QTest::keyClick(other.view(), Qt::Key_W);
+    CHECK(other.view()->color() == "#2ea8e5");
+
+    // typed into a field, a q is just a q
+    auto* find = tab.findChild<SearchField*>("findInDocument");
+    find->setFocus();
+    QTest::keyClick(find, Qt::Key_W);
+    CHECK(find->text() == "w");
+    CHECK(view->color() == "#ffd400");
+
+    // and back to yellow, red and green
+    for (auto* a : tab.findChild<QToolButton*>("colorPalette")->menu()->actions())
+        if (a->text() == "Back to Yellow, Red and Green")
+            a->trigger();
+    CHECK(annotationPalette() == QStringList{"#ffd400", "#ff6666", "#5fb236"});
+    CHECK(paletteMenu(other, "paletteW")->title() == "W: Red");
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        tab.findChild<QToolBar*>()->grab().save(dir + "/reader-toolbar.png");
+}
+
+TEST_CASE("reader: on a page the tool's icon is the cursor; Select keeps the usual ones")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    ReaderTab tab(env.lib, qs(jstr(env.library.importAttachment(env.lib, file), "key")));
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    QPoint onPage = view->pageToViewport(0, QPointF(400, 600)).toPoint();
+    REQUIRE(view->viewport()->rect().contains(onPage));
+    auto cursorAt = [&](QPoint at) {
+        QTest::mouseMove(view->viewport(), at + QPoint(1, 0));
+        QTest::mouseMove(view->viewport(), at);
+        return view->viewport()->cursor();
+    };
+    CHECK(cursorAt(onPage).shape() == Qt::ArrowCursor);
+    std::set<qint64> icons;
+    for (auto key : {Qt::Key_2, Qt::Key_3, Qt::Key_4, Qt::Key_5, Qt::Key_6, Qt::Key_7, Qt::Key_8}) {
+        QTest::keyClick(view, key);
+        auto cursor = cursorAt(onPage);
+        CHECK(cursor.shape() == Qt::BitmapCursor);
+        CHECK(!cursor.pixmap().isNull());
+        icons.insert(cursor.pixmap().cacheKey());
+    }
+    CHECK(icons.size() == 7);  // each its own
+    QTest::keyClick(view, Qt::Key_2);
+    CHECK(cursorAt(onPage).hotSpot() == QPoint(3, 21));  // the marker's tip
+    // off the pages, and with Select: as before
+    CHECK(cursorAt(QPoint(2, 2)).shape() == Qt::ArrowCursor);
+    QTest::keyClick(view, Qt::Key_1);
+    CHECK(cursorAt(onPage).shape() == Qt::ArrowCursor);
+    CHECK(cursorAt(charCenter(*view, 1).toPoint()).shape() == Qt::IBeamCursor);
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
+        QTest::keyClick(view, Qt::Key_2);
+        cursorAt(onPage).pixmap().save(dir + "/cursor-highlight.png");
+    }
+}
+
 TEST_CASE("reader: annotation cards stay idle and follow the theme")
 {
     app();

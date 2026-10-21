@@ -1123,6 +1123,31 @@ QRectF PdfView::resizedBounds(const AnnView& a) const
     return r;
 }
 
+// A tool's cursor: its icon in the toolbar, the hot spot where it acts (the marker's tip,
+// the start of the underline and of the pen's line, the note's middle, the corner of the
+// text box and of the area, the eraser's edge).
+static QCursor toolCursor(ReaderTool tool, qreal dpr)
+{
+    switch (tool) {
+    case ReaderTool::Highlight:
+        return iconCursor("tool-highlight", {3, 21}, dpr);
+    case ReaderTool::Underline:
+        return iconCursor("tool-underline", {5, 20}, dpr);
+    case ReaderTool::Note:
+        return iconCursor("tool-note", {12, 12}, dpr);
+    case ReaderTool::Text:
+        return iconCursor("tool-text", {5, 5}, dpr);
+    case ReaderTool::Area:
+        return iconCursor("tool-area", {4, 4}, dpr);
+    case ReaderTool::Ink:
+        return iconCursor("tool-ink", {3, 19}, dpr);
+    case ReaderTool::Eraser:
+        return iconCursor("tool-eraser", {5, 19}, dpr);
+    default:
+        return Qt::ArrowCursor;
+    }
+}
+
 static Qt::CursorShape resizeCursor(int edges)
 {
     bool h = edges & (1 | 4), v = edges & (2 | 8);
@@ -1418,15 +1443,9 @@ void PdfView::updateCursor(QPointF pos)
                 shape = Qt::IBeamCursor;
             break;
         }
-        case ReaderTool::Highlight:
-        case ReaderTool::Underline:
-            shape = Qt::IBeamCursor;
-            break;
-        case ReaderTool::Eraser:
-            shape = Qt::PointingHandCursor;
-            break;
         default:
-            shape = Qt::CrossCursor;
+            viewport()->setCursor(toolCursor(tool_, viewport()->devicePixelRatioF()));
+            return;
         }
     }
     viewport()->setCursor(shape);
@@ -1797,6 +1816,12 @@ void PdfView::keyPressEvent(QKeyEvent* e)
             return;
         case Qt::Key_L:
             emit darkPagesToggleRequested();
+            return;
+        case Qt::Key_Q:
+        case Qt::Key_W:
+        case Qt::Key_E:
+            if (editable_)
+                emit paletteColorRequested(e->key() == Qt::Key_Q ? 0 : e->key() == Qt::Key_W ? 1 : 2);
             return;
         default:
             break;
