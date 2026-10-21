@@ -83,6 +83,7 @@ std::optional<PdfMetadataMatch> retrieveMetadataForPdf(const fs::path& path,
     for (int i = 0; i < std::min(2, doc->pageCount()); ++i)
         text += doc->pageText(i) + "\n";
     text += doc->metadata("info:Subject") + "\n" + doc->metadata("info:Keywords");
+    std::string failure;  // of a service that did not answer (rather than knew nothing)
     for (auto& id : findIdentifiersInText(text)) {
         report("Looking up " + kindLabel(id.kind) + " " + id.value);
         try {
@@ -90,15 +91,25 @@ std::optional<PdfMetadataMatch> retrieveMetadataForPdf(const fs::path& path,
             // DOIs of arXiv papers are answered by arXiv
             auto service = jstr(item, "libraryCatalog") == "arXiv.org" ? "arXiv" : serviceFor(id.kind);
             return PdfMetadataMatch{item, kindLabel(id.kind) + " " + id.value + " \u00b7 " + service};
-        } catch (const MetadataError&) {
+        } catch (const MetadataNotFound&) {
+        } catch (const MetadataError& e) {
+            if (failure.empty())
+                failure = e.what();
         }
     }
     auto title = titleFromDocument(*doc);
     if (title.size() > 10) {
         report("Searching Crossref for the title");
-        if (auto hit = lookupByTitle(title))
-            return PdfMetadataMatch{*hit, "title search \u00b7 Crossref"};
+        try {
+            if (auto hit = lookupByTitle(title))
+                return PdfMetadataMatch{*hit, "title search \u00b7 Crossref"};
+        } catch (const MetadataError& e) {
+            if (failure.empty())
+                failure = e.what();
+        }
     }
+    if (!failure.empty())  // not "nothing found": that it could not be looked up, and why
+        throw MetadataError(failure);
     return std::nullopt;
 }
 

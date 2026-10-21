@@ -16,6 +16,12 @@ public:
     using on::Error::Error;
 };
 
+// The service knows nothing under that identifier (rather than failing to answer).
+class MetadataNotFound : public MetadataError {
+public:
+    using MetadataError::MetadataError;
+};
+
 struct Identifier {
     std::string kind;   // "doi", "arxiv", "isbn", "pmid"
     std::string value;  // DOI as written, arXiv id without version, ISBN digits, PMID digits
@@ -46,6 +52,10 @@ std::optional<Json> lookupByTitle(const std::string& title, const std::string& a
 double titleSimilarity(const std::string& a, const std::string& b);
 
 std::string arxivPdfUrl(const std::string& arxivId);
+
+// An arXiv abstract page (arxiv.org/abs/ID) as an item: its citation_* tags, the primary
+// subject, comments and journal reference. Throws MetadataError if it is not one.
+Json arxivAbsPageToItem(const std::string& html, const std::string& requestedId);
 
 // Streams `url` to `dest` (via dest + ".part", renamed on success). With requirePdf the
 // body must start with the %PDF magic. Throws MetadataError.

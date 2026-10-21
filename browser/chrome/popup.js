@@ -98,8 +98,23 @@ async function readPage(tab) {
   } catch (e) {
     // a page scripts may not run in: its address and title will do
   }
-  if (/\.pdf([?#]|$)/i.test(tab.url)) return {item: null, pdfUrl: tab.url, isPdf: true, title: tab.title};
+  if (/\.pdf([?#]|$)/i.test(tab.url) || ourNotesArxivAbs(tab.url))
+    return {item: null, pdfUrl: tab.url, isPdf: true, title: tab.title};
   return {item: {itemType: 'webpage', title: tab.title, url: tab.url}, pdfUrl: '', isPdf: false};
+}
+
+// An arXiv PDF: what its abstract page says (as when saved from there), with this PDF.
+async function arxivPaper(pdfUrl) {
+  const abs = ourNotesArxivAbs(pdfUrl);
+  if (!abs) return null;
+  try {
+    const res = await fetch(abs, {credentials: 'include'});
+    if (!res.ok) return null;
+    const page = ourNotesExtract(new DOMParser().parseFromString(await res.text(), 'text/html'), abs);
+    return page.item && page.item.itemType === 'preprint' ? {...page, pdfUrl} : null;
+  } catch (e) {
+    return null;  // saved as a PDF then, and OurNotes looks up its details
+  }
 }
 
 async function save() {
@@ -116,7 +131,8 @@ async function save() {
     problem('OurNotes is not running, or its browser connector is off (Preferences → Advanced). Start it and try again.');
     return;
   }
-  const page = await readPage(tab);
+  let page = await readPage(tab);
+  if (page.isPdf) page = (await arxivPaper(page.pdfUrl)) || page;
   try {
     if (page.isPdf) {
       pdfStatus('Saving the PDF…');

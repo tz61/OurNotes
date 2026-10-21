@@ -311,9 +311,9 @@ std::string joinNonEmptyWords(const std::vector<std::string>& parts)
     return out;
 }
 
-MetadataError notFound(const std::string& what)
+MetadataNotFound notFound(const std::string& what)
 {
-    return MetadataError("No metadata found for " + what + ".");
+    return MetadataNotFound("No metadata found for " + what + ".");
 }
 
 // =================================================================================
@@ -561,6 +561,43 @@ std::string xmlChildText(std::string_view xml, const std::string& tag)
     return els.empty() ? std::string() : xmlText(els[0].inner);
 }
 
+// A paper as arXiv describes it, from its API or its abstract page.
+struct ArxivPaper {
+    std::string id;  // without the version
+    std::string title;
+    std::vector<std::string> authors;
+    std::string abstract;
+    std::string date;  // of the first version, yyyy-mm-dd
+    std::string primary;  // the primary category, e.g. cs.CV
+    std::string journalRef;
+    std::string publishedDoi;
+    std::string comment;
+};
+
+Json arxivItem(const ArxivPaper& p)
+{
+    Json item = newItem("preprint");
+    setField(item, "title", p.title);
+    for (auto& a : p.authors)
+        addCreator(item, "author", splitName(a));
+    setField(item, "abstractNote", collapseWhitespace(p.abstract));
+    setField(item, "date", p.date);
+    setField(item, "url", "https://arxiv.org/abs/" + p.id);
+    setField(item, "DOI", "10.48550/arXiv." + p.id);
+    setField(item, "repository", "arXiv");
+    setField(item, "archiveID", "arXiv:" + p.id);
+    setField(item, "libraryCatalog", "arXiv.org");
+    setField(item, "accessDate", nowIso());
+    appendExtra(item, "arXiv:" + p.id + (p.primary.empty() ? "" : " [" + p.primary + "]"));
+    if (!p.journalRef.empty())
+        appendExtra(item, "Journal reference: " + p.journalRef);
+    if (!p.publishedDoi.empty())
+        appendExtra(item, "Published version DOI: " + p.publishedDoi);
+    if (!p.comment.empty())
+        item["_notes"] = Json::array({"<p>Comment: " + htmlEscape(p.comment) + "</p>"});
+    return finishItem(item);
+}
+
 Json arxivToItem(const std::string& xml, const std::string& requested)
 {
     auto entries = xmlElements(xml, "entry");
@@ -568,38 +605,46 @@ Json arxivToItem(const std::string& xml, const std::string& requested)
         throw notFound("arXiv ID " + requested);
     const auto& e = entries[0].inner;
     auto idUrl = xmlChildText(e, "id");
-    auto title = xmlChildText(e, "title");
-    if (idUrl.find("/api/errors") != std::string::npos || title == "Error" || title.empty())
+    ArxivPaper p;
+    p.title = xmlChildText(e, "title");
+    if (idUrl.find("/api/errors") != std::string::npos || p.title == "Error" || p.title.empty())
         throw notFound("arXiv ID " + requested);
     auto abs = idUrl.find("/abs/");
-    auto id = stripArxivVersion(abs == std::string::npos ? requested : idUrl.substr(abs + 5));
-
-    Json item = newItem("preprint");
-    setField(item, "title", title);
+    p.id = stripArxivVersion(abs == std::string::npos ? requested : idUrl.substr(abs + 5));
     for (auto& a : xmlElements(e, "author"))
-        addCreator(item, "author", splitName(xmlChildText(a.inner, "name")));
-    setField(item, "abstractNote", xmlChildText(e, "summary"));
-    setField(item, "date", xmlChildText(e, "published").substr(0, 10));
-    setField(item, "url", "https://arxiv.org/abs/" + id);
-    setField(item, "DOI", "10.48550/arXiv." + id);
-    setField(item, "repository", "arXiv");
-    setField(item, "archiveID", "arXiv:" + id);
-    setField(item, "libraryCatalog", "arXiv.org");
-    setField(item, "accessDate", nowIso());
-
+        p.authors.push_back(xmlChildText(a.inner, "name"));
+    p.abstract = xmlChildText(e, "summary");
+    p.date = xmlChildText(e, "published").substr(0, 10);
     auto categories = xmlElements(e, "arxiv:primary_category");
-    auto primary = categories.empty() ? std::string() : xmlAttr(categories[0].attrs, "term");
-    appendExtra(item, "arXiv:" + id + (primary.empty() ? "" : " [" + primary + "]"));
-    auto journalRef = xmlChildText(e, "arxiv:journal_ref");
-    if (!journalRef.empty())
-        appendExtra(item, "Journal reference: " + journalRef);
-    auto publishedDoi = xmlChildText(e, "arxiv:doi");
-    if (!publishedDoi.empty())
-        appendExtra(item, "Published version DOI: " + publishedDoi);
-    auto comment = xmlChildText(e, "arxiv:comment");
-    if (!comment.empty())
-        item["_notes"] = Json::array({"<p>Comment: " + htmlEscape(comment) + "</p>"});
-    return finishItem(item);
+    p.primary = categories.empty() ? std::string() : xmlAttr(categories[0].attrs, "term");
+    p.journalRef = xmlChildText(e, "arxiv:journal_ref");
+    p.publishedDoi = xmlChildText(e, "arxiv:doi");
+    p.comment = xmlChildText(e, "arxiv:comment");
+    return arxivItem(p);
+}
+
+// The text of the cell after the one labelled `label` ("Comments:") in the table of an
+// abstract page.
+std::string arxivTableCell(std::string_view html, const std::string& label)
+{
+    auto at = html.find("tablecell label\">" + label + "</td>");
+    if (at == std::string_view::npos)
+        return {};
+    auto open = html.find("<td", html.find("</td>", at));
+    auto start = open == std::string_view::npos ? open : html.find('>', open);
+    auto end = start == std::string_view::npos ? start : html.find("</td>", start);
+    return end == std::string_view::npos ? std::string() : stripTags(html.substr(start + 1, end - start - 1));
+}
+
+// API rate limit or not, every paper has an abstract page
+Json lookupArxivAbsPage(const std::string& id)
+{
+    auto r = httpGet("https://arxiv.org/abs/" + encodePath(id), "text/html");
+    if (r.status == 404)
+        throw notFound("arXiv ID " + id);
+    if (r.status != 200)
+        throw MetadataError("arXiv returned an error (HTTP " + std::to_string(r.status) + ").");
+    return arxivAbsPageToItem(r.body, id);
 }
 
 Json lookupArxiv(const std::string& rawId)
@@ -607,6 +652,14 @@ Json lookupArxiv(const std::string& rawId)
     auto id = rawId;
     if (startsWith(toLower(id), "arxiv:"))
         id = id.substr(6);
+    // arXiv's API is often slow and rate-limited (HTTP 429, at times only after 30 s);
+    // the abstract page answers at once, with the same. The API when the page will not do.
+    try {
+        return lookupArxivAbsPage(id);
+    } catch (const MetadataNotFound&) {
+        throw;
+    } catch (const MetadataError&) {
+    }
     auto r = httpGet("https://export.arxiv.org/api/query?id_list=" + urlEncode(id), "application/atom+xml");
     if (r.status == 429 || r.status == 503)
         throw MetadataError("arXiv is busy right now. Please try again in a moment.");
@@ -1042,6 +1095,47 @@ std::optional<Json> lookupByTitle(const std::string& title, const std::string& a
     if (!best || bestScore < 0.9)
         return std::nullopt;
     return crossrefToItem(*best);
+}
+
+Json arxivAbsPageToItem(const std::string& html, const std::string& requestedId)
+{
+    ArxivPaper p;
+    std::string arxivId;
+    for (size_t pos = 0; (pos = html.find("<meta", pos)) != std::string::npos;) {
+        auto end = html.find('>', pos);
+        if (end == std::string::npos)
+            break;
+        auto attrs = std::string_view(html).substr(pos + 5, end - pos - 5);
+        pos = end;
+        auto name = toLower(xmlAttr(attrs, "name"));
+        auto content = collapseWhitespace(xmlAttr(attrs, "content"));
+        if (name == "citation_title")
+            p.title = content;
+        else if (name == "citation_author")
+            p.authors.push_back(content);
+        else if (name == "citation_abstract")
+            p.abstract = content;
+        else if (name == "citation_date")
+            p.date = replaceAll(content.substr(0, 10), "/", "-");
+        else if (name == "citation_arxiv_id")
+            arxivId = content;
+        else if (name == "citation_doi")
+            p.publishedDoi = content;
+    }
+    if (p.title.empty())
+        throw MetadataError("Unexpected response from arXiv.");
+    p.id = stripArxivVersion(arxivId.empty() ? requestedId : arxivId);
+    // <span class="primary-subject">Computer Vision and Pattern Recognition (cs.CV)</span>
+    auto subject = html.find("class=\"primary-subject\">");
+    if (subject != std::string::npos) {
+        auto text = html.substr(subject, html.find('<', subject) - subject);
+        auto open = text.rfind('('), close = text.rfind(')');
+        if (open != std::string::npos && close != std::string::npos && close > open)
+            p.primary = text.substr(open + 1, close - open - 1);
+    }
+    p.comment = arxivTableCell(html, "Comments:");
+    p.journalRef = arxivTableCell(html, "Journal&nbsp;reference:");
+    return arxivItem(p);
 }
 
 std::string arxivPdfUrl(const std::string& arxivId)

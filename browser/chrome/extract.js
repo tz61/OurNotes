@@ -113,7 +113,8 @@
 
   function ourNotesExtract(doc, pageUrl) {
     const title0 = clean(doc.title);
-    if (doc.contentType === 'application/pdf' || /\.pdf([?#]|$)/i.test(new URL(pageUrl).pathname + '')) {
+    const pdfAddress = /\.pdf([?#]|$)/i.test(new URL(pageUrl).pathname + '') || ourNotesArxivAbs(pageUrl);
+    if (doc.contentType === 'application/pdf' || pdfAddress) {
       return {item: null, pdfUrl: pageUrl, isPdf: true, title: title0};
     }
     const metas = metaTags(doc);
@@ -252,5 +253,13 @@
     return {item, pdfUrl, isPdf: false, title: item.title};
   }
 
+  // An arXiv PDF's abstract page (arxiv.org/pdf/2301.08243v2 -> arxiv.org/abs/2301.08243),
+  // '' for any other address.
+  function ourNotesArxivAbs(url) {
+    const m = String(url).match(/^https?:\/\/(?:www\.)?arxiv\.org\/pdf\/([^?#]+?)(?:v\d+)?(?:\.pdf)?(?:[?#]|$)/i);
+    return m ? `https://arxiv.org/abs/${m[1]}` : '';
+  }
+
   global.ourNotesExtract = ourNotesExtract;
+  global.ourNotesArxivAbs = ourNotesArxivAbs;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -41,7 +41,9 @@ arXiv) for the rest.
 cannot fetch it, OurNotes downloads it itself.
 
 **A PDF tab** (a PDF open in the browser) is saved as a PDF on its own, and OurNotes
-looks up its details as when a PDF is dropped into the library.
+looks up its details as when a PDF is dropped into the library. An arXiv PDF
+(`arxiv.org/pdf/…`) is saved as from its abstract page instead: the preprint, with this
+PDF.
 
 ## How it talks to OurNotes
 

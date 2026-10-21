@@ -108,6 +108,15 @@ expect('page site', r.item.websiteTitle, undefined);
 r = ourNotesExtract(page('<title>paper.pdf</title>'), 'https://example.org/files/paper.pdf');
 expect('pdf tab', [r.isPdf, r.item, r.pdfUrl], [true, null, 'https://example.org/files/paper.pdf']);
 
+// an arXiv PDF tab (no ".pdf" in its address): its abstract page, read as above
+expect('arXiv pdf tab', ourNotesExtract(page('<title>2301.08243v3.pdf</title>'), 'https://arxiv.org/pdf/2301.08243v3').isPdf, true);
+expect('arXiv abs of pdf', ourNotesArxivAbs('https://arxiv.org/pdf/2301.08243v3'), 'https://arxiv.org/abs/2301.08243');
+expect('arXiv abs of old pdf', ourNotesArxivAbs('https://arxiv.org/pdf/hep-th/9711200v3.pdf#page=2'),
+       'https://arxiv.org/abs/hep-th/9711200');
+expect('arXiv abs of www pdf', ourNotesArxivAbs('https://www.arxiv.org/pdf/2606.22174'), 'https://arxiv.org/abs/2606.22174');
+expect('not arXiv', [ourNotesArxivAbs('https://arxiv.org/abs/2301.08243'), ourNotesArxivAbs('https://example.org/pdf/1.pdf')],
+       ['', '']);
+
 document.getElementById('out').textContent = failures.length ? 'FAILED\n' + failures.join('\n') : 'ALL PASSED';
 </script>
 </body>
