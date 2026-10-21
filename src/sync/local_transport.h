@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "core/sync/protocol.h"
 #include "sync/store.h"
 
@@ -28,12 +30,17 @@ public:
                       const ProgressFn& progress = {}) override;
     FileInfo upload(const std::string& uid, const std::string& key, const fs::path& src, const FileInfo& meta,
                     const ProgressFn& progress = {}) override;
+    // Another computer's push shows in the folder: looked at every kPollSeconds.
+    std::optional<LibrariesState> awaitLibraries(const std::string& known, int wait) override;
+    void abort() override { aborted_ = true; }
+    static constexpr int kPollSeconds = 3;
 
 private:
     RemoteLibrary requireLibrary(const std::string& uid, bool write);
 
     fs::path folder_;
     Store store_;
+    std::atomic<bool> aborted_{false};
 };
 
 } // namespace on::sync

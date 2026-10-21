@@ -129,6 +129,10 @@ With a path prefix the proxy must strip it (the trailing `/` in `proxy_pass`
 does that for nginx, `handle_path` for Caddy); ournotesd always serves
 `/api/v1/...`.
 
+Open apps keep one request waiting at the server for up to 50 seconds, which it
+answers as soon as another computer pushes changes, so a proxy's read timeout
+must be longer than that (nginx's default is 60 s; Caddy has none).
+
 ## systemd
 
 `packaging/ournotesd.service` runs the server as the system user `ournotesd`

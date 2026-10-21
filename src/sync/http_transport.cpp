@@ -184,6 +184,29 @@ std::vector<RemoteLibrary> HttpTransport::libraries()
     return out;
 }
 
+std::optional<LibrariesState> HttpTransport::awaitLibraries(const std::string& known, int wait)
+{
+    if (aborted_)
+        throw SyncError("cancelled");
+    auto path = apiPath("/libraries");
+    if (!known.empty())
+        path += "?state=" + urlEncode(known) + "&wait=" + std::to_string(wait);
+    auto j = request("GET", path);
+    if (!j.contains("state"))  // a server before 0.1.10: answers at once, without
+        return std::nullopt;
+    LibrariesState out;
+    out.state = jstr(j, "state");
+    for (auto& l : j.value("libraries", Json::array()))
+        out.libraries.push_back(remoteLibraryFromJson(l));
+    return out;
+}
+
+void HttpTransport::abort()
+{
+    aborted_ = true;
+    client_->stop();  // a request in progress fails at once
+}
+
 RemoteLibrary HttpTransport::ensureLibrary(const std::string& uid, const std::string& name, const std::string& type)
 {
     Json body{{"name", name}, {"type", type}};

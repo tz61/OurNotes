@@ -1,6 +1,8 @@
 #include "sync/local_transport.h"
 
+#include <chrono>
 #include <fstream>
+#include <thread>
 
 #include "core/hash.h"
 
@@ -85,6 +87,24 @@ Json LocalTransport::info()
 }
 
 std::vector<RemoteLibrary> LocalTransport::libraries() { return store_.libraries(kUser); }
+
+std::optional<LibrariesState> LocalTransport::awaitLibraries(const std::string& known, int wait)
+{
+    using namespace std::chrono;
+    auto deadline = steady_clock::now() + seconds(wait);
+    for (;;) {
+        if (aborted_)
+            throw SyncError("cancelled");
+        LibrariesState now;
+        now.libraries = store_.libraries(kUser);
+        now.state = librariesState(now.libraries);
+        if (known.empty() || now.state != known || steady_clock::now() >= deadline)
+            return now;
+        auto next = std::min(deadline, steady_clock::now() + seconds(kPollSeconds));
+        while (!aborted_ && steady_clock::now() < next)
+            std::this_thread::sleep_for(milliseconds(50));
+    }
+}
 
 RemoteLibrary LocalTransport::ensureLibrary(const std::string& uid, const std::string& name, const std::string& type)
 {

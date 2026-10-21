@@ -328,6 +328,8 @@ int cmdServe(const Args& a)
 
     ApiServer api(store, opts);
     api.mount(*svr);
+    // a thread for each client waiting to hear of changes, and as many for the rest
+    svr->new_task_queue = [] { return new httplib::ThreadPool(8, 8 + 2 * ApiServer::kMaxWaiting); };
     svr->set_read_timeout(60);
     svr->set_write_timeout(60);
     if (a.has("trusted-proxy"))
@@ -343,6 +345,7 @@ int cmdServe(const Args& a)
     std::thread watcher([&] {
         while (!g_stop)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        api.stop();
         while (!finished) {  // stop() is a no-op until listen_after_bind() is running
             svr->stop();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

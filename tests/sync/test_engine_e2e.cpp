@@ -40,6 +40,7 @@ struct Server {
     }
     ~Server()
     {
+        api.stop();
         http.stop();
         thread.join();
     }

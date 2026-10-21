@@ -1,5 +1,9 @@
 #include "core/sync/protocol.h"
 
+#include <algorithm>
+
+#include "core/hash.h"
+
 namespace on::sync {
 
 bool isObjectType(const std::string& t)
@@ -21,6 +25,15 @@ Json toJson(const RemoteLibrary& l)
 {
     return Json{{"uid", l.uid},   {"name", l.name},   {"type", l.type},
                 {"role", l.role}, {"owner", l.owner}, {"version", l.version}};
+}
+
+std::string librariesState(std::vector<RemoteLibrary> libraries)
+{
+    std::sort(libraries.begin(), libraries.end(), [](auto& a, auto& b) { return a.uid < b.uid; });
+    std::string all;
+    for (auto& l : libraries)
+        all += toJson(l).dump() + "\n";
+    return md5Hex(all);
 }
 
 Json toJson(const ChangesPage& p)

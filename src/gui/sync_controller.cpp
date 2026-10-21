@@ -2,6 +2,7 @@
 
 #include <QMetaObject>
 
+#include <map>
 #include <optional>
 
 #include "core/sync/engine.h"
@@ -9,6 +10,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/sync_history.h"
+#include "sync/change_watcher.h"
 #include "sync/http_transport.h"
 #include "sync/local_transport.h"
 
@@ -44,6 +46,7 @@ SyncController::SyncController(QObject* parent)
 
 SyncController::~SyncController()
 {
+    watcher_.reset();
     cancel_ = true;
     join();
 }
@@ -58,11 +61,41 @@ bool SyncController::hasTarget() const { return AppContext::get().config().activ
 
 void SyncController::reloadSettings()
 {
-    int minutes = AppContext::get().config().get("/sync/intervalMinutes", 15).get<int>();
+    auto& cfg = AppContext::get().config();
+    int minutes = cfg.get("/sync/intervalMinutes", 15).get<int>();
     if (minutes > 0 && hasTarget())
         intervalTimer_.start(minutes * 60 * 1000);
     else
         intervalTimer_.stop();
+
+    watcher_.reset();
+    auto target = cfg.activeTarget();
+    if (!target || !cfg.get("/sync/auto", true).get<bool>())
+        return;
+    sync::ChangeWatcher::Hooks hooks;
+    hooks.connect = [t = *target] { return makeTransport(t); };
+    // with a database connection of its own, on the watcher's thread
+    hooks.pulledVersions = [dataDir = AppContext::get().library().dataDir(), id = target->id,
+                            lib = std::shared_ptr<Library>()]() mutable {
+        if (!lib)
+            lib = std::make_shared<Library>(dataDir);
+        std::map<std::string, int64_t> pulled;
+        for (auto& l : lib->libraries())
+            if (l.syncTarget == id)
+                pulled[l.uid] = l.syncVersion;
+        return pulled;
+    };
+    hooks.syncCount = [this] { return syncCount_.load(); };
+    hooks.changed = [this] {
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                if (hasTarget())
+                    syncNow();
+            },
+            Qt::QueuedConnection);
+    };
+    watcher_ = std::make_unique<sync::ChangeWatcher>(std::move(hooks));
 }
 
 void SyncController::cancel() { cancel_ = true; }
@@ -81,6 +114,7 @@ void SyncController::syncNow()
     join();
     autoTimer_.stop();
     running_ = true;
+    ++syncCount_;
     cancel_ = false;
     pendingAfterRun_ = false;
     emit started();
@@ -125,6 +159,7 @@ void SyncController::syncNow()
                     history_->addFailure(target, ss(summary));
                 emit historyChanged();
                 running_ = false;
+                ++syncCount_;
                 AppContext::get().library().notifyRefresh();
                 emit AppContext::get().syncFinished();
                 emit finished(ok, summary);

@@ -300,7 +300,9 @@ QWidget* PreferencesDialog::syncPage()
 
     auto* options = new QGroupBox(tr("Options"), page);
     auto* form = new QFormLayout(options);
-    autoSync_ = new QCheckBox(tr("Sync automatically after changes"), options);
+    autoSync_ = new QCheckBox(tr("Sync automatically after changes, here or on another computer"), options);
+    autoSync_->setToolTip(tr("Another computer's changes arrive within seconds from a server (OurNotes 0.1.10 or "
+                             "later), within a few seconds from a folder."));
     autoSync_->setChecked(cfg.get("/sync/auto", true).get<bool>());
     form->addRow(autoSync_);
     interval_ = new QSpinBox(options);

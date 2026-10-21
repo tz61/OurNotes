@@ -1,7 +1,9 @@
 #include "sync/server_api.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -23,6 +25,7 @@ using HandlerResponse = httplib::Server::HandlerResponse;
 
 constexpr size_t kMaxJsonBody = 64u << 20;    // push batches
 constexpr size_t kMaxSmallBody = 64u << 10;   // login, library metadata
+constexpr int64_t kMaxWaitSeconds = 120;       // GET /libraries?state=&wait=
 const char* const kUserKey = "ournotes.user";  // Response::user_data slot
 
 // In-memory throttle for failed logins, per client address.
@@ -189,8 +192,23 @@ struct ApiServer::State {
     Store& store;
     ServerOptions opts;
     LoginLimiter limiter;
+    // Requests waiting for the libraries to change, woken by every change and by stop().
+    std::mutex changeMutex;
+    std::condition_variable changeSignal;
+    uint64_t changeCount = 0;
+    std::atomic<int> waiting{0};
+    std::atomic<bool> stopping{false};
 
     State(Store& s, ServerOptions o) : store(s), opts(std::move(o)) {}
+
+    void changed()
+    {
+        {
+            std::lock_guard lock(changeMutex);
+            ++changeCount;
+        }
+        changeSignal.notify_all();
+    }
 
     std::string authenticate(const Request& req, Response& res)
     {
@@ -256,13 +274,51 @@ struct ApiServer::State {
         sendJson(res, Json{{"username", user}, {"admin", store.isAdmin(user)}});
     }
 
+    // With ?state=S&wait=N: held while the libraries' state is still S, at most N seconds,
+    // so that a client learns at once that another one pushed.
     void listLibraries(const Request& req, Response& res)
     {
+        using namespace std::chrono;
         auto user = authenticate(req, res);
-        Json libs = Json::array();
-        for (auto& l : store.libraries(user))
-            libs.push_back(toJson(l));
-        sendJson(res, Json{{"libraries", libs}});
+        auto known = req.get_param_value("state");
+        auto wait = std::clamp<int64_t>(intParam(req, "wait", 0), 0, kMaxWaitSeconds);
+        bool hold = !known.empty() && wait > 0;
+        int holding = hold ? ++waiting : 0;
+        struct Release {
+            std::atomic<int>* n;
+            ~Release()
+            {
+                if (n)
+                    --*n;
+            }
+        } release{hold ? &waiting : nullptr};
+        hold = hold && holding <= ApiServer::kMaxWaiting;
+        auto deadline = steady_clock::now() + seconds(wait);
+        std::vector<RemoteLibrary> libs;
+        std::string state;
+        for (;;) {
+            uint64_t seen;
+            {
+                std::lock_guard lock(changeMutex);
+                seen = changeCount;
+            }
+            libs = store.libraries(user);
+            state = librariesState(libs);
+            if (!hold || state != known)
+                break;
+            {
+                // every second, also to see whether the client is gone
+                std::unique_lock lock(changeMutex);
+                changeSignal.wait_until(lock, std::min(deadline, steady_clock::now() + seconds(1)),
+                                        [&] { return changeCount != seen || stopping; });
+            }
+            if (steady_clock::now() >= deadline || stopping || req.is_connection_closed())
+                break;
+        }
+        Json list = Json::array();
+        for (auto& l : libs)
+            list.push_back(toJson(l));
+        sendJson(res, Json{{"libraries", list}, {"state", state}});
     }
 
     void getLibrary(const Request& req, Response& res)
@@ -276,6 +332,7 @@ struct ApiServer::State {
         auto user = authenticate(req, res);
         auto body = readJson(reader, kMaxSmallBody);
         auto lib = store.ensureLibrary(pathParam(req, "uid"), jstr(body, "name"), jstr(body, "type", "user"), user);
+        changed();
         sendJson(res, toJson(lib));
     }
 
@@ -286,6 +343,7 @@ struct ApiServer::State {
         if (requireLibrary(uid, user, false).role != "owner")
             throw SyncError("only the owner of the library can delete it", 403);
         store.deleteLibrary(uid, true);
+        changed();
         sendJson(res, Json{{"deleted", true}});
     }
 
@@ -315,7 +373,9 @@ struct ApiServer::State {
                 throw SyncError("each pushed object must be a JSON object", 400);
             objects.push_back(pushObjectFromJson(o));
         }
-        sendJson(res, toJson(store.push(uid, objects)));
+        auto result = store.push(uid, objects);
+        changed();
+        sendJson(res, toJson(result));
     }
 
     void listFiles(const Request& req, Response& res)
@@ -426,6 +486,12 @@ ApiServer::ApiServer(Store& store, ServerOptions options)
 }
 
 ApiServer::~ApiServer() = default;
+
+void ApiServer::stop()
+{
+    state_->stopping = true;
+    state_->changed();
+}
 
 std::string ApiServer::requestUser(const httplib::Response& res)
 {

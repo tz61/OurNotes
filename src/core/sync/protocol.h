@@ -73,6 +73,14 @@ struct PushResult {
     std::vector<PushEntry> results;  // same order as the request
 };
 
+// A target's libraries and a fingerprint of them, `state`: it changes whenever one of
+// them does (a push that writes, a new name or role, a library added or removed).
+struct LibrariesState {
+    std::string state;
+    std::vector<RemoteLibrary> libraries;
+};
+std::string librariesState(std::vector<RemoteLibrary> libraries);
+
 struct FileInfo {
     std::string key;
     std::string md5;
@@ -122,6 +130,19 @@ public:
                               const ProgressFn& progress = {}) = 0;
     virtual FileInfo upload(const std::string& uid, const std::string& key, const fs::path& src,
                             const FileInfo& meta, const ProgressFn& progress = {}) = 0;
+
+    // The libraries and their state, at once with an empty `known`; otherwise as soon as
+    // the state is no longer `known` (another computer pushed), or after about `wait`
+    // seconds with it unchanged. nullopt: the target cannot tell (servers before 0.1.10).
+    virtual std::optional<LibrariesState> awaitLibraries(const std::string& known, int wait)
+    {
+        (void)known;
+        (void)wait;
+        return std::nullopt;
+    }
+    // From another thread: ends an awaitLibraries() in progress, and makes later calls
+    // fail ("cancelled").
+    virtual void abort() {}
 };
 
 } // namespace on::sync

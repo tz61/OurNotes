@@ -1,11 +1,16 @@
 #include <doctest.h>
 
+#include <atomic>
+#include <chrono>
+#include <map>
+#include <mutex>
 #include <set>
 #include <thread>
 
 #include <httplib.h>
 
 #include "ournotes/version.h"
+#include "sync/change_watcher.h"
 #include "sync/http_transport.h"
 #include "sync/server_api.h"
 #include "sync_test_util.h"
@@ -73,10 +78,22 @@ struct TestServer {
     }
     ~TestServer()
     {
+        api.stop();
         http->stop();
         thread.join();
     }
 };
+
+// Polls cond for up to five seconds.
+bool waitUntil(const std::function<bool()>& cond)
+{
+    for (int i = 0; i < 100; ++i) {
+        if (cond())
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return cond();
+}
 
 Json parseBody(const httplib::Result& res)
 {
@@ -346,3 +363,156 @@ TEST_CASE("http: https URLs need TLS support")
     CHECK_THROWS_WITH_AS(HttpTransport("https://example.org", ""), "HTTPS support is not compiled in", SyncError);
 }
 #endif
+
+TEST_CASE("http: a library list held until another client pushes")
+{
+    using namespace std::chrono;
+    TestServer srv;
+    srv.store.createUser("alice", "alice-pw");
+    auto token = HttpTransport::login(srv.url, "alice", "alice-pw", "laptop");
+    HttpTransport mine(srv.url, token), other(srv.url, token);
+    mine.ensureLibrary("LIB1", "Mine", "user");
+    auto now = mine.awaitLibraries({}, 0);
+    REQUIRE(now);
+    REQUIRE(now->libraries.size() == 1);
+    CHECK(now->libraries[0].uid == "LIB1");
+    CHECK(mine.awaitLibraries({}, 0)->state == now->state);
+
+    // unchanged: answered when the wait is over
+    auto start = steady_clock::now();
+    CHECK(mine.awaitLibraries(now->state, 1)->state == now->state);
+    CHECK(steady_clock::now() - start >= milliseconds(900));
+
+    // another client pushes, renames, adds a library: answered at once
+    auto awaitWhile = [&](const std::function<void()>& change) {
+        std::thread t([&] {
+            std::this_thread::sleep_for(milliseconds(300));
+            change();
+        });
+        auto start = steady_clock::now();
+        auto next = mine.awaitLibraries(now->state, 30);
+        t.join();
+        CHECK(steady_clock::now() - start < seconds(5));
+        REQUIRE(next);
+        CHECK(next->state != now->state);
+        now = next;
+    };
+    awaitWhile([&] { other.push("LIB1", {put("item", "ITEM2345", 0, item("New"))}); });
+    CHECK(now->libraries[0].version == 1);
+    awaitWhile([&] { other.ensureLibrary("LIB1", "Renamed", "user"); });
+    CHECK(now->libraries[0].name == "Renamed");
+    awaitWhile([&] { other.ensureLibrary("LIB2", "Second", "user"); });
+    CHECK(now->libraries.size() == 2);
+
+    // ended from another thread at once, and later calls fail
+    std::thread aborter([&] {
+        std::this_thread::sleep_for(milliseconds(300));
+        mine.abort();
+    });
+    start = steady_clock::now();
+    CHECK(statusOf([&] { mine.awaitLibraries(now->state, 30); }) == 0);
+    aborter.join();
+    CHECK(steady_clock::now() - start < seconds(5));
+    CHECK(statusOf([&] { mine.awaitLibraries({}, 0); }) == 0);
+}
+
+TEST_CASE("http: a server stops at once with requests held")
+{
+    using namespace std::chrono;
+    auto srv = std::make_unique<TestServer>();
+    srv->store.createUser("alice", "alice-pw");
+    auto token = HttpTransport::login(srv->url, "alice", "alice-pw", "laptop");
+    HttpTransport t(srv->url, token);
+    t.ensureLibrary("LIB1", "Mine", "user");
+    auto state = t.awaitLibraries({}, 0)->state;
+    std::thread waiting([&] {
+        try {
+            t.awaitLibraries(state, 60);
+        } catch (const SyncError&) {
+        }
+    });
+    std::this_thread::sleep_for(milliseconds(300));
+    auto start = steady_clock::now();
+    srv.reset();
+    CHECK(steady_clock::now() - start < seconds(5));
+    waiting.join();
+}
+
+TEST_CASE("http: a server before 0.1.10 cannot hold the list")
+{
+    httplib::Server old;  // its GET /libraries, without a state
+    old.Get("/api/v1/libraries", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content(R"({"libraries": []})", "application/json");
+    });
+    int port = old.bind_to_any_port("127.0.0.1");
+    std::thread thread([&] { old.listen_after_bind(); });
+    old.wait_until_ready();
+    auto url = "http://127.0.0.1:" + std::to_string(port);
+    CHECK(!HttpTransport(url, "token").awaitLibraries({}, 0));
+
+    std::atomic<int> changed{0};
+    {
+        ChangeWatcher watcher({[&] { return std::make_unique<HttpTransport>(url, "token"); },
+                               [] { return std::map<std::string, int64_t>(); }, [] { return uint64_t(0); },
+                               [&] { ++changed; }});
+        CHECK(waitUntil([&] { return watcher.unsupported(); }));
+    }  // (and stops at once, though waiting a long time to ask again)
+    CHECK(changed == 0);
+    old.stop();
+    thread.join();
+}
+
+TEST_CASE("change watcher: another client's push is told at once, this one's own are not")
+{
+    using namespace std::chrono;
+    TestServer srv;
+    srv.store.createUser("alice", "alice-pw");
+    auto token = HttpTransport::login(srv.url, "alice", "alice-pw", "laptop");
+    HttpTransport other(srv.url, token), mine(srv.url, token);
+    other.ensureLibrary("LIB1", "Mine", "user");
+    std::mutex mutex;
+    std::map<std::string, int64_t> pulled{{"LIB1", 0}};
+    std::atomic<uint64_t> syncs{0};
+    std::atomic<int> changed{0};
+    auto pull = [&](int64_t version) {
+        std::lock_guard lock(mutex);
+        pulled["LIB1"] = version;
+    };
+    ChangeWatcher watcher({[&] { return std::make_unique<HttpTransport>(srv.url, token); },
+                           [&] {
+                               std::lock_guard lock(mutex);
+                               return pulled;
+                           },
+                           [&] { return syncs.load(); }, [&] { ++changed; }});
+    std::this_thread::sleep_for(milliseconds(500));
+    CHECK(changed == 0);  // nothing new there
+
+    // another computer pushes: told at once; this one syncs
+    other.push("LIB1", {put("item", "ITEM2345", 0, item("There"))});
+    CHECK(waitUntil([&] { return changed == 1; }));
+    ++syncs;
+    pull(1);
+    ++syncs;
+
+    // this one pushes, in its sync: not told
+    ++syncs;
+    pull(mine.push("LIB1", {put("item", "ITEM3456", 0, item("Here"))}).version);
+    ++syncs;
+    std::this_thread::sleep_for(seconds(1));
+    CHECK(changed == 1);
+
+    // another computer pushes while this one syncs (and does not pull it): told after
+    ++syncs;
+    other.push("LIB1", {put("item", "ITEM4567", 0, item("Meanwhile"))});
+    std::this_thread::sleep_for(milliseconds(500));
+    CHECK(changed == 1);
+    ++syncs;
+    CHECK(waitUntil([&] { return changed == 2; }));
+    // that sync fails (pulls nothing): not asked for again until something else changes
+    ++syncs;
+    ++syncs;
+    std::this_thread::sleep_for(seconds(1));
+    CHECK(changed == 2);
+    other.push("LIB1", {put("item", "ITEM5678", 0, item("Later"))});
+    CHECK(waitUntil([&] { return changed == 3; }));
+}

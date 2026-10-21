@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include "core/sync/protocol.h"
@@ -39,6 +40,8 @@ public:
                       const ProgressFn& progress = {}) override;
     FileInfo upload(const std::string& uid, const std::string& key, const fs::path& src, const FileInfo& meta,
                     const ProgressFn& progress = {}) override;
+    std::optional<LibrariesState> awaitLibraries(const std::string& known, int wait) override;
+    void abort() override;  // (the one call that may come from another thread)
 
 private:
     std::string apiPath(const std::string& path) const;
@@ -48,6 +51,7 @@ private:
     std::string baseUrl_;
     std::string prefix_;  // reverse-proxy path prefix without trailing '/', may be empty
     std::unique_ptr<httplib::Client> client_;
+    std::atomic<bool> aborted_{false};
 };
 
 } // namespace on::sync

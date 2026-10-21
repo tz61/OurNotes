@@ -2682,6 +2682,56 @@ TEST_CASE("sync: what another computer changed shows in the open PDF, beside it 
     CHECK(dateShown);
 }
 
+TEST_CASE("sync: another computer's push is pulled by itself, at once")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "Shared folder";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "folder");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    env.config.set("/sync/auto", true);
+    auto paperKey = jstr(env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Here"}}), "key");
+    SyncController sync;
+    CHECK(sync.isWatching());
+    int syncs = 0;
+    QObject::connect(&sync, &SyncController::finished, [&](bool ok, const QString& summary) {
+        INFO(summary.toStdString());
+        CHECK(ok);
+        ++syncs;
+    });
+    sync.syncNow();
+    REQUIRE(QTest::qWaitFor([&] { return syncs == 1; }, 20000));
+
+    // the other computer: gets it, writes, sends it
+    Library other(tmp.path / "other");
+    auto syncThere = [&] {
+        sync::LocalTransport transport(tmp.path / "folder");
+        REQUIRE(sync::SyncEngine(other, transport, "folder1").syncAll().errors.empty());
+    };
+    syncThere();
+    auto there = other.libraryByUid(env.library.library(env.lib)->uid)->id;
+    other.updateItem(there, paperKey, [](Json& d) { d["title"] = "Changed there"; });
+    syncThere();
+
+    // here, nobody syncing: it comes in a few seconds (a folder is looked at every 3)
+    REQUIRE(QTest::qWaitFor([&] { return jstr(*env.library.item(env.lib, paperKey), "title") == "Changed there"; },
+                            sync::LocalTransport::kPollSeconds * 1000 + 5000));
+    CHECK(syncs == 2);
+    // and its own sync (nothing new) is not taken for another computer's
+    QTest::qWait(sync::LocalTransport::kPollSeconds * 1000 + 500);
+    CHECK(syncs == 2);
+
+    // off with automatic syncs
+    env.config.set("/sync/auto", false);
+    sync.reloadSettings();
+    CHECK(!sync.isWatching());
+}
+
 TEST_CASE("library: a PDF dropped on a collection or an item goes there")
 {
     app();

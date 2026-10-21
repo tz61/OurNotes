@@ -1,5 +1,8 @@
 #include <doctest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "sync/local_transport.h"
 #include "sync_test_util.h"
 
@@ -116,4 +119,30 @@ TEST_CASE("local transport: two devices sharing a folder")
     a.deleteLibrary("EMPTY001");
     CHECK(a.libraries().size() == 2);
     CHECK(statusOf([&] { a.deleteLibrary("LIBRARY1"); }) == 409);
+}
+
+TEST_CASE("local transport: a wait ends when another device pushes to the folder")
+{
+    using namespace std::chrono;
+    TempDir dir;
+    LocalTransport a(dir / "folder"), b(dir / "folder");
+    a.ensureLibrary("LIB1", "Mine", "user");
+    auto now = a.awaitLibraries({}, 0);
+    REQUIRE(now);
+    REQUIRE(now->libraries.size() == 1);
+    std::thread pusher([&] {
+        std::this_thread::sleep_for(milliseconds(200));
+        b.push("LIB1", {put("item", "ITEM2345", 0, item("New"))});
+    });
+    auto start = steady_clock::now();
+    auto next = a.awaitLibraries(now->state, 30);
+    pusher.join();
+    CHECK(steady_clock::now() - start < seconds(LocalTransport::kPollSeconds + 2));
+    REQUIRE(next);
+    CHECK(next->state != now->state);
+    CHECK(next->libraries[0].version == 1);
+    // unchanged: when the wait is over
+    start = steady_clock::now();
+    CHECK(a.awaitLibraries(next->state, 1)->state == next->state);
+    CHECK(steady_clock::now() - start >= milliseconds(900));
 }

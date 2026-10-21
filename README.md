@@ -223,8 +223,10 @@ or network share. Every computer that syncs with the same folder gets the same l
 Use it from one computer at a time (it is not meant for live sharing by Dropbox-style
 tools, which can corrupt databases).
 
-Sync runs automatically after edits and every 15 minutes (configurable), or with the sync
-button. Attachment files are transferred during sync or, optionally, when first opened.
+Sync runs automatically after edits, as soon as another computer has sent its changes (a
+server tells at once, from 0.1.10 on; a folder is looked at every few seconds), and every 15
+minutes (configurable), or with the sync button. Attachment files are transferred during sync
+or, optionally, when first opened.
 
 ## Command line
 

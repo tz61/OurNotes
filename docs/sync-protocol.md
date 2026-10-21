@@ -127,13 +127,24 @@ Revokes the presented token → `{"ok": true}`.
 
 → `{"username": "alice", "admin": false}`
 
-### `GET /libraries`
+### `GET /libraries?state=S&wait=N`
 
-Libraries the user owns or is a member of:
+Libraries the user owns or is a member of, and their `state`:
 ```json
 {"libraries": [{"uid": "LIB1", "name": "My Library", "type": "user",
-                "role": "owner", "owner": "alice", "version": 42}]}
+                "role": "owner", "owner": "alice", "version": 42}],
+ "state": "9e107d9d372bb6826bd81d3542a419d6"}
 ```
+`state` is an opaque fingerprint of the list: it changes whenever a library in it
+does (a push that writes, a new name or role, a library added or removed).
+
+With `state` and `wait` (seconds, at most 120) the server holds the request while
+the state is still `S`, and answers as soon as it is not, or after `wait` seconds
+with it unchanged. Clients keep such a request open (50 s, then again) to sync as
+soon as another client has pushed. What a client pushed itself also changes the
+state: it compares the versions with those it has pulled before syncing again. A
+server with too many requests held answers at once; a client then waits a while
+before asking again. Servers before 0.1.10 answer at once, without `state`.
 
 ### `PUT /libraries/{uid}`
 
@@ -216,4 +227,5 @@ rollback journal instead of WAL, so it also works on network shares, plus
 `files/` and `tmp/`). The transport acts as the user `local`, which owns every
 library created through it. Several machines may use one folder; SQLite's file
 locking serialises their pushes. Semantics, limits and conflict rules are
-identical to the HTTP API.
+identical to the HTTP API; waiting for a change of the libraries' state looks at
+the folder every 3 seconds.

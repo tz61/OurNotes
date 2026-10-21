@@ -25,10 +25,17 @@ struct ServerOptions {
 // httplib::Server; the ApiServer itself may be destroyed after mount().
 class ApiServer {
 public:
+    // Requests held at once while their libraries do not change (GET /libraries?wait=);
+    // more are answered at once. Each holds one of the server's threads.
+    static constexpr int kMaxWaiting = 256;
+
     explicit ApiServer(Store& store, ServerOptions options = {});
     ~ApiServer();
 
     void mount(httplib::Server& server);
+    // Answers the requests held (and any held later) at once. Call it before stopping the
+    // server, which otherwise waits for them.
+    void stop();
 
     // The authenticated user of a handled request ("" if none), for access logs.
     static std::string requestUser(const httplib::Response& res);
