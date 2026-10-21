@@ -56,6 +56,7 @@
 #include "core/config.h"
 #include "core/library.h"
 #include "core/schema.h"
+#include "core/sync/engine.h"
 #include "gui/app_context.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
@@ -83,6 +84,7 @@
 #include "gui/reader/comment_bubble.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
+#include "sync/local_transport.h"
 
 using namespace on;
 using namespace on::gui;
@@ -2571,6 +2573,113 @@ TEST_CASE("sync history: filled by the syncs the app runs")
         listed |= c["key"] == jstr(paper, "key") && c["title"] == "Synced Book" && c["incoming"] == false;
     CHECK(listed);
     CHECK(fs::exists(env.library.dataDir() / "sync-history.json"));
+}
+
+TEST_CASE("sync: what another computer changed shows in the open PDF, beside it and in the item pane")
+{
+    app();
+    Env env;
+    TempDir tmp;  // the folder both computers sync through, and the other computer's library
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "Shared folder";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "folder");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    env.config.set("/sync/auto", false);
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paperKey = jstr(env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto noteKey = jstr(env.library.createNote(env.lib, "<p>First words</p>", paperKey), "key");
+    auto attKey = jstr(env.library.importAttachment(env.lib, file, paperKey), "key");
+    auto annKey = jstr(env.library.createItem(
+                           env.lib, Json{{"itemType", "annotation"},
+                                         {"parentItem", attKey},
+                                         {"annotationType", "highlight"},
+                                         {"annotationColor", "#ffd400"},
+                                         {"annotationText", "Hello"},
+                                         {"annotationComment", ""},
+                                         {"annotationPosition", Json{{"pageIndex", 0}, {"rects", Json::array({Json::array({72, 690, 160, 710})})}}}}),
+                       "key");
+    SyncController sync;
+    bool done = false;
+    QObject::connect(&sync, &SyncController::finished, [&](bool ok, const QString& summary) {
+        INFO(summary.toStdString());
+        CHECK(ok);
+        done = true;
+    });
+    auto syncHere = [&] {
+        done = false;
+        sync.syncNow();
+        REQUIRE(QTest::qWaitFor([&] { return done; }, 20000));
+        QTest::qWait(100);  // the reloads after it
+    };
+    Library other(tmp.path / "other");
+    auto syncThere = [&] {
+        sync::LocalTransport transport(tmp.path / "folder");
+        REQUIRE(sync::SyncEngine(other, transport, "folder1").syncAll().errors.empty());
+    };
+    syncHere();
+    syncThere();
+    auto there = other.libraryByUid(env.library.library(env.lib)->uid)->id;
+
+    // here, the PDF open: the top note beside it, the paper's info in the other tab
+    ReaderTab tab(env.lib, qs(attKey));
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    auto* editor = tab.findChild<NoteEditor*>();
+    REQUIRE(editor);
+    REQUIRE(editor->key() == qs(noteKey));
+    auto* noteText = editor->findChild<NoteTextEdit*>();
+    auto* info = tab.findChild<InfoEditor*>();
+    REQUIRE(info);
+    auto title = [&]() -> AutoTextEdit* {
+        for (auto* e : info->findChildren<AutoTextEdit*>())
+            if (e->toPlainText().startsWith("Paper"))
+                return e;
+        return nullptr;
+    };
+    REQUIRE(title());
+    CHECK(view->commentBadgeRect(qs(annKey)).isEmpty());
+    int notes = tab.findChild<QListWidget*>()->count();
+
+    // there: a comment, the note edited, a new note, the title changed
+    other.updateItem(there, annKey, [](Json& d) { d["annotationComment"] = "Why?"; });
+    other.updateItem(there, noteKey, [](Json& d) { d["note"] = "<p>First words, and more</p>"; });
+    other.createNote(there, "<p>A second note</p>", paperKey);
+    other.updateItem(there, paperKey, [](Json& d) { d["title"] = "Paper, retitled"; });
+    syncThere();
+    syncHere();
+    CHECK(!view->commentBadgeRect(qs(annKey)).isEmpty());
+    auto cards = tab.findChildren<AnnotationCard*>();
+    REQUIRE(cards.size() == 1);
+    CHECK(jstr(cards[0]->data(), "annotationComment") == "Why?");
+    CHECK(noteText->toPlainText().toStdString() == "First words, and more");
+    CHECK(tab.findChild<QListWidget*>()->count() == notes + 1);
+    REQUIRE(title());
+    CHECK(title()->toPlainText().toStdString() == "Paper, retitled");
+
+    // a field being typed in here is left alone (it is saved when left)
+    title()->setFocus();
+    title()->moveCursor(QTextCursor::End);
+    QTest::keyClicks(title(), " typed here");
+    other.updateItem(there, paperKey, [](Json& d) { d["date"] = "2024"; });
+    syncThere();
+    syncHere();
+    REQUIRE(title());
+    CHECK(title()->hasFocus());
+    CHECK(title()->toPlainText().toStdString() == "Paper, retitled typed here");
+    // left: what was typed is kept, and what came meanwhile shown
+    view->setFocus();
+    QTest::qWait(100);
+    CHECK(jstr(*env.library.item(env.lib, paperKey), "title") == "Paper, retitled typed here");
+    bool dateShown = false;
+    for (auto* e : info->findChildren<QLineEdit*>())
+        dateShown |= e->text() == "2024";
+    CHECK(dateShown);
 }
 
 TEST_CASE("library: a PDF dropped on a collection or an item goes there")

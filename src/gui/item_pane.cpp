@@ -161,11 +161,27 @@ InfoEditor::InfoEditor(QWidget* parent) : QWidget(parent)
     grid_->setColumnStretch(1, 1);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
-                if (committing_ || key_.isEmpty() || lib != libraryId_)
+                // (0: every library, after a sync)
+                if (committing_ || key_.isEmpty() || (lib != libraryId_ && lib != 0))
                     return;
-                if ((type == "item" && keys.contains(key_)) || type == "*")
+                if (type == "item" && keys.contains(key_))
                     QMetaObject::invokeMethod(this, &InfoEditor::rebuild, Qt::QueuedConnection);
+                else if (type == "*")
+                    QMetaObject::invokeMethod(this, &InfoEditor::refresh, Qt::QueuedConnection);
             });
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget*, QWidget* now) {
+        if (stale_ && !isAncestorOf(now))  // after the field's own change is saved
+            QMetaObject::invokeMethod(this, &InfoEditor::refresh, Qt::QueuedConnection);
+    });
+}
+
+// Everything may have changed (a sync): shown again, but not over a field being typed in
+// (rebuilt, it lost what was typed): then once the form is left.
+void InfoEditor::refresh()
+{
+    stale_ = isAncestorOf(QApplication::focusWidget());
+    if (!stale_)
+        rebuild();
 }
 
 void InfoEditor::setItem(int64_t libraryId, const QString& key)
@@ -592,7 +608,7 @@ TagsBox::TagsBox(QWidget* parent) : QWidget(parent)
     });
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
-                if (lib != libraryId_)
+                if (lib != libraryId_ && lib != 0)  // (0: every library, after a sync)
                     return;
                 // of the settings, only tag colours matter (not e.g. reading positions)
                 bool colors = type == "setting" && keys.contains("tagColors");
@@ -719,7 +735,7 @@ RelatedBox::RelatedBox(QWidget* parent) : QWidget(parent)
     });
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
-                if (lib == libraryId_ && (keys.contains(key_) || type == "*"))
+                if ((lib == libraryId_ || lib == 0) && (keys.contains(key_) || type == "*"))
                     QMetaObject::invokeMethod(this, &RelatedBox::rebuild, Qt::QueuedConnection);
             });
 }
@@ -821,7 +837,8 @@ AttachmentBox::AttachmentBox(QWidget* parent) : QWidget(parent)
     });
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList& keys) {
-                if (lib == libraryId_ && (keys.contains(key_) || type == "*") && !isAncestorOf(QApplication::focusWidget()))
+                if ((lib == libraryId_ || lib == 0) && (keys.contains(key_) || type == "*") &&
+                    !isAncestorOf(QApplication::focusWidget()))
                     QMetaObject::invokeMethod(this, &AttachmentBox::rebuild, Qt::QueuedConnection);
             });
 }

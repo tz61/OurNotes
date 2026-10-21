@@ -1308,7 +1308,8 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     connect(edit_, &QTextEdit::currentCharFormatChanged, this, &NoteEditor::updateToolbar);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString& action, const QStringList& keys) {
-                if (key_.isEmpty() || lib != libraryId_ || (type != "item" && type != "*"))
+                // (0: every library, after a sync)
+                if (key_.isEmpty() || (lib != libraryId_ && lib != 0) || (type != "item" && type != "*"))
                     return;
                 if (type == "*" || keys.contains(key_)) {
                     if (action == "delete") {
@@ -1362,7 +1363,7 @@ void NoteEditor::buildFindBar()
     connect(find_, &SearchField::escapePressed, this, [this] { closeFind(true); });
     // the note changed under the hits (typed in, or loaded)
     connect(edit_->document(), &QTextDocument::contentsChanged, this, [this] {
-        if (findBar_->isVisible())
+        if (!findBar_->isHidden())
             updateHits(false);
     });
 }
@@ -1489,6 +1490,7 @@ void NoteEditor::load(bool force)
         return;
     loading_ = true;
     int pos = edit_->textCursor().position();
+    int scroll = edit_->verticalScrollBar()->value();
     edit_->document()->clear();
     edit_->setHtml(noteHtmlForEditor(html, libraryId_, edit_->document()));
     edit_->prepareDocument();
@@ -1498,6 +1500,11 @@ void NoteEditor::load(bool force)
     auto cursor = edit_->textCursor();
     cursor.setPosition(std::min(pos, edit_->document()->characterCount() - 1));
     edit_->setTextCursor(cursor);
+    if (!force) {  // changed elsewhere, while being read here: it stays where it was
+        edit_->verticalScrollBar()->setValue(scroll);
+        if (findBar_->isVisible())
+            updateHits(false);
+    }
     lastSaved_ = html;
     loading_ = false;
     bool editable = AppContext::get().editable(libraryId_);

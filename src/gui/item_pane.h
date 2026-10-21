@@ -52,6 +52,7 @@ public:
     explicit InfoEditor(QWidget* parent = nullptr);
     void setItem(int64_t libraryId, const QString& key);
     void rebuild();
+    void refresh();
 
 protected:
     void showEvent(QShowEvent* e) override;  // (from the Notes tab) laid out before drawn, too
@@ -76,6 +77,7 @@ private:
     QString key_;
     bool editable_ = true;
     bool committing_ = false;
+    bool stale_ = false;  // changed while a field was being typed in: shown once it is left
     int pendingBlank_ = -1;  // index of a new, still empty creator row (UI only)
     std::vector<CreatorRow> creators_;
 };
