@@ -24,6 +24,32 @@ AppContext::~AppContext()
 AppContext& AppContext::get() { return *g_context; }
 AppContext* AppContext::tryGet() { return g_context; }
 
+void AppContext::watchDatabase()
+{
+    if (databaseTimer_)
+        return;
+    dataVersion_ = library_.dataVersion();
+    databaseTimer_ = new QTimer(this);
+    databaseTimer_->setInterval(2000);
+    connect(databaseTimer_, &QTimer::timeout, this, [this] {
+        auto v = library_.dataVersion();
+        if (v == dataVersion_ || ownWrites_ > 0)
+            return;
+        dataVersion_ = v;
+        library_.notifyRefresh();
+        emit changedElsewhere();
+    });
+    databaseTimer_->start();
+}
+
+void AppContext::beginOwnWrites() { ++ownWrites_; }
+
+void AppContext::endOwnWrites()
+{
+    if (ownWrites_ > 0 && --ownWrites_ == 0)
+        dataVersion_ = library_.dataVersion();  // (what was written meanwhile is taken as the app's)
+}
+
 bool AppContext::editable(int64_t libraryId)
 {
     auto info = library_.library(libraryId);

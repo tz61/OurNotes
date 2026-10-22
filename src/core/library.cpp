@@ -1715,6 +1715,8 @@ void Library::setObjectVersion(int64_t lib, const std::string& type, const std::
     db_.run("UPDATE " + tableFor(type) + " SET version=? WHERE library_id=? AND key=?", version, lib, key);
 }
 
+int64_t Library::dataVersion() { return db_.scalarInt("PRAGMA data_version").value_or(0); }
+
 std::vector<DirtyObject> Library::dirtyObjects(int64_t lib)
 {
     std::vector<DirtyObject> out;

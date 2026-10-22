@@ -2721,6 +2721,52 @@ TEST_CASE("storage window: this computer's disk and libraries, and the sync targ
         window.grab().save(dir + "/storage-window.png");
 }
 
+TEST_CASE("main window: what another program changes shows at once; its own sync is not taken for that")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "Shared folder";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "folder");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    env.config.set("/sync/auto", false);
+    auto paper = jstr(env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Before"}}), "key");
+    MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    QApplication::processEvents();
+    int elsewhere = 0;
+    QObject::connect(&env.context, &AppContext::changedElsewhere, [&] { ++elsewhere; });
+    auto* model = window.findChild<ItemsModel*>();
+    REQUIRE(model);
+    auto shownTitle = [&] {
+        for (int r = 0; r < model->rowCount(); ++r)
+            if (model->index(r, 0).data().toString() == "After")
+                return true;
+        return false;
+    };
+    // ournotes-cli, an agent: another connection to the same database
+    {
+        Library other(env.library.dataDir());
+        other.updateItem(env.lib, paper, [](Json& d) { d["title"] = "After"; });
+    }
+    CHECK(QTest::qWaitFor([&] { return elsewhere == 1; }, 5000));
+    CHECK(QTest::qWaitFor(shownTitle, 3000));
+    // the app's sync writes on a connection of its own: not another program's
+    auto* sync = window.findChild<SyncController*>();
+    REQUIRE(sync);
+    bool done = false;
+    QObject::connect(sync, &SyncController::finished, [&] { done = true; });
+    sync->syncNow();
+    REQUIRE(QTest::qWaitFor([&] { return done; }, 20000));
+    QTest::qWait(2500);
+    CHECK(elsewhere == 1);
+}
+
 TEST_CASE("sync history: filled by the syncs the app runs")
 {
     app();

@@ -48,6 +48,7 @@ void FulltextIndexer::run(bool clear)
         thread_.join();
     running_ = true;
     stop_ = false;
+    AppContext::get().beginOwnWrites();  // (the files' checksums it keeps)
     auto dataDir = AppContext::get().library().dataDir();
     thread_ = std::thread([this, dataDir, clear] {
         int indexed = 0;
@@ -113,6 +114,7 @@ void FulltextIndexer::run(bool clear)
             this,
             [this, indexed] {
                 running_ = false;
+                AppContext::get().endOwnWrites();
                 emit finished(indexed);
             },
             Qt::QueuedConnection);

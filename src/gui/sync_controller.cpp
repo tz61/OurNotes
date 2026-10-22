@@ -29,6 +29,11 @@ SyncController::SyncController(QObject* parent)
     autoTimer_.setSingleShot(true);
     autoTimer_.setInterval(20000);
     connect(&autoTimer_, &QTimer::timeout, this, &SyncController::syncNow);
+    // what ournotes-cli or an agent changed while the app runs goes out like the app's own
+    connect(&AppContext::get(), &AppContext::changedElsewhere, this, [this] {
+        if (AppContext::get().config().get("/sync/auto", true).get<bool>() && hasTarget())
+            autoTimer_.start();
+    });
     connect(&intervalTimer_, &QTimer::timeout, this, &SyncController::syncNow);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64, const QString& type, const QString& action, const QStringList&) {
@@ -111,6 +116,7 @@ void SyncController::syncNow()
     autoTimer_.stop();
     running_ = true;
     ++syncCount_;
+    AppContext::get().beginOwnWrites();
     cancel_ = false;
     pendingAfterRun_ = false;
     emit started();
@@ -156,6 +162,7 @@ void SyncController::syncNow()
                 emit historyChanged();
                 running_ = false;
                 ++syncCount_;
+                AppContext::get().endOwnWrites();
                 AppContext::get().library().notifyRefresh();
                 emit AppContext::get().syncFinished();
                 emit finished(ok, summary);
@@ -174,6 +181,7 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
         return;
     }
     auto dataDir = AppContext::get().library().dataDir();
+    AppContext::get().beginOwnWrites();
     std::thread([this, dataDir, t = *target, libraryId, key] {
         bool ok = false;
         QString error;
@@ -186,7 +194,11 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
             error = qs(e.what());
         }
         QMetaObject::invokeMethod(
-            this, [this, libraryId, key, ok, error] { emit fileDownloaded(libraryId, key, ok, error); },
+            this,
+            [this, libraryId, key, ok, error] {
+                AppContext::get().endOwnWrites();
+                emit fileDownloaded(libraryId, key, ok, error);
+            },
             Qt::QueuedConnection);
     }).detach();
 }
@@ -200,6 +212,7 @@ void SyncController::deleteRemoteLibrary(qint64 libraryId)
         return;
     }
     auto dataDir = AppContext::get().library().dataDir();
+    AppContext::get().beginOwnWrites();
     std::thread([this, dataDir, t = *target, libraryId, uid = info->uid] {
         bool ok = false;
         QString error;
@@ -214,7 +227,11 @@ void SyncController::deleteRemoteLibrary(qint64 libraryId)
             error = qs(e.what());
         }
         QMetaObject::invokeMethod(
-            this, [this, libraryId, ok, error] { emit remoteLibraryDeleted(libraryId, ok, error); },
+            this,
+            [this, libraryId, ok, error] {
+                AppContext::get().endOwnWrites();
+                emit remoteLibraryDeleted(libraryId, ok, error);
+            },
             Qt::QueuedConnection);
     }).detach();
 }

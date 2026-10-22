@@ -267,6 +267,9 @@ public:
     void markPushed(int64_t lib, const std::string& type, const std::string& key, int64_t version, int64_t rev);
     void setObjectVersion(int64_t lib, const std::string& type, const std::string& key, int64_t version);
     std::vector<DirtyObject> dirtyObjects(int64_t lib);
+    // Changes when another connection (another program, another thread) has written to
+    // the database since this one last asked (SQLite's PRAGMA data_version).
+    int64_t dataVersion();
     std::vector<Tombstone> tombstones(int64_t lib);
     std::optional<Tombstone> tombstone(int64_t lib, const std::string& type, const std::string& key);
     void clearTombstone(int64_t lib, const std::string& type, const std::string& key);

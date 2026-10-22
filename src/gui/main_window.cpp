@@ -101,6 +101,7 @@ MainWindow::MainWindow()
     statusBar()->addWidget(status_, 1);
 
     sync_ = new SyncController(this);
+    AppContext::get().watchDatabase();  // for what ournotes-cli or an agent changes meanwhile
     indexer_ = new FulltextIndexer(this);
 
     buildActions();
