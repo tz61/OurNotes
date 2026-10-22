@@ -318,7 +318,7 @@ void MainWindow::buildActions()
             emit tabs_->tabCloseRequested(i);
     });
     file->addAction(tr("Reopen Closed Tab"), QKeySequence("Ctrl+Shift+T"), this, &MainWindow::reopenClosedTab);
-    file->addAction(tr("Quit"), QKeySequence::Quit, this, &QWidget::close);
+    file->addAction(tr("Quit"), QKeySequence::Quit, this, &QWidget::close)->setMenuRole(QAction::QuitRole);
 
     auto* edit = menuBar()->addMenu(tr("&Edit"));
     edit->addAction(tr("Copy Citation"), QKeySequence("Ctrl+Shift+A"), this, [this] { copyCitation(false); });
@@ -372,6 +372,9 @@ void MainWindow::buildActions()
 #ifdef Q_OS_MACOS
     fullScreen->setShortcut(QKeySequence(Qt::CTRL | Qt::META | Qt::Key_F));  // Command-Control-F, whatever the theme
 #endif
+    // Qt on macOS takes an item whose text starts with "Exit" for Quit and puts it in the
+    // application menu: Quit toggled full screen, with Command-Control-F
+    fullScreen->setMenuRole(QAction::NoRole);
     connect(view, &QMenu::aboutToShow, this, [this, fullScreen] {
         fullScreen->setText(isFullScreen() ? tr("Exit Full Screen") : tr("Enter Full Screen"));
     });
