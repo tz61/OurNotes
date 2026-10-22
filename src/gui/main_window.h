@@ -15,6 +15,7 @@ class LibraryView;
 class ReaderTab;
 class SyncController;
 class SyncHistoryWindow;
+class StorageWindow;
 class ConnectorServer;
 class FulltextIndexer;
 struct Scope;
@@ -80,12 +81,14 @@ private:
     void deleteLibrary(int64_t libraryId);
     void showConflicts();
     void showSyncHistory();
+    void showStorage();
     void setStatus(const QString& text, int timeoutMs = 0);
 
     QTabWidget* tabs_;
     LibraryView* library_;
     QToolButton* syncButton_ = nullptr;
     SyncHistoryWindow* syncHistory_ = nullptr;
+    StorageWindow* storage_ = nullptr;
     ConnectorServer* connector_ = nullptr;
     void startConnector(bool on);
     QLabel* status_;

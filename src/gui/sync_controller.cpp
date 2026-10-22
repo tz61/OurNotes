@@ -16,16 +16,12 @@
 
 namespace on::gui {
 
-namespace {
-
 std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& t)
 {
     if (t.kind == "local")
         return std::make_unique<sync::LocalTransport>(u8path(t.path));
     return std::make_unique<sync::HttpTransport>(t.url, t.token, t.verifyTls);
 }
-
-} // namespace
 
 SyncController::SyncController(QObject* parent)
     : QObject(parent), history_(std::make_unique<SyncHistory>(AppContext::get().library().dataDir() / "sync-history.json"))

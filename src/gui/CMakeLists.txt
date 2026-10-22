@@ -26,6 +26,7 @@ set(OURNOTES_GUI_SOURCES
     side_pane.cpp
     sync_controller.cpp
     sync_history.cpp
+    storage_window.cpp
     tab_widget.cpp
     tag_selector.cpp
     theme.cpp

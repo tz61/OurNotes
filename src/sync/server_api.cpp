@@ -198,6 +198,7 @@ struct ApiServer::State {
     uint64_t changeCount = 0;
     std::atomic<int> waiting{0};
     std::atomic<bool> stopping{false};
+    std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 
     State(Store& s, ServerOptions o) : store(s), opts(std::move(o)) {}
 
@@ -266,6 +267,18 @@ struct ApiServer::State {
         authenticate(req, res);
         store.revokeToken(bearerToken(req));
         sendJson(res, Json{{"ok", true}});
+    }
+
+    void status(const Request& req, Response& res)
+    {
+        auto user = authenticate(req, res);
+        auto out = store.usage(user);
+        out["server"] = opts.serverName;
+        out["version"] = OURNOTES_VERSION;
+        out["api"] = kApiVersion;
+        out["uptime"] =
+            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
+        sendJson(res, out);
     }
 
     void me(const Request& req, Response& res)
@@ -552,6 +565,7 @@ void ApiServer::mount(httplib::Server& svr)
     svr.Post(api + "/login", withBody(&State::login));
     svr.Post(api + "/logout", ignoreBody(&State::logout));
     svr.Get(api + "/me", get(&State::me));
+    svr.Get(api + "/status", get(&State::status));
     svr.Get(api + "/libraries", get(&State::listLibraries));
     svr.Get(lib, get(&State::getLibrary));
     svr.Put(lib, withBody(&State::putLibrary));

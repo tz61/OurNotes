@@ -400,3 +400,37 @@ TEST_CASE("items copied into another library, with their notes, images, files an
     CHECK(lib.relatedKeys(from, paperKey) == std::vector<std::string>{other});
     CHECK(jstr(*lib.item(from, jstr(lone, "key")), "parentItem") == other);
 }
+
+TEST_CASE("disk usage: each library's items and files, the databases, the disk")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto id = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "Paper"}}), "key");
+    lib.createNote(id, "<p>a note</p>", paper);
+    auto pdfPath = tmp.path / "paper.pdf";
+    std::ofstream(pdfPath, std::ios::binary) << std::string(5000, 'x');
+    auto pdf = lib.importAttachment(id, pdfPath, paper);
+    lib.createItem(id, Json{{"itemType", "annotation"}, {"parentItem", jstr(pdf, "key")}, {"annotationType", "highlight"}});
+    // a file not downloaded (synced "on demand"), and an item in the trash
+    lib.createItem(id, Json{{"itemType", "attachment"}, {"linkMode", "imported_file"}, {"filename", "away.pdf"}});
+    auto gone = jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "Gone"}}), "key");
+    lib.trashItems(id, {gone});
+    auto usage = lib.diskUsage();
+    CAPTURE(usage.dump(2));
+    REQUIRE(usage["libraries"].size() == 1);
+    auto& l = usage["libraries"][0];
+    CHECK(l["items"] == 1);
+    CHECK(l["notes"] == 1);
+    CHECK(l["attachments"] == 2);
+    CHECK(l["annotations"] == 1);
+    CHECK(l["trashed"] == 1);
+    CHECK(l["files"] == 1);
+    CHECK(l["fileBytes"] == 5000);
+    CHECK(l["missingFiles"] == 1);
+    CHECK(usage["storage"]["files"] == 1);
+    CHECK(usage["storage"]["bytes"] == 5000);
+    CHECK(usage["database"].get<int64_t>() > 0);
+    CHECK(usage["disk"]["capacity"].get<int64_t>() > 0);
+    CHECK(usage["disk"]["available"].get<int64_t>() <= usage["disk"]["capacity"].get<int64_t>());
+}

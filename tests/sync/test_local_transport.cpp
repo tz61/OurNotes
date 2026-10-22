@@ -146,3 +146,18 @@ TEST_CASE("local transport: a wait ends when another device pushes to the folder
     CHECK(a.awaitLibraries(next->state, 1)->state == next->state);
     CHECK(steady_clock::now() - start >= milliseconds(900));
 }
+
+TEST_CASE("local transport: the folder's status")
+{
+    TempDir dir;
+    LocalTransport t(dir / "folder");
+    t.ensureLibrary("LIB1", "Mine", "user");
+    t.push("LIB1", {put("item", "ITEM2345", 0, item("A book"))});
+    auto s = t.status();
+    REQUIRE(s);
+    CHECK((*s)["server"] == "local");
+    CHECK((*s)["path"] == pathString(dir / "folder"));
+    CHECK((*s)["disk"]["capacity"].get<int64_t>() > 0);
+    REQUIRE((*s)["libraries"].size() == 1);
+    CHECK((*s)["libraries"][0]["items"] == 1);
+}

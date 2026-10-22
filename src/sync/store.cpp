@@ -746,6 +746,43 @@ PushResult Store::push(const std::string& uid, const std::vector<PushObject>& ob
 
 // --- files ---------------------------------------------------------------------------------------
 
+Json Store::usage(const std::string& username)
+{
+    auto libs = libraries(username);
+    std::lock_guard lock(mutex_);
+    Json list = Json::array();
+    for (auto& l : libs) {
+        Json j = toJson(l);
+        int64_t items = 0, notes = 0, attachments = 0, annotations = 0;
+        auto st = db_.query("SELECT json_extract(data, '$.itemType'), COUNT(*) FROM objects"
+                            " WHERE uid = ? AND type = 'item' AND deleted = 0 GROUP BY 1",
+                            l.uid);
+        while (st.step()) {
+            auto type = st.isNull(0) ? std::string() : st.str(0);
+            auto n = st.i64(1);
+            (type == "note" ? notes : type == "attachment" ? attachments : type == "annotation" ? annotations : items) += n;
+        }
+        auto f = db_.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE uid = ?", l.uid);
+        f.step();
+        j["items"] = items;
+        j["notes"] = notes;
+        j["attachments"] = attachments;
+        j["annotations"] = annotations;
+        j["files"] = f.i64(0);
+        j["fileBytes"] = f.i64(1);
+        list.push_back(j);
+    }
+    auto all = db_.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files");
+    all.step();
+    int64_t database = 0;
+    for (auto suffix : {"", "-wal", "-shm", "-journal"})
+        database += fileSizeOr0(root_ / ("store.sqlite" + std::string(suffix)));
+    return Json{{"database", database},
+                {"files", Json{{"count", all.i64(0)}, {"bytes", all.i64(1)}}},
+                {"disk", diskSpace(root_)},
+                {"libraries", list}};
+}
+
 fs::path Store::blobPath(const std::string& uid, const std::string& key) const
 {
     requireKey(uid, "library id");

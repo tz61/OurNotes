@@ -42,6 +42,7 @@ public:
                     const ProgressFn& progress = {}) override;
     std::optional<LibrariesState> awaitLibraries(const std::string& known, int wait) override;
     void abort() override;  // (the one call that may come from another thread)
+    std::optional<Json> status() override;
 
 private:
     std::string apiPath(const std::string& path) const;

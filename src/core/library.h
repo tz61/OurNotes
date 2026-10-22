@@ -211,6 +211,13 @@ public:
     bool refreshAttachmentFile(int64_t lib, const std::string& key);
     std::string fileMd5(int64_t lib, const std::string& key, const fs::path& path);  // cached by size+mtime
 
+    // What the library takes on disk, and room left: {dataDir, database, fulltextIndex
+    // (bytes), storage {files, bytes} (everything in storage/), disk (see diskSpace),
+    // libraries: {id, name, items, notes, attachments, annotations, trashed, files,
+    // fileBytes, missingFiles (not downloaded)}}. Attachments' files are counted, in the
+    // trash too; the rest leaves out what is in the trash.
+    Json diskUsage();
+
     // --- collections -----------------------------------------------------------------
     std::vector<Json> collections(int64_t lib);
     std::optional<Json> collection(int64_t lib, const std::string& key);

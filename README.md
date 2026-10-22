@@ -227,6 +227,10 @@ or network share. Every computer that syncs with the same folder gets the same l
 Use it from one computer at a time (it is not meant for live sharing by Dropbox-style
 tools, which can corrupt databases).
 
+*Tools → Storage and Sync Status* shows what OurNotes takes on this computer's disk (the
+database, the full-text index, each library's files) and the room left, and how the sync
+target is doing: its version and sync API, its disk, and what it holds of each library.
+
 Sync runs automatically after edits, as soon as another computer has sent its changes (a
 server tells at once, from 0.1.10 on; a folder is looked at every few seconds), and every 15
 minutes (configurable), or with the sync button. Attachment files are transferred during sync

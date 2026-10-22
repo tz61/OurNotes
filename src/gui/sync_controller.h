@@ -7,13 +7,19 @@
 #include <memory>
 #include <thread>
 
+#include "core/config.h"
+
 namespace on::sync {
 class ChangeWatcher;
+class Transport;
 }
 
 namespace on::gui {
 
 class SyncHistory;
+
+// A connection to a sync target: a server, or a folder.
+std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& target);
 
 // Runs synchronisation with the active sync target on a background thread
 // (with its own database connection) and schedules automatic syncs: after changes

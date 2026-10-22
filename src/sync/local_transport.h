@@ -33,6 +33,7 @@ public:
     // Another computer's push shows in the folder: looked at every kPollSeconds.
     std::optional<LibrariesState> awaitLibraries(const std::string& known, int wait) override;
     void abort() override { aborted_ = true; }
+    std::optional<Json> status() override;
     static constexpr int kPollSeconds = 3;
 
 private:

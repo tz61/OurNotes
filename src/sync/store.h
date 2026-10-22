@@ -90,6 +90,11 @@ public:
                      const FileInfo& meta);
     bool deleteFile(const std::string& uid, const std::string& key);
 
+    // What the store holds, and room left: {database (bytes), files {count, bytes}, disk
+    // (see diskSpace), libraries: the user's, each as listed with items, notes,
+    // attachments, annotations, files and fileBytes (what is not deleted)}.
+    Json usage(const std::string& username);
+
 private:
     void initSchema();
     void cleanTempDir();

@@ -1123,6 +1123,62 @@ Json Library::createLinkedUrl(int64_t lib, const std::string& url, const std::st
     return createItem(lib, d);
 }
 
+Json Library::diskUsage()
+{
+    Json libs = Json::array();
+    for (auto& l : libraries()) {
+        int64_t items = 0, notes = 0, attachments = 0, annotations = 0, trashed = 0, files = 0, bytes = 0,
+                missing = 0;
+        auto st = db_.query("SELECT item_type, link_mode, trashed, data FROM items WHERE library_id = ?", l.id);
+        while (st.step()) {
+            auto type = st.str(0);
+            bool inTrash = st.i64(2) != 0;
+            if (type == "attachment" && schema::isStoredLinkMode(st.str(1))) {
+                std::error_code ec;
+                auto size = fs::file_size(attachmentFile(l.id, Json::parse(st.str(3))), ec);
+                if (ec)
+                    ++missing;
+                else
+                    ++files, bytes += (int64_t)size;
+            }
+            if (inTrash)
+                ++trashed;
+            else
+                ++(type == "note" ? notes : type == "attachment" ? attachments : type == "annotation" ? annotations : items);
+        }
+        libs.push_back(Json{{"id", l.id},
+                            {"name", l.name},
+                            {"items", items},
+                            {"notes", notes},
+                            {"attachments", attachments},
+                            {"annotations", annotations},
+                            {"trashed", trashed},
+                            {"files", files},
+                            {"fileBytes", bytes},
+                            {"missingFiles", missing}});
+    }
+    int64_t storageFiles = 0, storageBytes = 0;
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(storageDir(), ec); !ec && it != fs::recursive_directory_iterator();
+         it.increment(ec))
+        if (it->is_regular_file(ec)) {
+            ++storageFiles;
+            storageBytes += fileSizeOr0(it->path());
+        }
+    auto sizeOf = [&](const char* db) {
+        int64_t n = 0;
+        for (auto suffix : {"", "-wal", "-shm", "-journal"})
+            n += fileSizeOr0(dataDir_ / (std::string(db) + suffix));
+        return n;
+    };
+    return Json{{"dataDir", pathString(dataDir_)},
+                {"database", sizeOf("ournotes.sqlite")},
+                {"fulltextIndex", sizeOf("fulltext.sqlite")},
+                {"storage", Json{{"files", storageFiles}, {"bytes", storageBytes}}},
+                {"disk", diskSpace(dataDir_)},
+                {"libraries", libs}};
+}
+
 fs::path Library::attachmentFile(int64_t lib, const Json& att)
 {
     auto mode = jstr(att, "linkMode");

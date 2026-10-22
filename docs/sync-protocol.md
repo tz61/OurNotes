@@ -123,6 +123,24 @@ are revoked by `/logout`, by a password change, or by deleting the user. After
 
 Revokes the presented token → `{"ok": true}`.
 
+### `GET /status`
+
+How the server is doing, and what it holds of the caller's libraries (servers before
+0.1.11 answer 404):
+```json
+{"server": "ournotesd", "version": "0.1.11", "api": 1, "uptime": 86400,
+ "disk": {"capacity": 107374182400, "free": 53687091200, "available": 48318382080},
+ "database": 12582912,
+ "files": {"count": 1234, "bytes": 5368709120},
+ "libraries": [{"uid": "LIB1", "name": "My Library", "type": "user", "role": "owner",
+                "owner": "alice", "version": 42, "items": 310, "notes": 25,
+                "attachments": 290, "annotations": 1800, "files": 280,
+                "fileBytes": 1073741824}]}
+```
+`disk` is the disk the server's data is on (`null` if it cannot be told); `database`
+and `files` are the server's, everyone's; the libraries' counts leave out what is
+deleted.
+
 ### `GET /me`
 
 → `{"username": "alice", "admin": false}`

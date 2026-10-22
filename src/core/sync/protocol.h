@@ -143,6 +143,10 @@ public:
     // From another thread: ends an awaitLibraries() in progress, and makes later calls
     // fail ("cancelled").
     virtual void abort() {}
+    // How the target is doing: {server, version, api, uptime (seconds, servers only),
+    // database, files, disk, libraries} (see Store::usage). nullopt: the target cannot
+    // tell (servers before 0.1.11; info() still can).
+    virtual std::optional<Json> status() { return std::nullopt; }
 };
 
 } // namespace on::sync

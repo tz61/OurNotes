@@ -15,6 +15,22 @@ namespace on {
 
 static const char kKeyAlphabet[] = "23456789ABCDEFGHIJKLMNPQRSTUVWXYZ";
 
+Json diskSpace(const fs::path& path)
+{
+    std::error_code ec;
+    auto space = fs::space(path, ec);
+    if (ec)
+        return nullptr;
+    return Json{{"capacity", (int64_t)space.capacity}, {"free", (int64_t)space.free}, {"available", (int64_t)space.available}};
+}
+
+int64_t fileSizeOr0(const fs::path& path)
+{
+    std::error_code ec;
+    auto size = fs::file_size(path, ec);
+    return ec ? 0 : (int64_t)size;
+}
+
 std::string newKey()
 {
     static thread_local std::mt19937_64 rng{std::random_device{}() ^

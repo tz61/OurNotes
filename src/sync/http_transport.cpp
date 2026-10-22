@@ -201,6 +201,17 @@ std::optional<LibrariesState> HttpTransport::awaitLibraries(const std::string& k
     return out;
 }
 
+std::optional<Json> HttpTransport::status()
+{
+    try {
+        return request("GET", apiPath("/status"));
+    } catch (const SyncError& e) {
+        if (e.status == 404)  // a server before 0.1.11
+            return std::nullopt;
+        throw;
+    }
+}
+
 void HttpTransport::abort()
 {
     aborted_ = true;

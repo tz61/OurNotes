@@ -74,6 +74,7 @@
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
 #include "gui/search_field.h"
+#include "gui/storage_window.h"
 #include "gui/shift_wheel.h"
 #include "gui/preferences.h"
 #include "gui/sync_controller.h"
@@ -2648,6 +2649,61 @@ TEST_CASE("sync history: the last syncs, each object once under the last that ch
     REQUIRE(first->childCount() == 1);
     CHECK(first->child(0)->text(0).contains("Note"));
     CHECK(first->child(0)->text(1) == "Added");
+}
+
+TEST_CASE("storage window: this computer's disk and libraries, and the sync target's")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.createNote(env.lib, "<p>A note</p>", jstr(paper, "key"));
+    env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    StorageWindow window;
+    window.show();
+    // no target yet
+    window.refresh();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isLoading(); }, 10000));
+    auto* local = window.findChild<QTreeWidget*>("localLibraries");
+    REQUIRE(local->topLevelItemCount() == 1);
+    CHECK(local->topLevelItem(0)->text(1) == "1");  // items
+    CHECK(local->topLevelItem(0)->text(2) == "1");  // notes
+    CHECK(local->topLevelItem(0)->text(4) == "1");  // files
+    CHECK(window.findChild<QLabel*>("localFiles")->text().startsWith("1 file,"));
+    CHECK(window.findChild<QLabel*>("localDisk")->text().contains("free of"));
+    CHECK(window.findChild<QLabel*>("targetState")->text().contains("No sync target"));
+
+    // a folder, synced to
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "USB stick";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "folder");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    {
+        Library lib(env.library.dataDir());
+        sync::LocalTransport transport(tmp.path / "folder");
+        REQUIRE(sync::SyncEngine(lib, transport, "folder1").syncAll().errors.empty());
+    }
+    window.refresh();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isLoading(); }, 10000));
+    auto* there = window.findChild<QTreeWidget*>("targetLibraries");
+    REQUIRE(there->isVisible());
+    REQUIRE(there->topLevelItemCount() == 1);
+    CHECK(there->topLevelItem(0)->text(1) == "owner");
+    CHECK(there->topLevelItem(0)->text(3) == "1");  // items
+    CHECK(there->topLevelItem(0)->text(6) == "1");  // files
+    CHECK(window.findChild<QLabel*>("server")->text().startsWith("a folder"));
+    CHECK(window.findChild<QLabel*>("targetDisk")->text().contains("free of"));
+    // the disks' bars filled as far as they are used (once eased in)
+    QTest::qWait(1500);
+    for (auto* bar : window.findChildren<FancyProgressBar*>())
+        CHECK(bar->fraction() > 0);
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        window.grab().save(dir + "/storage-window.png");
 }
 
 TEST_CASE("sync history: filled by the syncs the app runs")

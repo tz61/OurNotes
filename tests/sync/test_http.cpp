@@ -516,3 +516,59 @@ TEST_CASE("change watcher: another client's push is told at once, this one's own
     other.push("LIB1", {put("item", "ITEM5678", 0, item("Later"))});
     CHECK(waitUntil([&] { return changed == 3; }));
 }
+
+TEST_CASE("http: the server's status, for the user's libraries")
+{
+    TestServer srv;
+    srv.store.createUser("alice", "alice-pw");
+    srv.store.createUser("bob", "bob-pw");
+    auto token = HttpTransport::login(srv.url, "alice", "alice-pw", "laptop");
+    auto bobToken = HttpTransport::login(srv.url, "bob", "bob-pw", "phone");
+    HttpTransport alice(srv.url, token), bob(srv.url, bobToken);
+    alice.ensureLibrary("LIB1", "Mine", "user");
+    bob.ensureLibrary("LIB2", "Bob's", "user");
+    alice.push("LIB1", {put("item", "ITEM2345", 0, item("A book")),
+                        put("item", "NOTE2345", 0, Json{{"itemType", "note"}, {"note", "<p>n</p>"}}),
+                        put("item", "ATTA2345", 0, Json{{"itemType", "attachment"}, {"linkMode", "imported_file"}})});
+    TempDir tmp;
+    writeBytes(tmp / "a.pdf", std::string(3000, 'p'));
+    FileInfo meta;
+    meta.filename = "a.pdf";
+    alice.upload("LIB1", "ATTA2345", tmp / "a.pdf", meta);
+    auto s = alice.status();
+    REQUIRE(s);
+    CAPTURE(s->dump(2));
+    CHECK((*s)["server"] == "ournotesd");
+    CHECK((*s)["version"] == OURNOTES_VERSION);
+    CHECK((*s)["api"] == kApiVersion);
+    CHECK((*s)["uptime"].get<int64_t>() >= 0);
+    CHECK((*s)["disk"]["capacity"].get<int64_t>() > 0);
+    CHECK((*s)["database"].get<int64_t>() > 0);
+    CHECK((*s)["files"]["count"] == 1);
+    REQUIRE((*s)["libraries"].size() == 1);  // hers only
+    auto& l = (*s)["libraries"][0];
+    CHECK(l["uid"] == "LIB1");
+    CHECK(l["role"] == "owner");
+    CHECK(l["items"] == 1);
+    CHECK(l["notes"] == 1);
+    CHECK(l["attachments"] == 1);
+    CHECK(l["files"] == 1);
+    CHECK(l["fileBytes"] == 3000);
+    CHECK(statusOf([&] { HttpTransport(srv.url, "").status(); }) == 401);
+}
+
+TEST_CASE("http: a server before 0.1.11 does not tell its status")
+{
+    httplib::Server old;
+    old.Get("/api/v1/info", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content(R"({"server": "ournotesd", "version": "0.1.10", "api": 1})", "application/json");
+    });
+    int port = old.bind_to_any_port("127.0.0.1");
+    std::thread thread([&] { old.listen_after_bind(); });
+    old.wait_until_ready();
+    HttpTransport t("http://127.0.0.1:" + std::to_string(port), "token");
+    CHECK(!t.status());
+    CHECK(t.info()["version"] == "0.1.10");
+    old.stop();
+    thread.join();
+}

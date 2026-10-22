@@ -20,6 +20,12 @@ public:
 
 // Object keys use Zotero's alphabet so imported keys and new keys look alike.
 std::string newKey();
+
+// The disk `path` is on, in bytes: its size, what is free, and what is free to this user
+// ({capacity, free, available}); null when it cannot be told.
+Json diskSpace(const fs::path& path);
+// The bytes of a file, 0 when it is not there.
+int64_t fileSizeOr0(const fs::path& path);
 bool isValidKey(std::string_view key);
 
 std::string nowIso();                        // 2026-01-31T12:00:00Z

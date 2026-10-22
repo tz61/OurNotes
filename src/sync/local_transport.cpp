@@ -88,6 +88,15 @@ Json LocalTransport::info()
 
 std::vector<RemoteLibrary> LocalTransport::libraries() { return store_.libraries(kUser); }
 
+std::optional<Json> LocalTransport::status()
+{
+    auto out = store_.usage(kUser);
+    out["server"] = "local";
+    out["path"] = pathString(folder_);
+    out["api"] = kApiVersion;
+    return out;
+}
+
 std::optional<LibrariesState> LocalTransport::awaitLibraries(const std::string& known, int wait)
 {
     using namespace std::chrono;

@@ -47,6 +47,7 @@
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
 #include "gui/sync_controller.h"
+#include "gui/storage_window.h"
 #include "gui/sync_history.h"
 #include "gui/tab_widget.h"
 
@@ -280,6 +281,7 @@ void MainWindow::buildActions()
     connect(syncButton_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         QMenu menu(syncButton_);
         menu.addAction(tr("Sync History…"), this, &MainWindow::showSyncHistory);
+        menu.addAction(tr("Storage and Sync Status…"), this, &MainWindow::showStorage);
         menu.addAction(tr("Sync Conflicts…"), this, &MainWindow::showConflicts);
         menu.addAction(tr("Sync Settings…"), this, [this] { showPreferences(1); });
         menu.exec(syncButton_->mapToGlobal(pos));
@@ -384,6 +386,7 @@ void MainWindow::buildActions()
     tools->addAction(tr("Sync History…"), this, &MainWindow::showSyncHistory);
     tools->addAction(tr("Sync Settings…"), this, [this] { showPreferences(1); });
     tools->addAction(tr("Sync Conflicts…"), this, &MainWindow::showConflicts);
+    tools->addAction(tr("Storage and Sync Status…"), this, &MainWindow::showStorage);
     tools->addSeparator();
     tools->addAction(tr("Rebuild Full-Text Index"), this, [this] {
         indexer_->rebuild();
@@ -727,6 +730,18 @@ void MainWindow::deleteLibrary(int64_t libraryId)
     }
     setStatus(tr("Deleting \"%1\" on the sync target…").arg(name));
     sync_->deleteRemoteLibrary(libraryId);
+}
+
+void MainWindow::showStorage()
+{
+    if (!storage_) {
+        storage_ = new StorageWindow(this);
+        connect(storage_, &StorageWindow::syncSettingsRequested, this, [this] { showPreferences(1); });
+    }
+    storage_->refresh();
+    storage_->show();
+    storage_->raise();
+    storage_->activateWindow();
 }
 
 void MainWindow::showSyncHistory()
