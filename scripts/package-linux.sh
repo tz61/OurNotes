@@ -2,7 +2,8 @@
 # Build OurNotes for Linux and package it:
 #   dist/OurNotes-<version>-<arch>.AppImage       the desktop application in one file
 #   dist/ournotes-<version>-linux-<arch>.tar.gz   the same as a folder, with bin/ournotes,
-#                                                 bin/ournotes-cli and bin/ournotesd
+#                                                 bin/ournotes-cli, bin/ournotesd and
+#                                                 AGENTS.md (for AI agents)
 # Both bring their own Qt. They use the system's OpenSSL 3 (libssl3), which knows where
 # the distribution keeps its certificates.
 #
@@ -117,6 +118,7 @@ NAME="ournotes-$VERSION-linux-$ARCH"
 info "Creating $NAME.tar.gz"
 rm -rf "${BUILD_DIR:?}/$NAME"
 cp -a "$APPDIR/usr" "$BUILD_DIR/$NAME"
+[ -f "$BUILD_DIR/$NAME/AGENTS.md" ] || die "AGENTS.md is missing from the package"
 tar -C "$BUILD_DIR" -czf "$OUT_DIR/$NAME.tar.gz" "$NAME"
 
 info "Done:"

@@ -37,6 +37,7 @@ library safely, with examples).
 Library (--library takes an ID or a name; --collection a key or a path such as
 "FA26/CS8803"; --json prints JSON for scripts and agents):
   guide                             how to work with a library from an agent or a script
+  where                             where OurNotes, its library and its settings are here
   info                              data directory and library statistics
   libraries [--json]                list libraries
   collections [--library L] [--json]
@@ -150,7 +151,7 @@ int main(int argc, char** argv)
             {"info", cmdInfo},
             {"import-zotero", cmdImportZotero},
         };
-        registerAgentCommands(commands);
+        registerAgentCommands(commands, config);
         registerExtraCommands(commands, config);
         auto it = commands.find(args.command);
         if (it == commands.end()) {

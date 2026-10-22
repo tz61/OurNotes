@@ -7,9 +7,19 @@
 #include <optional>
 #include <set>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include "cli/agent_guide.h"
 #include "cli/commands.h"
 #include "core/schema.h"
+#include "ournotes/version.h"
 #include "pdf/document.h"
 
 using namespace on;
@@ -506,6 +516,63 @@ int fileOrUnfile(Library& lib, Args& args, bool file)
     return 0;
 }
 
+// This program's own file.
+fs::path executablePath()
+{
+#if defined(_WIN32)
+    std::wstring buf(32768, L'\0');
+    buf.resize(GetModuleFileNameW(nullptr, buf.data(), (DWORD)buf.size()));
+    return fs::path(buf);
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string buf(size, '\0');
+    if (_NSGetExecutablePath(buf.data(), &size) != 0)
+        return {};
+    std::error_code ec;
+    auto path = fs::canonical(buf.c_str(), ec);
+    return ec ? fs::path(buf.c_str()) : path;
+#else
+    std::error_code ec;
+    auto path = fs::read_symlink("/proc/self/exe", ec);
+    return ec ? fs::path() : path;
+#endif
+}
+
+// Where this installation keeps its programs, this guide, the library and the settings.
+std::string whereText(Library& lib, Config& config)
+{
+    auto exe = executablePath();
+    auto bin = exe.parent_path();
+#if defined(__APPLE__)
+    auto guide = bin.parent_path() / "Resources" / "AGENTS.md";  // OurNotes.app/Contents/
+#else
+    auto guide = bin.parent_path() / "AGENTS.md";
+#endif
+#if defined(_WIN32)
+    auto app = bin / "ournotes.exe";
+#else
+    auto app = bin / "ournotes";
+#endif
+    std::error_code ec;
+    auto show = [&](const fs::path& p) { return fs::exists(p, ec) ? pathString(p) : pathString(p) + "  (not there)"; };
+    std::string out = "OurNotes " OURNOTES_VERSION "\n";
+    out += "ournotes-cli:  " + pathString(exe) + "\n";
+    out += "the app:       " + show(app) + "\n";
+    out += "this guide:    " + show(guide) + "\n";
+    out += "data folder:   " + pathString(lib.dataDir()) + "  (the library: ournotes.sqlite; files in storage/)\n";
+    out += "settings:      " + pathString(config.path()) + "\n";
+    if (auto t = config.activeTarget())
+        out += "sync:          " + t->name + ", " + (t->kind == "local" ? "a folder, " + t->path : "a server, " + t->url) + "\n";
+    else
+        out += "sync:          none set up (the library stays on this computer)\n";
+    std::string names;
+    for (auto& l : lib.libraries())
+        names += (names.empty() ? "" : ", ") + l.name;
+    out += "libraries:     " + names + "\n";
+    return out;
+}
+
 int trashOrRestore(Library& lib, Args& args, bool trash)
 {
     auto only = libraryOption(lib, args);
@@ -570,10 +637,15 @@ CollectionRef findCollection(Library& lib, const std::string& spec, std::optiona
     throw Error("\"" + spec + "\" could be any of these; give its key, or the library's name first:" + which);
 }
 
-void registerAgentCommands(CommandMap& commands)
+void registerAgentCommands(CommandMap& commands, Config& config)
 {
-    commands["guide"] = [](Library&, Args&) {
-        std::cout << kAgentGuide;
+    commands["guide"] = [&config](Library& lib, Args&) {
+        std::cout << kAgentGuide << "\n## This installation (`ournotes-cli where`)\n\n```text\n"
+                  << whereText(lib, config) << "```\n";
+        return 0;
+    };
+    commands["where"] = [&config](Library& lib, Args&) {
+        std::cout << whereText(lib, config);
         return 0;
     };
     commands["libraries"] = cmdLibraries;

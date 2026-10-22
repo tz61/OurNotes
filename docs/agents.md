@@ -17,15 +17,30 @@ Change the library only with `ournotes-cli`. Never write to `ournotes.sqlite` or
 Reading the files under `storage/` (a PDF, say) is fine; `ournotes-cli text` does it for
 you.
 
-## Where things are
+## Where OurNotes is installed
+
+**Run `ournotes-cli where` first**: it prints this computer's paths (the program, the
+app, this guide, the data folder, the settings file, the sync target, the libraries).
+
+If you found this file as `AGENTS.md`, the programs are beside it:
+
+| installed with | `AGENTS.md` | `ournotes-cli` |
+|---|---|---|
+| Linux, `scripts/install-linux.sh` | `~/.local/opt/ournotes/AGENTS.md` | `~/.local/opt/ournotes/bin/ournotes-cli`, linked as `~/.local/bin/ournotes-cli` |
+| Linux, the `.tar.gz` | at the top of the unpacked folder | `bin/ournotes-cli` in that folder |
+| Linux, the AppImage | inside it | inside it: use the `.tar.gz` of the same version, or `--appimage-extract` it and run `squashfs-root/usr/bin/ournotes-cli` |
+| macOS, the `.dmg` | `/Applications/OurNotes.app/Contents/Resources/AGENTS.md` | `/Applications/OurNotes.app/Contents/MacOS/ournotes-cli` |
+| Windows, the `.zip` | `OurNotes\AGENTS.md` where it was unzipped | `OurNotes\bin\ournotes-cli.exe` |
+
+Wherever it is installed, the library and the settings are in the same places:
 
 | | |
 |---|---|
-| `ournotes-cli` | Linux: `~/.local/bin/ournotes-cli` (or `bin/` of the folder); macOS: `/Applications/OurNotes.app/Contents/MacOS/ournotes-cli`; Windows: `OurNotes\bin\ournotes-cli.exe` |
-| the library | the data folder the app uses (`~/OurNotes` unless changed); `--data-dir DIR` or `OURNOTES_DATA_DIR` for another |
+| the library | the data folder the app uses (`~/OurNotes` unless changed in the app): `ournotes.sqlite`, and the attachments' files under `storage/`; `--data-dir DIR` or `OURNOTES_DATA_DIR` for another |
 | settings, sync targets | `config.json` in `~/.config/ournotes/` (macOS: `~/Library/Application Support/OurNotes/`, Windows: `%APPDATA%\OurNotes\`) |
 
-`ournotes-cli help` lists every command.
+`ournotes-cli help` lists every command; `ournotes-cli guide` prints this page, followed by
+what `where` says.
 
 ## What a library holds
 

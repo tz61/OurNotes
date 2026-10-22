@@ -22,4 +22,8 @@ OurNotes. Unzip it into a folder you keep, open `chrome://extensions`, turn on *
 mode* and choose *Load unpacked* with that folder. Click its button or press Alt+Shift+O on
 a page. See `docs/browser-connector.md`.
 
+**AI agents** (Claude Code, Codex, ...): every package has an `AGENTS.md` beside the
+programs (in macOS: `OurNotes.app/Contents/Resources/AGENTS.md`) that tells an agent what
+`ournotes-cli` can do with a library and where it is; `ournotes-cli guide` prints it too.
+
 `SHA256SUMS.txt` lists the checksums of all files.

@@ -19,3 +19,7 @@ add_executable(ournotes-cli main.cpp)
 target_link_libraries(ournotes-cli PRIVATE ournotes_cli)
 on_copy_runtime_dlls(ournotes-cli)
 install(TARGETS ournotes-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# For AI agents: what OurNotes can do from the command line, beside the programs (at the
+# top of the install folder: ~/.local/opt/ournotes, the tar.gz's and the zip's folder;
+# build-dmg.sh puts it in OurNotes.app/Contents/Resources)
+install(FILES "${PROJECT_SOURCE_DIR}/docs/agents.md" DESTINATION . RENAME AGENTS.md)

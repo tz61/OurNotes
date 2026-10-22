@@ -70,7 +70,7 @@ $root = Join-Path $stage "OurNotes"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Write-Host "==> Installing into $root"
 Invoke-Native cmake @("--install", $BuildDir, "--config", "Release", "--prefix", $root)
-foreach ($file in "bin\ournotes.exe", "bin\ournotes-cli.exe", "bin\ournotesd.exe", "share\ournotes\microtex",
+foreach ($file in "bin\ournotes.exe", "bin\ournotes-cli.exe", "bin\ournotesd.exe", "share\ournotes\microtex", "AGENTS.md",
                   "bin\Qt6Core.dll", "*\platforms\qwindows.dll", "bin\libssl-3*.dll", "bin\libcrypto-3*.dll") {
     if (-not (Test-Path (Join-Path $root $file))) {
         throw "$file is missing from the package (configured without -DOURNOTES_DEPLOY_QT=ON, or without OpenSSL?)"

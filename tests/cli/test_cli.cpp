@@ -23,7 +23,7 @@ struct Cli {
 
     Cli()
     {
-        registerAgentCommands(commands);
+        registerAgentCommands(commands, config);
         registerExtraCommands(commands, config);
     }
 
@@ -131,6 +131,14 @@ TEST_CASE("cli: the guide for agents is built in")
     CHECK(code == 0);
     CHECK(out.find("# Working with an OurNotes library from an agent or a script") == 0);
     CHECK(out.find("ournotes-cli add-note") != std::string::npos);
+    // ending with where things are on this computer
+    CHECK(out.find("## This installation") != std::string::npos);
+    auto [whereCode, where] = cli.run({"where"});
+    CHECK(whereCode == 0);
+    CHECK(where.find("data folder:   " + pathString(cli.lib.dataDir())) != std::string::npos);
+    CHECK(where.find("settings:      " + pathString(cli.dir.path / "config.json")) != std::string::npos);
+    CHECK(where.find("sync:          none set up") != std::string::npos);
+    CHECK(where.find("ournotes-cli:  ") != std::string::npos);
 }
 
 TEST_CASE("cli: titles, tags, notes, collections and the trash, marked for the next sync")

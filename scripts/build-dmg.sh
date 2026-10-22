@@ -2,7 +2,8 @@
 # Build OurNotes for macOS and package it as a disk image:
 #   dist/OurNotes-<version>-macos-<arch>.dmg
 # holding OurNotes.app (with its own Qt, OpenSSL and MicroTeX fonts; ournotes-cli and
-# ournotesd are in OurNotes.app/Contents/MacOS) and a link to /Applications.
+# ournotesd are in OurNotes.app/Contents/MacOS, AGENTS.md in Contents/Resources), a link
+# to /Applications, and AGENTS.md (how an AI agent can work with OurNotes).
 #
 # Usage: scripts/build-dmg.sh [options]
 #   --qt DIR         Qt 6 prefix (default: $QT_ROOT_DIR, else Homebrew's qt)
@@ -73,6 +74,9 @@ mkdir -p "$STAGE"
 cp -R "$BUILT_APP" "$APP"
 cp "$BUILD_DIR/src/cli/ournotes-cli" "$BUILD_DIR/src/server/ournotesd" "$APP/Contents/MacOS/"
 cp -R "$BUILD_DIR/share/ournotes/microtex" "$APP/Contents/Resources/microtex"
+# for AI agents: what ournotes-cli can do (in the app, and beside it on the disk image)
+cp "$SRC_DIR/docs/agents.md" "$APP/Contents/Resources/AGENTS.md"
+cp "$SRC_DIR/docs/agents.md" "$STAGE/AGENTS.md"
 ln -s /Applications "$STAGE/Applications"
 
 info "Copying the Qt runtime into the bundle"

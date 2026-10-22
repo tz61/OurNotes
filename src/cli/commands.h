@@ -84,7 +84,7 @@ using CommandMap = std::map<std::string, std::function<int(on::Library&, Args&)>
 // Commands implemented in other translation units (sync, export, full-text index).
 void registerExtraCommands(CommandMap& commands, on::Config& config);
 // Reading and changing a library (agent_commands.cpp; docs/agents.md).
-void registerAgentCommands(CommandMap& commands);
+void registerAgentCommands(CommandMap& commands, on::Config& config);
 
 #define OURNOTES_CLI_EXTRA_USAGE \
     "  index [--rebuild]                 build the full-text index of PDF attachments\n" \

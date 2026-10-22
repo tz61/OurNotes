@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build OurNotes and install it for the current user:
-#   - the application (with its own copy of the Qt runtime) in ~/.local/opt/ournotes
+#   - the application (with its own copy of the Qt runtime) in ~/.local/opt/ournotes,
+#     with AGENTS.md (how an AI agent can work with OurNotes)
 #   - ournotes, ournotes-cli and ournotesd linked into ~/.local/bin
 #   - an application-menu entry, icons, and a launcher on the desktop
 #
