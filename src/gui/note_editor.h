@@ -120,6 +120,9 @@ class NoteEditor : public QWidget {
 public:
     explicit NoteEditor(QWidget* parent = nullptr);
     ~NoteEditor() override;
+    // The same with the find bar open or closed: a change of the window's minimum moved
+    // the window's edge.
+    QSize minimumSizeHint() const override;
 
     void setNote(int64_t libraryId, const QString& key);
     void clear();

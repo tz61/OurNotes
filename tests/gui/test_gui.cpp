@@ -2909,6 +2909,115 @@ TEST_CASE("library: a PDF dropped on a collection or an item goes there")
     CHECK(attached);
 }
 
+TEST_CASE("library: items dragged onto another library or one of its collections are copied there")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto group = env.library.createLibrary("Group");
+    auto reading = jstr(env.library.createCollection(group, "Reading"), "key");
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    auto lone = env.library.importAttachment(env.lib, file, "", false, "A PDF on its own");
+    LibraryView view;
+    view.resize(1200, 700);
+    view.show();
+    auto* tree = view.findChild<CollectionTree*>();
+    tree->selectScope({env.lib, ScopeKind::Library, {}});
+    tree->expandAll();
+    QApplication::processEvents();
+    QTreeView* items = nullptr;
+    for (auto* t : view.findChildren<QTreeView*>())
+        if (qobject_cast<ItemsModel*>(t->model()))
+            items = t;
+    REQUIRE(items);
+    auto* model = static_cast<ItemsModel*>(items->model());
+    auto rowOf = [&](const QString& title) {
+        for (int r = 0; r < model->rowCount(); ++r)
+            if (model->index(r, 0).data().toString() == title)
+                return model->index(r, 0);
+        return QModelIndex();
+    };
+    auto node = [&](const QString& name) -> QTreeWidgetItem* {
+        auto found = tree->findItems(name, Qt::MatchExactly | Qt::MatchRecursive);
+        return found.size() == 1 ? found[0] : nullptr;
+    };
+    auto drop = [&](const QModelIndex& row, QTreeWidgetItem* onto) {
+        REQUIRE(row.isValid());
+        REQUIRE(onto);
+        std::unique_ptr<QMimeData> mime(model->mimeData({row}));
+        QPoint at = tree->visualItemRect(onto).center();
+        QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(tree->viewport(), &enter);
+        QDragMoveEvent move(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(tree->viewport(), &move);
+        CHECK(move.isAccepted());
+        QDropEvent dropped(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(tree->viewport(), &dropped);
+        QApplication::processEvents();
+    };
+    auto inGroup = [&](const std::string& title) {
+        std::vector<Json> found;
+        for (auto& d : env.library.allItems(group))
+            if (jstr(d, "title") == title)
+                found.push_back(d);
+        return found;
+    };
+    // the paper, with its PDF, onto the other library
+    drop(rowOf("Paper"), node("Group"));
+    REQUIRE(inGroup("Paper").size() == 1);
+    auto copy = inGroup("Paper")[0];
+    CHECK(jstr(copy, "key") != jstr(paper, "key"));
+    auto pdfs = env.library.children(group, jstr(copy, "key"));
+    REQUIRE(pdfs.size() == 1);
+    CHECK(env.library.attachmentFileExists(group, pdfs[0]));
+    // a PDF on its own, onto a collection of it
+    drop(rowOf("A PDF on its own"), node("Reading"));
+    REQUIRE(inGroup("A PDF on its own").size() == 1);
+    CHECK(inGroup("A PDF on its own")[0]["collections"] == Json::array({reading}));
+    CHECK(env.library.attachmentFileExists(group, inGroup("A PDF on its own")[0]));
+    // where they came from, they stay
+    CHECK(env.library.item(env.lib, jstr(paper, "key")));
+    CHECK(env.library.item(env.lib, jstr(lone, "key")));
+    CHECK(env.library.children(env.lib, jstr(paper, "key")).size() == 1);
+}
+
+TEST_CASE("collections: a drag near the bottom of the tree scrolls it")
+{
+    app();
+    Env env;
+    for (int i = 0; i < 40; ++i)
+        env.library.createCollection(env.lib, "Collection " + std::to_string(100 + i));
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Paper"}});
+    LibraryView view;
+    view.resize(1000, 450);
+    view.show();
+    QApplication::processEvents();
+    auto* tree = view.findChild<CollectionTree*>();
+    auto* bar = tree->verticalScrollBar();
+    REQUIRE(bar->maximum() > 0);
+    REQUIRE(bar->value() == 0);
+    auto* model = view.findChild<ItemsModel*>();
+    REQUIRE(model);
+    std::unique_ptr<QMimeData> mime(model->mimeData({model->index(0, 0)}));
+    QPoint at(tree->viewport()->width() / 2, tree->viewport()->height() - 4);
+    QCursor::setPos(tree->viewport()->mapToGlobal(at));
+    QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(tree->viewport(), &enter);
+    QDragMoveEvent move(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(tree->viewport(), &move);
+    CHECK(QTest::qWaitFor([&] { return bar->value() > 0; }, 3000));
+    // dropped: no more scrolling
+    QDropEvent dropped(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(tree->viewport(), &dropped);
+    int after = bar->value();
+    QTest::qWait(300);
+    CHECK(bar->value() == after);
+    (void)paper;
+}
+
 TEST_CASE("library: a PDF item dragged onto an item becomes its attachment, the target lit up")
 {
     app();
@@ -3757,6 +3866,42 @@ TEST_CASE("notes: the list over the note is as high everywhere, and stays so")
     CHECK(splitOf(c)->sizes()[0] == after);
 }
 
+TEST_CASE("main window: a PDF's tab is named after its item as it is now")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Old title"}});
+    auto att = env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    auto lone = env.library.importAttachment(env.lib, file, "", false, "A PDF on its own");
+    MainWindow window;
+    window.resize(1200, 700);
+    window.show();
+    window.openAttachment(env.lib, qs(jstr(att, "key")));
+    window.openAttachment(env.lib, qs(jstr(lone, "key")));
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 3);
+    CHECK(tabs->tabText(1) == "Old title");
+    tabs->setCurrentIndex(0);
+    // renamed in the library: the item's title, and the PDF on its own
+    env.library.updateItem(env.lib, jstr(paper, "key"), [](Json& d) { d["title"] = "New title"; });
+    env.library.updateItem(env.lib, jstr(lone, "key"), [](Json& d) {
+        d["title"] = "A rather long title for a PDF that has no item of its own";
+    });
+    CHECK(QTest::qWaitFor([&] { return tabs->tabText(1) == "New title"; }, 2000));
+    CHECK(tabs->tabToolTip(1) == "New title");
+    CHECK(tabs->tabText(2) == "A rather long title for a PDF that has…");  // shortened, whole in its tooltip
+    CHECK(tabs->tabToolTip(2) == "A rather long title for a PDF that has no item of its own");
+    QApplication::processEvents();
+    bool shown = false;
+    for (auto* button : window.findChildren<QWidget*>("tabButton"))
+        shown |= button->toolTip() == "New title";
+    CHECK(shown);  // in the strip of tabs too
+}
+
 TEST_CASE("main window: Ctrl+Shift+Tab goes to the previous tab, also from a note")
 {
     app();
@@ -4554,6 +4699,73 @@ TEST_CASE("search fields: Aa (or Alt+C) matches case, in the library and in a PD
     // the next PDF opens matching case too
     ReaderTab again(env.lib, pdf);
     CHECK(again.findChild<SearchField*>("findInDocument")->caseSensitive());
+}
+
+TEST_CASE("notes: finding in a note never changes the window's minimum size")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto note = env.library.createNote(env.lib, "<p>Alpha beta alpha</p><p>gamma Alpha</p>", jstr(paper, "key"));
+    auto att = env.library.importAttachment(env.lib, file, jstr(paper, "key"));
+    MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    QApplication::processEvents();
+    std::set<int> widths, heights;
+    auto record = [&] {
+        QApplication::processEvents();
+        widths.insert(window.minimumWidth());
+        heights.insert(window.minimumHeight());
+    };
+    auto typeAndDelete = [&](NoteEditor* editor) {
+        REQUIRE(editor);
+        auto* edit = editor->findChild<NoteTextEdit*>();
+        edit->setFocus();
+        QTest::keyClick(edit, Qt::Key_F, Qt::ControlModifier);
+        auto* find = editor->findChild<SearchField*>("findInNote");
+        REQUIRE(find->isVisible());
+        record();
+        // found, then not, then nothing typed, again and again
+        for (auto keys : {"al", "alx", "", "gamma", "q", "", "alpha beta", ""}) {
+            find->clear();
+            QTest::keyClicks(find, keys);
+            record();
+            QTest::keyClick(find, Qt::Key_Backspace);
+            record();
+        }
+        QTest::keyClick(find, Qt::Key_Escape);
+        record();
+    };
+    // beside a PDF
+    window.openAttachment(env.lib, qs(jstr(att, "key")));
+    QApplication::processEvents();
+    auto* reader = qobject_cast<ReaderTab*>(window.findChild<QTabWidget*>("mainTabs")->currentWidget());
+    REQUIRE(reader);
+    reader->findChild<QTabWidget*>("readerContextTabs")->setCurrentIndex(1);
+    widths.clear();
+    heights.clear();
+    record();
+    typeAndDelete(reader->findChild<NoteEditor*>());
+    CHECK(widths.size() == 1);
+    CHECK(heights.size() == 1);
+    // and in the library's item pane
+    window.findChild<QTabWidget*>("mainTabs")->setCurrentIndex(0);
+    window.findChild<LibraryView*>()->selectItem(qs(jstr(note, "key")));
+    QApplication::processEvents();
+    NoteEditor* inPane = nullptr;
+    for (auto* e : window.findChild<LibraryView*>()->findChildren<NoteEditor*>())
+        if (e->isVisible() && e->key() == qs(jstr(note, "key")))
+            inPane = e;
+    widths.clear();
+    heights.clear();
+    record();
+    typeAndDelete(inPane);
+    CHECK(widths.size() == 1);
+    CHECK(heights.size() == 1);
 }
 
 TEST_CASE("notes: Ctrl+F finds in the note, in a bar at its bottom that Esc closes")

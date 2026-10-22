@@ -275,6 +275,8 @@ QWidget* TabWidget::tabStrip() const { return strip_; }
 
 void TabWidget::addStripCornerWidget(QWidget* widget) { strip_->addCornerWidget(widget); }
 
+void TabWidget::tabTextsChanged() { strip_->scheduleRefresh(); }
+
 void TabWidget::tabInserted(int index)
 {
     QTabWidget::tabInserted(index);

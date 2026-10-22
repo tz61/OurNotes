@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QPointer>
 #include <QScrollBar>
+#include <QStyle>
 #include <QSplitter>
 #include <QLabel>
 #include <QFontInfo>
@@ -1325,6 +1326,17 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
 
 NoteEditor::~NoteEditor() { flush(); }
 
+QSize NoteEditor::minimumSizeHint() const
+{
+    QSize size = QWidget::minimumSizeHint();
+    if (findBar_->isHidden()) {  // as with the find bar
+        auto bar = findBar_->minimumSizeHint();
+        size.rheight() += bar.height();
+        size.setWidth(std::max(size.width(), bar.width()));
+    }
+    return size;
+}
+
 void NoteEditor::buildFindBar()
 {
     findBar_ = new QWidget(this);
@@ -1338,6 +1350,13 @@ void NoteEditor::buildFindBar()
     find_->setClearButtonEnabled(true);
     find_->addAction(icon("search"), QLineEdit::LeadingPosition);
     find_->addCaseToggle("/notes/findCaseSensitive");
+    // As wide at least as with the clear button, which shows only with text (Qt gives each
+    // icon at the end iconSize + 6, and a margin): each key changed the bar's minimum width,
+    // the window's with it, and the window moved its edge.
+    auto* style = find_->style();
+    find_->setMinimumWidth(find_->minimumSizeHint().width() +
+                           style->pixelMetric(QStyle::PM_LineEditIconSize, nullptr, find_) + 6 +
+                           style->pixelMetric(QStyle::PM_LineEditIconMargin, nullptr, find_));
     h->addWidget(find_, 1);
     auto button = [&](const char* ic, const QString& tip) {
         auto* b = new QToolButton(findBar_);
@@ -1352,6 +1371,8 @@ void NoteEditor::buildFindBar()
     connect(button("down", tr("Next (Enter)")), &QToolButton::clicked, this, [this] { findAgain(false); });
     findStatus_ = new QLabel(findBar_);
     findStatus_->setObjectName("noteFindStatus");
+    auto fm = findStatus_->fontMetrics();  // room for the longest it says, also when empty
+    findStatus_->setMinimumWidth(std::max(fm.horizontalAdvance(tr("No results")), fm.horizontalAdvance(tr("%1 of %2").arg(999).arg(999))));
     h->addWidget(findStatus_);
     connect(button("close", tr("Close (Esc)")), &QToolButton::clicked, this, [this] { closeFind(true); });
     findBar_->hide();

@@ -17,6 +17,8 @@ public:
     QWidget* tabStrip() const;
     // A widget on the right of the strip's first row, e.g. buttons that apply to all tabs.
     void addStripCornerWidget(QWidget* widget);
+    // After setTabText or setTabToolTip: the strip shows them (its tabs get their widths).
+    void tabTextsChanged();
 
 protected:
     void tabInserted(int index) override;

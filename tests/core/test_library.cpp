@@ -318,3 +318,85 @@ TEST_CASE("settings and library from freePen, the name before OurNotes, are take
         setenv("OURNOTES_DATA_DIR", savedData.c_str(), 1);
 }
 #endif
+
+TEST_CASE("items copied into another library, with their notes, images, files and annotations")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto from = lib.defaultLibrary();
+    auto to = lib.createLibrary("Group");
+    auto into = jstr(lib.createCollection(to, "Reading"), "key");
+    auto other = jstr(lib.createItem(from, Json{{"itemType", "book"}, {"title", "Other"}}), "key");
+    auto paper = lib.createItem(from, Json{{"itemType", "journalArticle"},
+                                           {"title", "Paper"},
+                                           {"tags", Json::array({Json{{"tag", "robots"}}})}});
+    auto paperKey = jstr(paper, "key");
+    lib.addRelated(from, paperKey, other);
+    // a PDF with an annotation
+    auto pdfPath = tmp.path / "paper.pdf";
+    std::ofstream(pdfPath, std::ios::binary) << "%PDF-1.4 the paper";
+    auto pdf = lib.importAttachment(from, pdfPath, paperKey);
+    auto ann = lib.createItem(from, Json{{"itemType", "annotation"},
+                                         {"parentItem", jstr(pdf, "key")},
+                                         {"annotationType", "highlight"},
+                                         {"annotationComment", "Why?"}});
+    // a note with an image of its own, and one in the trash
+    auto note = lib.createNote(from, "", paperKey);
+    auto imageKey = newKey();
+    fs::create_directories(lib.storageDir() / imageKey);
+    std::ofstream(lib.storageDir() / imageKey / "image.png", std::ios::binary) << "PNG";
+    lib.createItem(from, Json{{"key", imageKey},
+                              {"itemType", "attachment"},
+                              {"linkMode", "embedded_image"},
+                              {"parentItem", jstr(note, "key")},
+                              {"contentType", "image/png"},
+                              {"filename", "image.png"}});
+    lib.updateItem(from, jstr(note, "key"), [&](Json& d) {
+        d["note"] = "<p>See</p><img data-attachment-key=\"" + imageKey + "\">";
+    });
+    auto trashed = lib.createNote(from, "<p>gone</p>", paperKey);
+    lib.trashItems(from, {jstr(trashed, "key")});
+    // a PDF of another item, copied on its own
+    auto lonePath = tmp.path / "lone.pdf";
+    std::ofstream(lonePath, std::ios::binary) << "%PDF-1.4 lone";
+    auto lone = lib.importAttachment(from, lonePath, other);
+
+    // the paper and its PDF (under it, so once), and the other's PDF
+    auto copied = lib.copyItems(from, {paperKey, jstr(pdf, "key"), jstr(lone, "key")}, to, into);
+    REQUIRE(copied.size() == 2);
+    auto copy = lib.item(to, copied[0]);
+    REQUIRE(copy);
+    CHECK(copied[0] != paperKey);
+    CHECK(jstr(*copy, "title") == "Paper");
+    CHECK((*copy)["tags"] == paper["tags"]);
+    CHECK((*copy)["collections"] == Json::array({into}));
+    CHECK(lib.relatedKeys(to, copied[0]).empty());
+    auto kids = lib.children(to, copied[0]);
+    REQUIRE(kids.size() == 2);  // the PDF and the note, not the trashed note
+    auto pdfCopy = jstr(kids[0], "itemType") == "attachment" ? kids[0] : kids[1];
+    auto noteCopy = jstr(kids[0], "itemType") == "note" ? kids[0] : kids[1];
+    CHECK(jstr(pdfCopy, "key") != jstr(pdf, "key"));
+    CHECK(fs::exists(lib.attachmentFile(to, pdfCopy)));
+    CHECK(lib.attachmentFile(to, pdfCopy) != lib.attachmentFile(from, pdf));
+    CHECK(jstr(pdfCopy, "md5") == jstr(pdf, "md5"));
+    auto anns = lib.annotations(to, jstr(pdfCopy, "key"));
+    REQUIRE(anns.size() == 1);
+    CHECK(jstr(anns[0], "annotationComment") == "Why?");
+    CHECK(jstr(anns[0], "key") != jstr(ann, "key"));
+    auto images = lib.children(to, jstr(noteCopy, "key"));
+    REQUIRE(images.size() == 1);
+    auto imageCopy = jstr(images[0], "key");
+    CHECK(imageCopy != imageKey);
+    CHECK(jstr(noteCopy, "note") == "<p>See</p><img data-attachment-key=\"" + imageCopy + "\">");
+    CHECK(fs::exists(lib.storageDir() / imageCopy / "image.png"));
+    // the other's PDF: on its own, in the collection
+    auto loneCopy = lib.item(to, copied[1]);
+    REQUIRE(loneCopy);
+    CHECK(!loneCopy->contains("parentItem"));
+    CHECK((*loneCopy)["collections"] == Json::array({into}));
+    CHECK(fs::exists(lib.attachmentFile(to, *loneCopy)));
+    // and nothing changed where they came from
+    CHECK(lib.children(from, paperKey).size() == 3);
+    CHECK(lib.relatedKeys(from, paperKey) == std::vector<std::string>{other});
+    CHECK(jstr(*lib.item(from, jstr(lone, "key")), "parentItem") == other);
+}

@@ -1040,6 +1040,79 @@ Json Library::importAttachment(int64_t lib, const fs::path& src, const std::stri
     return createItem(lib, d);
 }
 
+std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<std::string>& keys, int64_t toLib,
+                                            const std::string& collectionKey)
+{
+    // Every item to copy, parents before their children, each with its new key first:
+    // a note's images, an annotation's attachment are referred to by key.
+    std::vector<Json> copies;
+    std::map<std::string, std::string> newKeys;
+    std::set<std::string> asked(keys.begin(), keys.end());
+    std::function<void(const Json&)> collect = [&](const Json& d) {
+        auto key = jstr(d, "key");
+        if (newKeys.count(key) || jbool(d, "deleted"))
+            return;
+        newKeys[key] = newKey();
+        copies.push_back(d);
+        for (auto& child : children(fromLib, key))
+            collect(child);
+    };
+    std::vector<std::string> tops;  // asked for, not under another one asked for
+    for (auto& key : keys) {
+        auto d = item(fromLib, key);
+        if (!d)
+            continue;
+        bool under = false;
+        for (auto parent = jstr(*d, "parentItem"); !parent.empty() && !under;) {
+            under = asked.count(parent) > 0;
+            auto p = item(fromLib, parent);
+            parent = p ? jstr(*p, "parentItem") : std::string();
+        }
+        if (!under) {
+            tops.push_back(key);
+            collect(*d);
+        }
+    }
+
+    BatchGuard batch(*this);
+    std::vector<std::string> out;
+    for (auto d : copies) {
+        auto oldKey = jstr(d, "key");
+        d["key"] = newKeys[oldKey];
+        auto parent = newKeys.find(jstr(d, "parentItem"));
+        if (parent != newKeys.end())
+            d["parentItem"] = parent->second;
+        else
+            d.erase("parentItem");  // copied without it
+        d.erase("dateAdded");
+        d.erase("dateModified");
+        d.erase("relations");
+        d.erase("deleted");
+        d["collections"] = !d.contains("parentItem") && !collectionKey.empty() ? Json::array({collectionKey})
+                                                                               : Json::array();
+        if (d.contains("note") && d["note"].is_string()) {
+            auto html = d["note"].get<std::string>();
+            for (auto& [from, to] : newKeys)
+                html = replaceAll(html, "data-attachment-key=\"" + from + "\"", "data-attachment-key=\"" + to + "\"");
+            d["note"] = html;
+        }
+        if (schema::isStoredLinkMode(jstr(d, "linkMode"))) {  // its own copy of the file
+            Json old = d;
+            old["key"] = oldKey;
+            auto src = attachmentFile(fromLib, old), dest = attachmentFile(toLib, d);
+            std::error_code ec;
+            if (!src.empty() && !dest.empty() && fs::is_regular_file(src, ec)) {
+                fs::create_directories(dest.parent_path());
+                fs::copy_file(src, dest, fs::copy_options::overwrite_existing);
+            }
+        }
+        createItem(toLib, d);
+    }
+    for (auto& key : tops)
+        out.push_back(newKeys[key]);
+    return out;
+}
+
 Json Library::createLinkedUrl(int64_t lib, const std::string& url, const std::string& title,
                               const std::string& parentKey)
 {

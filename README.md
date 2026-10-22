@@ -14,7 +14,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 
 - **Library** — personal and group libraries, nested collections, tags with colours,
   related items, duplicate detection and merging, trash. All 37 Zotero item types and
-  their fields; data is stored in Zotero's API JSON shape.
+  their fields; data is stored in Zotero's API JSON shape. Items dragged onto another
+  library or one of its collections are copied there, with their notes, attachments
+  (and files) and annotations.
 - **Zotero import** — copies everything from a Zotero data directory: libraries
   (including groups), collections, items, creators, tags, relations, notes (with embedded
   images), attachments and their files, annotations (highlights, underlines, notes,

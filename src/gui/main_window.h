@@ -56,6 +56,9 @@ private:
     void saveSession();
     void restoreSession();
     void loadPendingTab(int index);
+    // The PDFs' tabs named after their items' titles as they are now (renamed in the
+    // library, or by a sync).
+    void refreshTabTitles();
     void shutDown();
     void updateTabActions();
     void showPreferences(int page = 0);
@@ -85,6 +88,7 @@ private:
     FulltextIndexer* indexer_ = nullptr;
     bool shutDown_ = false;
     QTimer titleBarTimer_;  // while full screen on macOS
+    QTimer tabTitlesTimer_;  // after items changed
 };
 
 } // namespace on::gui

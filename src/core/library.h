@@ -188,6 +188,13 @@ public:
     void addRelated(int64_t lib, const std::string& a, const std::string& b);
     void removeRelated(int64_t lib, const std::string& a, const std::string& b);
     std::vector<std::vector<std::string>> duplicateGroups(int64_t lib);
+    // Copies items into another library (or this one), each with what is under it: notes
+    // with their images, attachments with their files, annotations; with new keys, into
+    // collectionKey (if given), without relations. A note or attachment copied without its
+    // parent stands on its own; what is in the trash is left out. Returns the new keys of
+    // the copies of `keys`, in that order.
+    std::vector<std::string> copyItems(int64_t fromLib, const std::vector<std::string>& keys, int64_t toLib,
+                                       const std::string& collectionKey = {});
     // Merge `others` into `master`: moves children, collections, tags, relations; trashes others.
     void mergeItems(int64_t lib, const std::string& master, const std::vector<std::string>& others);
 

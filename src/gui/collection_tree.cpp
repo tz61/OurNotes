@@ -33,6 +33,8 @@ CollectionTree::CollectionTree(QWidget* parent) : QTreeWidget(parent)
     setAcceptDrops(true);
     setDropIndicatorShown(true);
     setDragDropMode(DragDrop);
+    // a drag near the top or the bottom scrolls to the collections out of sight
+    setAutoScrollMargin(std::max(autoScrollMargin(), 2 * fontMetrics().height()));
     setEditTriggers(NoEditTriggers);
     setUniformRowHeights(true);
     setIconSize(QSize(16, 16));
@@ -295,8 +297,9 @@ bool CollectionTree::acceptsDrop(QDropEvent* e, QTreeWidgetItem** target) const
     auto* mime = e->mimeData();
     if (mime->hasFormat(kItemsMime)) {
         auto obj = QJsonDocument::fromJson(mime->data(kItemsMime)).object();
-        if (obj["library"].toInteger() != s.libraryId)
-            return false;
+        if (obj["library"].toInteger() != s.libraryId)  // into another library: copied there
+            return (s.kind == ScopeKind::Library || s.kind == ScopeKind::Collection || s.kind == ScopeKind::Unfiled) &&
+                   AppContext::get().editable(s.libraryId);
         return s.kind == ScopeKind::Collection || s.kind == ScopeKind::Trash;
     }
     if (mime->hasFormat(kCollectionMime)) {
@@ -342,6 +345,7 @@ void CollectionTree::dragEnterEvent(QDragEnterEvent* e)
 
 void CollectionTree::dragMoveEvent(QDragMoveEvent* e)
 {
+    QTreeWidget::dragMoveEvent(e);  // scrolls, near the top or the bottom (what it accepts is decided here)
     QTreeWidgetItem* target = nullptr;
     if (acceptsDrop(e, &target)) {
         e->acceptProposedAction();
@@ -391,6 +395,7 @@ void CollectionTree::drawRow(QPainter* painter, const QStyleOptionViewItem& opti
 
 void CollectionTree::dropEvent(QDropEvent* e)
 {
+    stopAutoScroll();
     setDropTarget(nullptr);
     QTreeWidgetItem* target = nullptr;
     if (!acceptsDrop(e, &target)) {
@@ -410,6 +415,12 @@ void CollectionTree::dropEvent(QDropEvent* e)
         std::vector<std::string> keys;
         for (auto k : obj["keys"].toArray())
             keys.push_back(ss(k.toString()));
+        if (qint64 from = obj["library"].toInteger(); from != s.libraryId) {
+            lib.copyItems(from, keys, s.libraryId, s.kind == ScopeKind::Collection ? s.collectionKey : std::string());
+            e->setDropAction(Qt::CopyAction);  // where they came from, they stay
+            e->accept();
+            return;
+        }
         if (s.kind == ScopeKind::Trash)
             lib.trashItems(s.libraryId, keys);
         else

@@ -131,6 +131,14 @@ MainWindow::MainWindow()
         loadPendingTab(i);
         updateTabActions();
     });
+    tabTitlesTimer_.setSingleShot(true);
+    tabTitlesTimer_.setInterval(50);
+    connect(&tabTitlesTimer_, &QTimer::timeout, this, &MainWindow::refreshTabTitles);
+    connect(&AppContext::get(), &AppContext::changed, this,
+            [this](qint64, const QString& type, const QString&, const QStringList&) {
+                if (type == "item" || type == "*")
+                    tabTitlesTimer_.start();
+            });
     connect(library_, &LibraryView::openAttachmentRequested, this,
             [this](qint64 lib, const QString& key) { openAttachment(lib, key); });
     connect(library_, &LibraryView::exportRequested, this, &MainWindow::exportItems);
@@ -416,6 +424,25 @@ void MainWindow::reopenClosedTab()
             tabs_->tabBar()->moveTab(at, std::max(1, closed.index));
         return;
     }
+}
+
+void MainWindow::refreshTabTitles()
+{
+    bool changed = false;
+    for (int i = 1; i < tabs_->count(); ++i) {
+        QString title;
+        if (auto* r = qobject_cast<ReaderTab*>(tabs_->widget(i)))
+            title = ReaderTab::titleFor(r->libraryId(), r->attachmentKey());
+        else if (auto* p = dynamic_cast<PendingReaderTab*>(tabs_->widget(i)))
+            title = ReaderTab::titleFor(p->libraryId, p->key);
+        if (title.isEmpty() || title == tabs_->tabToolTip(i))  // (gone: its tab says so when shown)
+            continue;
+        tabs_->setTabText(i, tabText(title));
+        tabs_->setTabToolTip(i, title);
+        changed = true;
+    }
+    if (auto* tabs = qobject_cast<TabWidget*>(tabs_); tabs && changed)
+        tabs->tabTextsChanged();
 }
 
 int MainWindow::findTab(int64_t libraryId, const QString& key) const
