@@ -32,6 +32,7 @@ set(OURNOTES_GUI_SOURCES
     theme.cpp
     ui_scale.cpp
     wrap_toolbar.cpp
+    x11_size_hints.cpp
     reader/annotation_sidebar.cpp
     reader/comment_bubble.cpp
     reader/pdf_view.cpp
@@ -46,6 +47,18 @@ set_target_properties(ournotes_gui PROPERTIES AUTOMOC ON AUTORCC ON)
 target_link_libraries(ournotes_gui PUBLIC ournotes_core ournotes_sync ournotes_pdf ournotes_formats Qt6::Widgets Qt6::Svg
     PRIVATE on_microtex)
 target_compile_definitions(ournotes_gui PRIVATE OURNOTES_MICROTEX_BUILD_RES="${OURNOTES_MICROTEX_RES}")
+if(UNIX AND NOT APPLE)
+    # X11 window size hints (x11_size_hints.cpp); libxcb is there wherever Qt's xcb plugin is
+    find_path(OURNOTES_XCB_INCLUDE_DIR xcb/xcb.h)
+    find_library(OURNOTES_XCB_LIBRARY xcb)
+    if(OURNOTES_XCB_INCLUDE_DIR AND OURNOTES_XCB_LIBRARY)
+        target_compile_definitions(ournotes_gui PRIVATE ON_HAVE_XCB)
+        target_include_directories(ournotes_gui PRIVATE "${OURNOTES_XCB_INCLUDE_DIR}")
+        target_link_libraries(ournotes_gui PRIVATE "${OURNOTES_XCB_LIBRARY}")
+    else()
+        message(WARNING "xcb/xcb.h not found (libxcb1-dev): maximized windows may end short of the screen's edge")
+    endif()
+endif()
 if(APPLE)
     target_sources(ournotes_gui PRIVATE mac_fullscreen.mm)
     target_link_libraries(ournotes_gui PRIVATE "-framework AppKit")

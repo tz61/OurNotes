@@ -69,7 +69,7 @@ jobs:
         run: |
           sudo apt-get update
           # build dependencies, and the libraries of Qt's xcb plugin, which linuxdeploy bundles
-          sudo apt-get install -y libssl-dev libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+          sudo apt-get install -y libssl-dev libgl1-mesa-dev libxkbcommon-dev libxcb1-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
             libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
       - name: Build the AppImage and the tarball

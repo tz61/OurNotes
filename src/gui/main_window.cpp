@@ -52,6 +52,7 @@
 #include "gui/storage_window.h"
 #include "gui/sync_history.h"
 #include "gui/tab_widget.h"
+#include "gui/x11_size_hints.h"
 
 namespace on::gui {
 
@@ -200,13 +201,19 @@ MainWindow::MainWindow()
         restoreGeometry(geometry);
     else
         resize(1440, 900);
-    // Maximized last time: shown as before, then maximized. Shown maximized straight away,
-    // the window would be fitted by KWin to the size steps Qt asks for at a fractional scale
-    // (2 pixels at 150%), a pixel short of the bottom of the screen.
-    if (isMaximized() && !isFullScreen() && QGuiApplication::platformName() == "xcb" &&
-        screen()->devicePixelRatio() != 1.0) {
+    // Maximized last time, or too big for the screen (the first start at a large scale, or
+    // a larger scale since): shown at a size that fits, then maximized. Shown maximized
+    // straight away (KWin maximizes a window too big for the screen), it would be fitted to
+    // the size steps Qt asks for above 100% before they are dropped (see dropX11SizeSteps),
+    // and end a pixel or two short of the screen's edge.
+    if (!isFullScreen() && QGuiApplication::platformName() == "xcb" && screen()->devicePixelRatio() != 1.0) {
+        maximizeWhenShown_ = isMaximized();
         setWindowState(windowState() & ~Qt::WindowMaximized);
-        maximizeWhenShown_ = true;
+        auto room = screen()->availableGeometry().adjusted(0, 0, 0, -40);  // and a title bar
+        if (width() > room.width() || height() > room.height()) {
+            setGeometry(room.adjusted(room.width() / 20, room.height() / 20, -room.width() / 20, -room.height() / 20));
+            maximizeWhenShown_ = true;
+        }
     }
     auto state = QByteArray::fromBase64(QByteArray::fromStdString(cfg.get("/ui/libraryState", "").get<std::string>()));
     if (!state.isEmpty())
@@ -967,7 +974,10 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* e)
         maximizeWhenShown_ = false;
         windowHandle()->removeEventFilter(this);
         // not while it is being exposed: KWin is still placing it, and fits it as above
-        QTimer::singleShot(0, this, [this] { setWindowState(windowState() | Qt::WindowMaximized); });
+        QTimer::singleShot(0, this, [this] {
+            dropX11SizeSteps(this);
+            setWindowState(windowState() | Qt::WindowMaximized);
+        });
     }
     return QMainWindow::eventFilter(watched, e);
 }
@@ -977,8 +987,10 @@ void MainWindow::followMinimumSize()
     if (isMaximized() || isFullScreen())
         return;  // (when restored)
     auto size = layout()->totalMinimumSize();
-    if (size != minimumSize())
+    if (size != minimumSize()) {
         setMinimumSize(size);
+        dropX11SizeSteps(this);
+    }
 }
 
 void MainWindow::changeEvent(QEvent* e)

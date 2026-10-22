@@ -18,6 +18,7 @@
 #include "gui/shift_wheel.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
+#include "gui/x11_size_hints.h"
 
 using namespace on;
 using namespace on::gui;
@@ -67,6 +68,7 @@ int main(int argc, char** argv)
     QApplication::setWindowIcon(QIcon(":/ournotes.svg"));
     applyAppearance(appearanceFromConfig(*config));
     ShiftWheelScrolling::install();
+    dropX11SizeSteps();
 
     QCommandLineParser parser;
     parser.setApplicationDescription("OurNotes reference manager");

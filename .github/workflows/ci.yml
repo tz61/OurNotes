@@ -18,7 +18,7 @@ jobs:
           version: ${{ env.QT_VERSION }}
           cache: true
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev libgl1-mesa-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libgl1-mesa-dev libxkbcommon-dev libxcb1-dev
       - name: Configure (MuPDF is built from source)
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
