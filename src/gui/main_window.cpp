@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLayout>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
@@ -93,6 +94,7 @@ MainWindow::MainWindow()
     centralLayout->addWidget(tabs->tabStrip());
     centralLayout->addWidget(tabs_, 1);
     setCentralWidget(central);
+    layout()->setSizeConstraint(QLayout::SetNoConstraint);  // see followMinimumSize()
     connect(&titleBarTimer_, &QTimer::timeout, this, &MainWindow::followTitleBar);
     status_ = new QLabel(this);
     statusBar()->addWidget(status_, 1);
@@ -920,9 +922,28 @@ void MainWindow::followTitleBar()
     titleBarTimer_.setInterval(overlap > 0 || mapFromGlobal(QCursor::pos()).y() < 40 ? 16 : 200);
 }
 
+bool MainWindow::event(QEvent* e)
+{
+    bool handled = QMainWindow::event(e);
+    if (e->type() == QEvent::LayoutRequest)
+        followMinimumSize();
+    return handled;
+}
+
+void MainWindow::followMinimumSize()
+{
+    if (isMaximized() || isFullScreen())
+        return;  // (when restored)
+    auto size = layout()->totalMinimumSize();
+    if (size != minimumSize())
+        setMinimumSize(size);
+}
+
 void MainWindow::changeEvent(QEvent* e)
 {
     QMainWindow::changeEvent(e);
+    if (e->type() == QEvent::WindowStateChange)
+        followMinimumSize();
 #ifdef Q_OS_MACOS
     if (e->type() == QEvent::WindowStateChange) {
         if (isFullScreen()) {

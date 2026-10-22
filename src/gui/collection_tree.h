@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QElapsedTimer>
+#include <QTimer>
 #include <QTreeWidget>
 
 #include "gui/items_model.h"
@@ -48,12 +50,24 @@ private:
     bool acceptsDrop(QDropEvent* e, QTreeWidgetItem** target) const;
     static QStringList droppedFiles(const QMimeData* mime);  // files dragged in from outside
     void setDropTarget(QTreeWidgetItem* item);  // shown as selected while a drag hovers on it
+    // A drag within four rows of the top or the bottom scrolls the tree, the faster the
+    // nearer the edge.
+    int rowHeight() const;
+    double dragScrollSpeed(int y) const;  // pixels a second, down (+) or up (-); 0 elsewhere
+    void dragScroll();
+    void stopDragScroll();
 
     void newCollection(int64_t lib, const std::string& parentKey);
     void renameItem(QTreeWidgetItem* item);
     void deleteCollection(QTreeWidgetItem* item, bool trashItems);
 
     QPersistentModelIndex dropTarget_;
+    QTimer dragScrollTimer_;
+    QElapsedTimer dragScrollClock_;
+    double dragScrollCarry_ = 0;  // a fraction of a pixel, scrolled with the next
+    QPoint dragPos_;
+    const QMimeData* dragMime_ = nullptr;  // the drag's, while it is over the tree
+    Qt::DropActions dragActions_;
 };
 
 } // namespace on::gui

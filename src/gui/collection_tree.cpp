@@ -12,6 +12,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QScrollBar>
 
 #include <functional>
 #include <map>
@@ -33,9 +34,11 @@ CollectionTree::CollectionTree(QWidget* parent) : QTreeWidget(parent)
     setAcceptDrops(true);
     setDropIndicatorShown(true);
     setDragDropMode(DragDrop);
-    // a drag near the top or the bottom (within about three rows) scrolls to the
-    // collections out of sight
-    setAutoScrollMargin(std::max(autoScrollMargin(), 4 * fontMetrics().height()));
+    // scrolled while a drag is near the top or the bottom (see dragScroll)
+    setAutoScroll(false);
+    setVerticalScrollMode(ScrollPerPixel);
+    dragScrollTimer_.setInterval(16);
+    connect(&dragScrollTimer_, &QTimer::timeout, this, &CollectionTree::dragScroll);
     setEditTriggers(NoEditTriggers);
     setUniformRowHeights(true);
     setIconSize(QSize(16, 16));
@@ -346,7 +349,14 @@ void CollectionTree::dragEnterEvent(QDragEnterEvent* e)
 
 void CollectionTree::dragMoveEvent(QDragMoveEvent* e)
 {
-    QTreeWidget::dragMoveEvent(e);  // scrolls, near the top or the bottom (what it accepts is decided here)
+    dragPos_ = e->position().toPoint();
+    dragMime_ = e->mimeData();
+    dragActions_ = e->possibleActions();
+    if (dragScrollSpeed(dragPos_.y()) != 0 && !dragScrollTimer_.isActive()) {
+        dragScrollClock_.start();
+        dragScrollCarry_ = 0;
+        dragScrollTimer_.start();
+    }
     QTreeWidgetItem* target = nullptr;
     if (acceptsDrop(e, &target)) {
         e->acceptProposedAction();
@@ -360,7 +370,51 @@ void CollectionTree::dragMoveEvent(QDragMoveEvent* e)
 void CollectionTree::dragLeaveEvent(QDragLeaveEvent* e)
 {
     QTreeWidget::dragLeaveEvent(e);
+    stopDragScroll();
     setDropTarget(nullptr);
+}
+
+int CollectionTree::rowHeight() const
+{
+    int row = topLevelItemCount() ? visualItemRect(topLevelItem(0)).height() : 0;
+    return row > 0 ? row : fontMetrics().height() + 8;
+}
+
+double CollectionTree::dragScrollSpeed(int y) const
+{
+    int row = rowHeight(), height = viewport()->height();
+    int zone = std::min(4 * row, height / 3);  // (a small tree is not all edge)
+    double into = y < zone ? zone - y : y > height - zone ? y - (height - zone) : 0;
+    if (zone <= 0 || into <= 0)
+        return 0;
+    double near = std::min(into / zone, 1.0);  // 0 where the zone begins, 1 at the edge
+    double rows = 2 + 23 * near * near;        // rows a second: 2, up to 25
+    return (y < zone ? -1 : 1) * rows * row;
+}
+
+void CollectionTree::dragScroll()
+{
+    auto* bar = verticalScrollBar();
+    double speed = dragMime_ ? dragScrollSpeed(dragPos_.y()) : 0;
+    double seconds = std::min(dragScrollClock_.restart() / 1000.0, 0.1);
+    if (speed == 0 || bar->value() == (speed < 0 ? bar->minimum() : bar->maximum())) {
+        dragScrollTimer_.stop();  // (again with the next move into a zone)
+        return;
+    }
+    dragScrollCarry_ += speed * seconds;
+    int step = int(dragScrollCarry_);
+    dragScrollCarry_ -= step;
+    bar->setValue(bar->value() + step);
+    // what is under the drag now
+    QDragMoveEvent at(dragPos_, dragActions_, dragMime_, Qt::LeftButton, Qt::NoModifier);
+    QTreeWidgetItem* target = nullptr;
+    setDropTarget(acceptsDrop(&at, &target) ? target : nullptr);
+}
+
+void CollectionTree::stopDragScroll()
+{
+    dragScrollTimer_.stop();
+    dragMime_ = nullptr;
 }
 
 void CollectionTree::setDropTarget(QTreeWidgetItem* item)
@@ -396,7 +450,7 @@ void CollectionTree::drawRow(QPainter* painter, const QStyleOptionViewItem& opti
 
 void CollectionTree::dropEvent(QDropEvent* e)
 {
-    stopAutoScroll();
+    stopDragScroll();
     setDropTarget(nullptr);
     QTreeWidgetItem* target = nullptr;
     if (!acceptsDrop(e, &target)) {

@@ -16,6 +16,7 @@
 #include <QHeaderView>
 #include <QSlider>
 #include <QSplitter>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QTabBar>
 #include <QToolBar>
@@ -2984,39 +2985,62 @@ TEST_CASE("library: items dragged onto another library or one of its collections
     CHECK(env.library.children(env.lib, jstr(paper, "key")).size() == 1);
 }
 
-TEST_CASE("collections: a drag near the bottom of the tree scrolls it")
+TEST_CASE("collections: a drag within four rows of the top or bottom scrolls, faster nearer the edge")
 {
     app();
     Env env;
-    for (int i = 0; i < 40; ++i)
+    for (int i = 0; i < 80; ++i)
         env.library.createCollection(env.lib, "Collection " + std::to_string(100 + i));
-    auto paper = env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Paper"}});
+    env.library.createItem(env.lib, Json{{"itemType", "book"}, {"title", "Paper"}});
     LibraryView view;
-    view.resize(1000, 450);
+    view.resize(1000, 700);
     view.show();
     QApplication::processEvents();
     auto* tree = view.findChild<CollectionTree*>();
     auto* bar = tree->verticalScrollBar();
     REQUIRE(bar->maximum() > 0);
-    REQUIRE(bar->value() == 0);
     auto* model = view.findChild<ItemsModel*>();
     REQUIRE(model);
     std::unique_ptr<QMimeData> mime(model->mimeData({model->index(0, 0)}));
-    // three lines above the bottom, not at the very edge
-    QPoint at(tree->viewport()->width() / 2, tree->viewport()->height() - 3 * tree->fontMetrics().height());
-    QCursor::setPos(tree->viewport()->mapToGlobal(at));
+    int row = tree->visualItemRect(tree->topLevelItem(0)).height();
+    int h = tree->viewport()->height();
+    REQUIRE(h > 12 * row);  // the zones are four rows each
+    int x = tree->viewport()->width() / 2;
+    auto hold = [&](int y, int ms) {  // the scrolling done with the drag held there
+        bar->setValue(bar->maximum() / 2);
+        QPoint at(x, y);
+        QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(tree->viewport(), &enter);
+        QDragMoveEvent move(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(tree->viewport(), &move);
+        int from = bar->value();
+        QTest::qWait(ms);
+        int scrolled = bar->value() - from;
+        QDragLeaveEvent leave;
+        QApplication::sendEvent(tree->viewport(), &leave);
+        return scrolled;
+    };
+    int slow = hold(h - row * 7 / 2, 400);  // three and a half rows from the bottom
+    int fast = hold(h - row / 3, 400);       // at the very bottom
+    CAPTURE(slow);
+    CAPTURE(fast);
+    CHECK(slow > 0);
+    CHECK(fast > 4 * slow);
+    CHECK(hold(h - row * 9 / 2, 400) == 0);  // four and a half rows away: not
+    CHECK(hold(row * 7 / 2, 400) < 0);      // near the top: up
+    // dropped: no more scrolling
+    bar->setValue(bar->maximum() / 2);
+    QPoint at(x, h - row / 3);
     QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(tree->viewport(), &enter);
     QDragMoveEvent move(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(tree->viewport(), &move);
-    CHECK(QTest::qWaitFor([&] { return bar->value() > 0; }, 3000));
-    // dropped: no more scrolling
+    QTest::qWait(100);
     QDropEvent dropped(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(tree->viewport(), &dropped);
     int after = bar->value();
     QTest::qWait(300);
     CHECK(bar->value() == after);
-    (void)paper;
 }
 
 TEST_CASE("library: a PDF item dragged onto an item becomes its attachment, the target lit up")
@@ -3865,6 +3889,35 @@ TEST_CASE("notes: the list over the note is as high everywhere, and stays so")
     c.show();
     QApplication::processEvents();
     CHECK(splitOf(c)->sizes()[0] == after);
+}
+
+TEST_CASE("main window: maximized, its minimum size stays as it is; restored, it follows the contents")
+{
+    app();
+    Env env;
+    MainWindow window;
+    window.resize(1000, 650);
+    window.show();
+    QApplication::processEvents();
+    int minimum = window.minimumHeight();
+    REQUIRE(minimum > 0);
+    // a normal window: at once
+    window.centralWidget()->setMinimumHeight(minimum + 20);
+    QApplication::processEvents();
+    CHECK(window.minimumHeight() >= minimum + 20);
+    minimum = window.minimumHeight();
+    // maximized: not (at 150% KWin shrank the window by a pixel at every change)
+    window.showMaximized();
+    REQUIRE(QTest::qWaitFor([&] { return window.isMaximized(); }, 3000));
+    QApplication::processEvents();
+    window.centralWidget()->setMinimumHeight(minimum + 60);
+    QApplication::processEvents();
+    CHECK(window.minimumHeight() == minimum);
+    // restored: the contents' again
+    window.showNormal();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isMaximized(); }, 3000));
+    QApplication::processEvents();
+    CHECK(window.minimumHeight() >= minimum + 60);
 }
 
 TEST_CASE("main window: a PDF's tab is named after its item as it is now")

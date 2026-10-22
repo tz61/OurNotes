@@ -35,6 +35,7 @@ public:
     void setTitleBarOverlap(int pixels);
 
 protected:
+    bool event(QEvent* e) override;  // the minimum size, see followMinimumSize()
     void changeEvent(QEvent* e) override;
     void closeEvent(QCloseEvent* e) override;
     void dragEnterEvent(QDragEnterEvent* e) override;
@@ -42,6 +43,10 @@ protected:
 
 private:
     void followTitleBar();
+    // The window's minimum size, the contents' (set here rather than by the layout), but
+    // not while maximized or full screen: at a fractional scale (150%) KWin shrank the
+    // window by a pixel at every change of it, leaving a strip at the bottom of the screen.
+    void followMinimumSize();
     void buildActions();
     int findTab(int64_t libraryId, const QString& key) const;  // a reader, loaded or not
     void reopenClosedTab();
