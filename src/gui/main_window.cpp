@@ -16,6 +16,7 @@
 #include <QMimeData>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QScreen>
 #include <QPushButton>
 #include <QStatusBar>
 #include <QTabBar>
@@ -28,6 +29,7 @@
 #include <QTreeView>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWindow>
 
 #include <thread>
 
@@ -198,6 +200,14 @@ MainWindow::MainWindow()
         restoreGeometry(geometry);
     else
         resize(1440, 900);
+    // Maximized last time: shown as before, then maximized. Shown maximized straight away,
+    // the window would be fitted by KWin to the size steps Qt asks for at a fractional scale
+    // (2 pixels at 150%), a pixel short of the bottom of the screen.
+    if (isMaximized() && !isFullScreen() && QGuiApplication::platformName() == "xcb" &&
+        screen()->devicePixelRatio() != 1.0) {
+        setWindowState(windowState() & ~Qt::WindowMaximized);
+        maximizeWhenShown_ = true;
+    }
     auto state = QByteArray::fromBase64(QByteArray::fromStdString(cfg.get("/ui/libraryState", "").get<std::string>()));
     if (!state.isEmpty())
         library_->restoreState(state);
@@ -946,7 +956,20 @@ bool MainWindow::event(QEvent* e)
     bool handled = QMainWindow::event(e);
     if (e->type() == QEvent::LayoutRequest)
         followMinimumSize();
+    if (e->type() == QEvent::Show && maximizeWhenShown_ && windowHandle())
+        windowHandle()->installEventFilter(this);
     return handled;
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* e)
+{
+    if (maximizeWhenShown_ && watched == windowHandle() && e->type() == QEvent::Expose && windowHandle()->isExposed()) {
+        maximizeWhenShown_ = false;
+        windowHandle()->removeEventFilter(this);
+        // not while it is being exposed: KWin is still placing it, and fits it as above
+        QTimer::singleShot(0, this, [this] { setWindowState(windowState() | Qt::WindowMaximized); });
+    }
+    return QMainWindow::eventFilter(watched, e);
 }
 
 void MainWindow::followMinimumSize()

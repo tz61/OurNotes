@@ -37,6 +37,7 @@ public:
 
 protected:
     bool event(QEvent* e) override;  // the minimum size, see followMinimumSize()
+    bool eventFilter(QObject* watched, QEvent* e) override;
     void changeEvent(QEvent* e) override;
     void closeEvent(QCloseEvent* e) override;
     void dragEnterEvent(QDragEnterEvent* e) override;
@@ -95,6 +96,7 @@ private:
     SyncController* sync_ = nullptr;
     FulltextIndexer* indexer_ = nullptr;
     bool shutDown_ = false;
+    bool maximizeWhenShown_ = false;  // see the constructor
     QTimer titleBarTimer_;  // while full screen on macOS
     QTimer tabTitlesTimer_;  // after items changed
 };
