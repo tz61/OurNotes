@@ -428,6 +428,7 @@ TEST_CASE("disk usage: each library's items and files, the databases, the disk")
     CHECK(l["files"] == 1);
     CHECK(l["fileBytes"] == 5000);
     CHECK(l["missingFiles"] == 1);
+    CHECK(l["missing"] == Json::array({"away.pdf"}));
     CHECK(usage["storage"]["files"] == 1);
     CHECK(usage["storage"]["bytes"] == 5000);
     CHECK(usage["database"].get<int64_t>() > 0);

@@ -1129,17 +1129,20 @@ Json Library::diskUsage()
     for (auto& l : libraries()) {
         int64_t items = 0, notes = 0, attachments = 0, annotations = 0, trashed = 0, files = 0, bytes = 0,
                 missing = 0;
+        Json missingNames = Json::array();  // the first few
         auto st = db_.query("SELECT item_type, link_mode, trashed, data FROM items WHERE library_id = ?", l.id);
         while (st.step()) {
             auto type = st.str(0);
             bool inTrash = st.i64(2) != 0;
             if (type == "attachment" && schema::isStoredLinkMode(st.str(1))) {
+                auto att = Json::parse(st.str(3));
                 std::error_code ec;
-                auto size = fs::file_size(attachmentFile(l.id, Json::parse(st.str(3))), ec);
-                if (ec)
-                    ++missing;
-                else
+                auto size = fs::file_size(attachmentFile(l.id, att), ec);
+                if (!ec) {
                     ++files, bytes += (int64_t)size;
+                } else if (++missing <= 20) {
+                    missingNames.push_back(jstr(att, "filename", jstr(att, "title")));
+                }
             }
             if (inTrash)
                 ++trashed;
@@ -1155,7 +1158,8 @@ Json Library::diskUsage()
                             {"trashed", trashed},
                             {"files", files},
                             {"fileBytes", bytes},
-                            {"missingFiles", missing}});
+                            {"missingFiles", missing},
+                            {"missing", missingNames}});
     }
     int64_t storageFiles = 0, storageBytes = 0;
     std::error_code ec;

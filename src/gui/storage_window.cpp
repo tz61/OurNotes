@@ -1,6 +1,7 @@
 #include "gui/storage_window.h"
 
 #include <QApplication>
+#include <QColor>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -104,8 +105,14 @@ StorageWindow::StorageWindow(QWidget* parent) : QDialog(parent)
     files_ = new QLabel(localBox_);
     files_->setObjectName("localFiles");
     lf->addRow(tr("Attachment files:"), files_);
+    otherFiles_ = new QLabel(localBox_);
+    otherFiles_->setObjectName("otherFiles");
+    lf->addRow(tr("Other files:"), otherFiles_);
     lv->addLayout(lf);
-    localLibraries_ = newTable({tr("Library"), tr("Items"), tr("Notes"), tr("Annotations"), tr("Files"), tr("Size")}, localBox_);
+    localLibraries_ = newTable(
+        {tr("Library"), tr("Items"), tr("Notes"), tr("Annotations"), tr("Files"), tr("Missing"), tr("Size")}, localBox_);
+    localLibraries_->headerItem()->setToolTip(5, tr("Attachments whose file is not on this computer: not downloaded "
+                                                    "yet, or never was (e.g. not in Zotero either)"));
     localLibraries_->setObjectName("localLibraries");
     lv->addWidget(localLibraries_, 1);
     v->addWidget(localBox_, 1);
@@ -116,6 +123,7 @@ StorageWindow::StorageWindow(QWidget* parent) : QDialog(parent)
     targetState_ = new QLabel(targetBox_);
     targetState_->setObjectName("targetState");
     targetState_->setWordWrap(true);
+    targetState_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     targetState_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     tv->addWidget(targetState_);
     targetDetails_ = new QWidget(targetBox_);
@@ -251,24 +259,38 @@ void StorageWindow::showLocal(const Json& usage, const QString& error)
     showDisk(localDisk_, usage.value("disk", Json()));
     database_->setText(bytes(usage, "database"));
     fulltext_->setText(bytes(usage, "fulltextIndex"));
-    int64_t missing = 0;
-    for (auto& l : usage.value("libraries", Json::array()))
-        missing += l.value("missingFiles", Json(0)).get<int64_t>();
-    auto storage = usage.value("storage", Json::object());
-    auto text = tr("%1, %2").arg(files(storage, "files"), bytes(storage, "bytes"));
-    if (missing > 0)
-        text += tr(" (%1 more not downloaded)").arg(missing);
-    files_->setText(text);
+    // the attachments' files, and what else is in storage/
+    Json sum{{"files", 0}, {"bytes", 0}, {"missing", 0}};
     for (auto& l : usage.value("libraries", Json::array())) {
-        auto files = number(l, "files");
-        if (l.value("missingFiles", Json(0)).get<int64_t>() > 0)
-            files = tr("%1 (+%2)").arg(files, number(l, "missingFiles"));
-        auto* row = new QTreeWidgetItem(localLibraries_, {jqs(l, "name"), number(l, "items"), number(l, "notes"),
-                                                          number(l, "annotations"), files, bytes(l, "fileBytes")});
+        sum["files"] = sum["files"].get<int64_t>() + l.value("files", Json(0)).get<int64_t>();
+        sum["bytes"] = sum["bytes"].get<int64_t>() + l.value("fileBytes", Json(0)).get<int64_t>();
+        sum["missing"] = sum["missing"].get<int64_t>() + l.value("missingFiles", Json(0)).get<int64_t>();
+    }
+    auto text = tr("%1, %2").arg(files(sum, "files"), bytes(sum, "bytes"));
+    if (sum["missing"].get<int64_t>() > 0)
+        text += tr("; %1 missing (see below)").arg(number(sum, "missing"));
+    files_->setText(text);
+    auto storage = usage.value("storage", Json::object());
+    Json other{{"files", std::max<int64_t>(0, storage.value("files", Json(0)).get<int64_t>() - sum["files"].get<int64_t>())},
+               {"bytes", std::max<int64_t>(0, storage.value("bytes", Json(0)).get<int64_t>() - sum["bytes"].get<int64_t>())}};
+    otherFiles_->setText(tr("%1, %2 (reading positions; files of deleted items)").arg(files(other, "files"), bytes(other, "bytes")));
+    for (auto& l : usage.value("libraries", Json::array())) {
+        bool missing = l.value("missingFiles", Json(0)).get<int64_t>() > 0;
+        auto* row = new QTreeWidgetItem(localLibraries_,
+                                        {jqs(l, "name"), number(l, "items"), number(l, "notes"), number(l, "annotations"),
+                                         number(l, "files"), missing ? number(l, "missingFiles") : QString(),
+                                         bytes(l, "fileBytes")});
         alignNumbers(row, 1);
         row->setToolTip(0, tr("%1 in the trash").arg(number(l, "trashed")));
-        if (l.value("missingFiles", Json(0)).get<int64_t>() > 0)
-            row->setToolTip(4, tr("(+n): files not downloaded to this computer"));
+        if (missing) {
+            QStringList names;
+            for (auto& n : l.value("missing", Json::array()))
+                names << "• " + qs(n.get<std::string>());
+            if (l["missingFiles"].get<int64_t>() > (int64_t)names.size())
+                names << tr("and %1 more").arg(l["missingFiles"].get<int64_t>() - names.size());
+            row->setToolTip(5, tr("Not on this computer (not downloaded yet, or never was):") + "\n" + names.join("\n"));
+            row->setForeground(5, QColor(0xd9, 0x82, 0x2b));
+        }
     }
 }
 

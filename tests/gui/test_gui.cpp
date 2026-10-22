@@ -2671,7 +2671,9 @@ TEST_CASE("storage window: this computer's disk and libraries, and the sync targ
     CHECK(local->topLevelItem(0)->text(1) == "1");  // items
     CHECK(local->topLevelItem(0)->text(2) == "1");  // notes
     CHECK(local->topLevelItem(0)->text(4) == "1");  // files
+    CHECK(local->topLevelItem(0)->text(5).isEmpty());  // none missing
     CHECK(window.findChild<QLabel*>("localFiles")->text().startsWith("1 file,"));
+    CHECK(window.findChild<QLabel*>("otherFiles")->text().startsWith("0 files"));
     CHECK(window.findChild<QLabel*>("localDisk")->text().contains("free of"));
     CHECK(window.findChild<QLabel*>("targetState")->text().contains("No sync target"));
 
@@ -2698,6 +2700,17 @@ TEST_CASE("storage window: this computer's disk and libraries, and the sync targ
     CHECK(there->topLevelItem(0)->text(6) == "1");  // files
     CHECK(window.findChild<QLabel*>("server")->text().startsWith("a folder"));
     CHECK(window.findChild<QLabel*>("targetDisk")->text().contains("free of"));
+    // an attachment whose file is not here: counted apart, named in its tooltip
+    env.library.createItem(env.lib, Json{{"itemType", "attachment"},
+                                         {"linkMode", "imported_file"},
+                                         {"parentItem", jstr(paper, "key")},
+                                         {"filename", "Never downloaded.pdf"}});
+    window.refresh();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isLoading(); }, 10000));
+    CHECK(local->topLevelItem(0)->text(4) == "1");
+    CHECK(local->topLevelItem(0)->text(5) == "1");
+    CHECK(local->topLevelItem(0)->toolTip(5).contains("Never downloaded.pdf"));
+    CHECK(window.findChild<QLabel*>("localFiles")->text().contains("1 missing"));
     // the disks' bars filled as far as they are used (once eased in)
     QTest::qWait(1500);
     for (auto* bar : window.findChildren<FancyProgressBar*>())

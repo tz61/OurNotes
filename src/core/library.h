@@ -214,8 +214,10 @@ public:
     // What the library takes on disk, and room left: {dataDir, database, fulltextIndex
     // (bytes), storage {files, bytes} (everything in storage/), disk (see diskSpace),
     // libraries: {id, name, items, notes, attachments, annotations, trashed, files,
-    // fileBytes, missingFiles (not downloaded)}}. Attachments' files are counted, in the
-    // trash too; the rest leaves out what is in the trash.
+    // fileBytes, missingFiles (not on this computer: not downloaded, or never were),
+    // missing (the first 20 of their names)}}. Attachments' files are counted, in the
+    // trash too; the rest leaves out what is in the trash. storage/ also has the reading
+    // positions (.zotero-reader-state), and files of deleted items not yet removed.
     Json diskUsage();
 
     // --- collections -----------------------------------------------------------------

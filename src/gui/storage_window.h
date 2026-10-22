@@ -42,6 +42,7 @@ private:
     QLabel* database_;
     QLabel* fulltext_;
     QLabel* files_;
+    QLabel* otherFiles_;
     QTreeWidget* localLibraries_;
 
     QGroupBox* targetBox_;
