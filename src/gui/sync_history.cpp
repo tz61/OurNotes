@@ -9,125 +9,11 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-#include <map>
-#include <tuple>
-
 #include "core/schema.h"
 #include "gui/common.h"
 #include "gui/icons.h"
 
 namespace on::gui {
-
-namespace {
-
-using ObjectId = std::tuple<int64_t, std::string, std::string>;  // library, type, key
-
-ObjectId objectId(const Json& change)
-{
-    return {change.value("libraryId", int64_t(0)), jstr(change, "type"), jstr(change, "key")};
-}
-
-bool isEmptySuccess(const Json& run)
-{
-    return run.value("ok", true) && run.value("changes", Json::array()).empty() && run.value("more", 0) == 0;
-}
-
-} // namespace
-
-SyncHistory::SyncHistory(fs::path file) : file_(std::move(file))
-{
-    std::error_code ec;
-    if (!fs::exists(file_, ec))
-        return;
-    try {
-        auto j = Json::parse(readFile(file_));
-        if (j.is_object() && j.value("runs", Json()).is_array())
-            runs_ = j["runs"];
-    } catch (const std::exception&) {
-        // unreadable: start a new history
-    }
-}
-
-void SyncHistory::add(const std::string& target, const sync::SyncReport& report, bool ok, const std::string& summary)
-{
-    Json changes = Json::array();
-    for (auto it = report.changes.rbegin(); it != report.changes.rend(); ++it) {  // the last change first
-        if ((int)changes.size() == kMaxChanges)
-            break;
-        changes.push_back(Json{{"libraryId", it->libraryId},
-                               {"library", it->library},
-                               {"type", it->type},
-                               {"key", it->key},
-                               {"kind", it->kind},
-                               {"title", it->title},
-                               {"parentKey", it->parentKey},
-                               {"action", it->action},
-                               {"incoming", it->incoming}});
-    }
-    add(Json{{"time", nowIso()},
-             {"target", target},
-             {"ok", ok},
-             {"summary", summary},
-             {"errors", report.errors},
-             {"changes", changes},
-             {"more", (int)report.changes.size() - (int)changes.size()}});
-}
-
-void SyncHistory::addFailure(const std::string& target, const std::string& error)
-{
-    add(Json{{"time", nowIso()},
-             {"target", target},
-             {"ok", false},
-             {"summary", ""},
-             {"errors", Json::array({error})},
-             {"changes", Json::array()},
-             {"more", 0}});
-}
-
-void SyncHistory::add(Json run)
-{
-    std::map<ObjectId, std::string> latest;  // the objects of this sync, and their titles
-    for (auto& c : run["changes"])
-        latest[objectId(c)] = jstr(c, "title");
-    for (auto& old : runs_) {
-        auto& changes = old["changes"];
-        for (size_t i = 0; i < changes.size();) {
-            auto it = latest.find(objectId(changes[i]));
-            if (it == latest.end()) {
-                ++i;
-                continue;
-            }
-            // listed again under this sync; a deletion sent from here knows no title
-            if (it->second.empty() && !jstr(changes[i], "title").empty())
-                for (auto& c : run["changes"])
-                    if (objectId(c) == it->first)
-                        c["title"] = changes[i]["title"];
-            changes.erase(changes.begin() + i);
-        }
-    }
-    runs_.insert(runs_.begin(), std::move(run));
-    // a sync that changed nothing is only worth showing as the last one
-    for (size_t i = 1; i < runs_.size();) {
-        if (isEmptySuccess(runs_[i]))
-            runs_.erase(runs_.begin() + i);
-        else
-            ++i;
-    }
-    while (runs_.size() > (size_t)kMaxRuns)
-        runs_.erase(runs_.end() - 1);
-    save();
-}
-
-void SyncHistory::save() const
-{
-    try {
-        writeFileAtomic(file_, Json{{"runs", runs_}}.dump(1));
-    } catch (const std::exception&) {
-        // the history is a convenience; syncing goes on without it
-    }
-}
-
-// --- the window --------------------------------------------------------------------------------
 
 namespace {
 
@@ -202,14 +88,17 @@ SyncHistoryWindow::SyncHistoryWindow(QWidget* parent) : QDialog(parent)
     v->addWidget(hint);
     tree_ = new QTreeWidget(this);
     tree_->setObjectName("syncHistory");
-    tree_->setColumnCount(3);
-    tree_->setHeaderLabels({tr("What"), tr("Change"), tr("Library")});
+    tree_->setColumnCount(4);
+    tree_->setHeaderLabels({tr("What"), tr("Change"), tr("By"), tr("Library")});
+    tree_->headerItem()->setToolTip(2, tr("The program that made a change sent from here, when it was not OurNotes: "
+                                          "ournotes-cli, which AI agents and scripts use"));
     tree_->setRootIsDecorated(true);
     tree_->setUniformRowHeights(true);
     tree_->header()->setStretchLastSection(false);
     tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     tree_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     tree_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    tree_->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     v->addWidget(tree_, 1);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto* sync = buttons->addButton(tr("Sync Now"), QDialogButtonBox::ActionRole);
@@ -229,10 +118,11 @@ SyncHistoryWindow::SyncHistoryWindow(QWidget* parent) : QDialog(parent)
     });
 }
 
-void SyncHistoryWindow::reload(const SyncHistory& history)
+void SyncHistoryWindow::reload(const sync::SyncHistory& history)
 {
     tree_->clear();
     int shown = 0;
+    bool byOthers = false;  // the By column is only shown when needed
     for (auto& run : history.runs()) {
         auto* head = new QTreeWidgetItem(tree_);
         auto& changes = run["changes"];
@@ -257,8 +147,9 @@ void SyncHistoryWindow::reload(const SyncHistory& history)
             what = parts.join("  ");
         }
         auto target = jqs(run, "target");
+        auto by = jqs(run, "by");
         head->setText(0, whenText(jstr(run, "time")) + (target.isEmpty() ? QString() : "  ·  " + target) + "  ·  " +
-                             what);
+                             what + (by.isEmpty() ? QString() : "  ·  " + tr("synced by %1").arg(by)));
         head->setFirstColumnSpanned(true);
         QFont bold = head->font(0);
         bold.setBold(true);
@@ -272,7 +163,9 @@ void SyncHistoryWindow::reload(const SyncHistory& history)
             row->setToolTip(0, title);
             row->setIcon(0, kindIcon(kind));
             row->setText(1, actionText(jstr(c, "action")));
-            row->setText(2, jqs(c, "library"));
+            row->setText(2, jqs(c, "by"));
+            byOthers = byOthers || !row->text(2).isEmpty();
+            row->setText(3, jqs(c, "library"));
             row->setData(0, LibraryRole, (qint64)c.value("libraryId", int64_t(0)));
             row->setData(0, KeyRole, jqs(c, "key"));
             row->setData(0, ParentRole, jqs(c, "parentKey"));
@@ -281,6 +174,7 @@ void SyncHistoryWindow::reload(const SyncHistory& history)
         }
         head->setExpanded(shown++ < 3);
     }
+    tree_->setColumnHidden(2, !byOthers);
     if (!tree_->topLevelItemCount()) {
         auto* none = new QTreeWidgetItem(tree_);
         none->setText(0, tr("No syncs yet."));

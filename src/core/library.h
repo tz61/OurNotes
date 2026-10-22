@@ -127,6 +127,10 @@ public:
     fs::path storageDir() const { return dataDir_ / "storage"; }
     sql::Db& db() { return db_; }
     FulltextIndex& fulltext();
+    // The program changing the library through this instance, when not the app:
+    // "ournotes-cli". Each object it changes keeps that name until the change is synced,
+    // for the sync history (see changedBy).
+    void setOrigin(std::string name) { origin_ = std::move(name); }
 
     // --- change notification ---------------------------------------------------------
     using Listener = std::function<void(const ChangeEvent&)>;
@@ -267,6 +271,10 @@ public:
     void markPushed(int64_t lib, const std::string& type, const std::string& key, int64_t version, int64_t rev);
     void setObjectVersion(int64_t lib, const std::string& type, const std::string& key, int64_t version);
     std::vector<DirtyObject> dirtyObjects(int64_t lib);
+    // The programs that changed an object (or deleted it) since it was last synced, when
+    // another than the app did: "ournotes-cli", or "ournotes-cli, OurNotes" if the app did
+    // too. Empty when only the app changed it.
+    std::string changedBy(int64_t lib, const std::string& type, const std::string& key);
     // Changes when another connection (another program, another thread) has written to
     // the database since this one last asked (SQLite's PRAGMA data_version).
     int64_t dataVersion();
@@ -292,11 +300,14 @@ private:
     void writeObject(int64_t lib, const std::string& type, const std::string& key, Json data, int64_t version,
                      bool synced, bool bumpRev);
     void removeObject(int64_t lib, const std::string& type, const std::string& key, bool tombstone);
+    void noteChange(int64_t lib, const std::string& type, const std::string& key);  // before a local change
+    void forgetChange(int64_t lib, const std::string& type, const std::string& key);
     void collectDescendants(int64_t lib, const std::string& key, std::vector<std::string>& out);
     void removeStorage(const std::string& key);
     void saveTagColors(int64_t lib, const Json& colors);
 
     fs::path dataDir_;
+    std::string origin_;
     sql::Db db_;
     std::unique_ptr<FulltextIndex> fulltext_;
     std::map<int, Listener> listeners_;

@@ -7,6 +7,7 @@
 #include "core/hash.h"
 #include "core/schema.h"
 #include "core/sync/engine.h"
+#include "core/sync/history.h"
 #include "formats/citation.h"
 #include "formats/formats.h"
 #include "formats/metadata.h"
@@ -291,13 +292,23 @@ void registerExtraCommands(CommandMap& commands, Config& config)
             std::cerr << "No sync target configured (see add-server / add-folder).\n";
             return 1;
         }
-        auto transport = makeTransport(*target);
-        sync::SyncOptions opts;
-        opts.syncFiles = !args.flag("--no-files");
-        opts.log = [](const std::string& m) { std::cout << m << "\n"; };
-        sync::SyncEngine engine(lib, *transport, target->id, opts);
-        auto report = engine.syncAll();
-        std::cout << "Sync with " << target->describe() << ": " << report.summary() << "\n";
+        // in the app's Sync History too, as made by ournotes-cli
+        sync::SyncHistory history(lib.dataDir() / "sync-history.json", "ournotes-cli");
+        sync::SyncReport report;
+        try {
+            auto transport = makeTransport(*target);
+            sync::SyncOptions opts;
+            opts.syncFiles = !args.flag("--no-files");
+            opts.log = [](const std::string& m) { std::cout << m << "\n"; };
+            sync::SyncEngine engine(lib, *transport, target->id, opts);
+            report = engine.syncAll();
+        } catch (const std::exception& e) {
+            history.addFailure(target->name, e.what());
+            throw;
+        }
+        auto summary = report.summary();
+        history.add(target->name, report, report.errors.empty(), summary.substr(0, summary.find('\n')));
+        std::cout << "Sync with " << target->describe() << ": " << summary << "\n";
         for (auto& e : report.errors)
             std::cerr << "error: " << e << "\n";
         return report.errors.empty() ? 0 : 2;

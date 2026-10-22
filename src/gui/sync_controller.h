@@ -11,12 +11,11 @@
 
 namespace on::sync {
 class ChangeWatcher;
+class SyncHistory;
 class Transport;
 }
 
 namespace on::gui {
-
-class SyncHistory;
 
 // A connection to a sync target: a server, or a folder.
 std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& target);
@@ -35,7 +34,7 @@ public:
     bool hasTarget() const;
     bool isWatching() const { return watcher_ != nullptr; }  // for other computers' changes
     void reloadSettings();
-    const SyncHistory& history() const { return *history_; }
+    const sync::SyncHistory& history() const { return *history_; }
 
 public slots:
     void syncNow();
@@ -62,8 +61,9 @@ private:
     std::atomic<bool> cancel_{false};
     QTimer autoTimer_;
     QTimer intervalTimer_;
+    QTimer historyTimer_;
     bool pendingAfterRun_ = false;
-    std::unique_ptr<SyncHistory> history_;
+    std::unique_ptr<sync::SyncHistory> history_;
     std::atomic<uint64_t> syncCount_{0};  // syncs started and finished: odd while one runs
     std::unique_ptr<sync::ChangeWatcher> watcher_;
 };

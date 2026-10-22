@@ -147,6 +147,7 @@ int main(int argc, char** argv)
             migrateFromFreePen();
         Config config;
         Library lib(dataDir.empty() ? config.dataDir() : u8path(dataDir));
+        lib.setOrigin("ournotes-cli");  // the app's sync history tells its changes apart
         std::map<std::string, std::function<int(Library&, Args&)>> commands = {
             {"info", cmdInfo},
             {"import-zotero", cmdImportZotero},

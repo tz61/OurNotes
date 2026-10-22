@@ -260,7 +260,7 @@ void SyncEngine::pull(LibraryInfo& lib, SyncReport& report)
 }
 
 void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type, const std::string& key,
-                        const Json& data, const std::string& action, bool incoming)
+                        const Json& data, const std::string& action, bool incoming, const std::string& by)
 {
     SyncChange c;
     c.libraryId = lib;
@@ -268,6 +268,7 @@ void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type
     c.key = key;
     c.action = action;
     c.incoming = incoming;
+    c.by = by;
     c.kind = type;
     if (data.is_object()) {
         if (type == "item" || type == "file") {
@@ -297,6 +298,8 @@ void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type
             c.action = "added";
         if (c.title.empty())
             c.title = it->title;
+        if (c.by.empty() && !incoming && !it->incoming)
+            c.by = it->by;
         report.changes.erase(it);
     }
     if (auto info = library_.library(lib))
@@ -408,13 +411,14 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
                 auto& p = pending[start + i];
                 if (e.status == "ok") {
                     wroteCurrentVersion = wroteCurrentVersion || e.version == result.version;
+                    auto by = library_.changedBy(lib.id, p.obj.type, p.obj.key);
                     if (p.obj.deleted)
                         library_.clearTombstone(lib.id, p.obj.type, p.obj.key);
                     else
                         library_.markPushed(lib.id, p.obj.type, p.obj.key, e.version, p.rev);
                     ++report.pushed;
                     record(report, lib.id, p.obj.type, p.obj.key, p.obj.data,
-                           p.obj.deleted ? "deleted" : p.obj.baseVersion == 0 ? "added" : "changed", false);
+                           p.obj.deleted ? "deleted" : p.obj.baseVersion == 0 ? "added" : "changed", false, by);
                 } else if (e.status == "conflict") {
                     batchConflict = true;
                     if (e.current)
@@ -480,7 +484,9 @@ void SyncEngine::syncFiles(LibraryInfo& lib, SyncReport& report)
             transport_.upload(lib.uid, key, path, meta);
             library_.setSyncedMd5(lib.id, key, md5);
             ++report.uploaded;
-            record(report, lib.id, "file", key, att, it == remote.end() ? "added" : "changed", false);
+            // made by whoever made its attachment (still to be pushed: files go first)
+            record(report, lib.id, "file", key, att, it == remote.end() ? "added" : "changed", false,
+                   library_.changedBy(lib.id, "item", key));
         };
         auto download = [&](const FileInfo& info) {
             if (!options_.downloadFiles)

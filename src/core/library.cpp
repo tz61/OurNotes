@@ -14,7 +14,7 @@ namespace on {
 
 namespace {
 
-constexpr int kSchemaVersion = 2;
+constexpr int kSchemaVersion = 3;
 
 const char* kSchemaSql = R"SQL(
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -115,6 +115,12 @@ CREATE TABLE IF NOT EXISTS file_state(
     md5 TEXT NOT NULL DEFAULT '',
     synced_md5 TEXT NOT NULL DEFAULT '',
     PRIMARY KEY(library_id, key)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS changed_by(
+    library_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    key TEXT NOT NULL,
+    origins TEXT NOT NULL,
+    PRIMARY KEY(library_id, type, key)) WITHOUT ROWID;
 )SQL";
 
 const std::set<std::string> kMetaKeys = {"key",       "version",   "itemType", "dateAdded", "dateModified", "tags",
@@ -261,6 +267,7 @@ void Library::migrate()
     sql::Transaction tx(db_);
     db_.exec(kSchemaSql);
     // 2: the library name last agreed with the sync target (names are synced)
+    // 3: changed_by, made by kSchemaSql
     if (!db_.scalarInt("SELECT 1 FROM pragma_table_info('libraries') WHERE name='sync_name'"))
         db_.exec("ALTER TABLE libraries ADD COLUMN sync_name TEXT");
     if (!db_.scalarStr("SELECT value FROM meta WHERE key='created'"))
@@ -383,7 +390,7 @@ void Library::deleteLibrary(int64_t id)
     }
     sql::Transaction tx(db_);
     for (const char* table : {"items", "item_tags", "item_collections", "collections", "settings", "searches",
-                              "tombstones", "conflicts", "file_state"})
+                              "tombstones", "conflicts", "file_state", "changed_by"})
         db_.run(std::string("DELETE FROM ") + table + " WHERE library_id=?", id);
     db_.run("DELETE FROM libraries WHERE id=?", id);
     tx.commit();
@@ -454,6 +461,8 @@ void Library::writeItem(int64_t lib, Json data, int64_t version, bool synced, bo
         throw Error("invalid item type: " + jstr(data, "itemType"));
     auto d = derive(data);
     sql::Transaction tx(db_);
+    if (!synced && bumpRev)
+        noteChange(lib, "item", key);
     db_.query(R"SQL(
         INSERT INTO items(library_id, key, item_type, parent_key, title, creator, year, date, publication,
                           date_added, date_modified, content_type, link_mode, trashed, quick_text, search_text,
@@ -496,6 +505,8 @@ void Library::writeObject(int64_t lib, const std::string& type, const std::strin
         return;
     }
     data.erase("version");
+    if (!synced && bumpRev)
+        noteChange(lib, type, key);
     if (type == "collection") {
         data["key"] = key;
         auto parent = data.value("parentCollection", Json());
@@ -525,6 +536,10 @@ void Library::removeObject(int64_t lib, const std::string& type, const std::stri
     auto table = tableFor(type);
     sql::Transaction tx(db_);
     auto version = db_.scalarInt("SELECT version FROM " + table + " WHERE library_id=? AND key=?", lib, key);
+    if (tombstone && version && *version > 0)
+        noteChange(lib, type, key);
+    else
+        forgetChange(lib, type, key);
     db_.run("DELETE FROM " + table + " WHERE library_id=? AND key=?", lib, key);
     if (type == "item") {
         db_.run("DELETE FROM item_tags WHERE library_id=? AND item_key=?", lib, key);
@@ -1685,6 +1700,7 @@ void Library::putRemoteObject(int64_t lib, const std::string& type, const std::s
     sql::Transaction tx(db_);
     writeObject(lib, type, key, data, version, true, false);
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);
+    forgetChange(lib, type, key);
     tx.commit();
     notify({lib, type, existed ? "modify" : "add", {key}});
 }
@@ -1708,6 +1724,8 @@ void Library::markPushed(int64_t lib, const std::string& type, const std::string
     db_.run("UPDATE " + tableFor(type) +
                 " SET version=?, synced=CASE WHEN rev=? THEN 1 ELSE 0 END WHERE library_id=? AND key=?",
             version, rev, lib, key);
+    if (db_.scalarInt("SELECT synced FROM " + tableFor(type) + " WHERE library_id=? AND key=?", lib, key) == 1)
+        forgetChange(lib, type, key);
 }
 
 void Library::setObjectVersion(int64_t lib, const std::string& type, const std::string& key, int64_t version)
@@ -1752,6 +1770,49 @@ std::optional<Tombstone> Library::tombstone(int64_t lib, const std::string& type
 void Library::clearTombstone(int64_t lib, const std::string& type, const std::string& key)
 {
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);
+    forgetChange(lib, type, key);
+}
+
+namespace {
+constexpr const char* kAppOrigin = "OurNotes";
+}
+
+void Library::noteChange(int64_t lib, const std::string& type, const std::string& key)
+{
+    // changed since the last sync already (or deleted, and now back)
+    bool unsynced = db_.scalarInt("SELECT synced FROM " + tableFor(type) + " WHERE library_id=? AND key=?", lib,
+                                  key) == 0 ||
+                    db_.scalarInt("SELECT 1 FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);
+    if (origin_.empty()) {
+        if (unsynced)  // after another program
+            db_.run("UPDATE changed_by SET origins=origins || ',' || ?4 WHERE library_id=?1 AND type=?2 AND key=?3 "
+                    "AND instr(',' || origins || ',', ',' || ?4 || ',') = 0",
+                    lib, type, key, kAppOrigin);
+        else
+            forgetChange(lib, type, key);
+        return;
+    }
+    auto before = unsynced ? db_.scalarStr("SELECT origins FROM changed_by WHERE library_id=? AND type=? AND key=?",
+                                           lib, type, key)
+                                 .value_or(kAppOrigin)
+                           : std::string();
+    auto origins = split(before, ',');
+    if (std::find(origins.begin(), origins.end(), origin_) == origins.end())
+        origins.push_back(origin_);
+    db_.run("INSERT OR REPLACE INTO changed_by(library_id, type, key, origins) VALUES(?,?,?,?)", lib, type, key,
+            join(origins, ","));
+}
+
+void Library::forgetChange(int64_t lib, const std::string& type, const std::string& key)
+{
+    db_.run("DELETE FROM changed_by WHERE library_id=? AND type=? AND key=?", lib, type, key);
+}
+
+std::string Library::changedBy(int64_t lib, const std::string& type, const std::string& key)
+{
+    auto origins = db_.scalarStr("SELECT origins FROM changed_by WHERE library_id=? AND type=? AND key=?", lib, type,
+                                 key);
+    return origins ? join(split(*origins, ','), ", ") : std::string();
 }
 
 void Library::resetSyncState(int64_t lib, const std::string& target)

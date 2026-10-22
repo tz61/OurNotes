@@ -8,6 +8,7 @@ add_library(ournotes_core STATIC
     util.cpp
     zotero_importer.cpp
     sync/engine.cpp
+    sync/history.cpp
     sync/protocol.cpp
 )
 on_embed_file(ournotes_core "${PROJECT_SOURCE_DIR}/resources/schema.json" on_schema_json)

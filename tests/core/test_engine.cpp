@@ -5,6 +5,7 @@
 
 #include "core/library.h"
 #include "core/sync/engine.h"
+#include "core/sync/history.h"
 #include "test_helpers.h"
 
 using namespace on;
@@ -375,6 +376,63 @@ TEST_CASE("a sync reports what it brought in and sent out, once per object")
     CHECK(gone.incoming);
     CHECK(gone.title == "abcd");  // from the copy that was removed
     CHECK(syncWith(b, server).changes.empty());
+}
+
+TEST_CASE("changes ournotes-cli made are told apart in the sync report and the history")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library app(tmp.path / "data");
+    Library cli(tmp.path / "data");  // another program on the same library
+    cli.setOrigin("ournotes-cli");
+    auto lib = app.defaultLibrary();
+    auto old = jstr(app.createNote(lib, "<p>Old</p>"), "key");
+    syncWith(app, server);
+
+    auto byCli = jstr(cli.createItem(lib, Json{{"itemType", "book"}, {"title", "By the agent"}}), "key");
+    auto both = jstr(cli.createItem(lib, Json{{"itemType", "book"}, {"title", "Both"}}), "key");
+    app.updateItem(lib, both, [](Json& d) { d["title"] = "Both, then the app"; });
+    auto appFirst = jstr(app.createItem(lib, Json{{"itemType", "book"}, {"title", "App first"}}), "key");
+    cli.updateItem(lib, appFirst, [](Json& d) { d["title"] = "App first, then the agent"; });
+    auto byApp = jstr(app.createItem(lib, Json{{"itemType", "book"}, {"title", "By the app"}}), "key");
+    cli.eraseItems(lib, {old});
+    CHECK(app.changedBy(lib, "item", byCli) == "ournotes-cli");
+    CHECK(app.changedBy(lib, "item", byApp).empty());
+
+    auto report = syncWith(app, server);
+    std::map<std::string, std::string> by;
+    for (auto& c : report.changes)
+        if (!c.incoming)
+            by[c.key] = c.by;
+    REQUIRE(by.size() == 5);
+    CHECK(by[byCli] == "ournotes-cli");
+    CHECK(by[both] == "ournotes-cli, OurNotes");
+    CHECK(by[appFirst] == "OurNotes, ournotes-cli");
+    CHECK(by[byApp].empty());
+    CHECK(by[old] == "ournotes-cli");  // a deletion
+    // synced: forgotten, so the app's next change of it is the app's alone
+    CHECK(app.changedBy(lib, "item", byCli).empty());
+    app.updateItem(lib, byCli, [](Json& d) { d["title"] = "Renamed in the app"; });
+    for (auto& c : syncWith(app, server).changes)
+        CHECK(c.by.empty());
+
+    // ournotes-cli syncing itself: in the same history file, which the app reads again
+    auto file = tmp.path / "data" / "sync-history.json";
+    sync::SyncHistory appHistory(file);
+    appHistory.add("server", report, true, "pushed 5");
+    sync::SyncHistory cliHistory(file, "ournotes-cli");
+    CHECK(cliHistory.runs().size() == 1);
+    cli.updateItem(lib, byApp, [](Json& d) { d["title"] = "Renamed by the agent"; });
+    cliHistory.add("server", syncWith(cli, server), true, "pushed 1");
+    CHECK(appHistory.reload());
+    CHECK(!appHistory.reload());
+    REQUIRE(appHistory.runs().size() == 2);
+    CHECK(appHistory.runs()[0]["by"] == "ournotes-cli");
+    CHECK(appHistory.runs()[0]["changes"][0]["by"] == "ournotes-cli");
+    CHECK(!appHistory.runs()[1].contains("by"));
+    CHECK(appHistory.runs()[1]["changes"].size() == 4);  // the one the agent renamed since is under its sync
+    appHistory.addFailure("server", "cannot reach the server");
+    CHECK(sync::SyncHistory(file).runs().size() == 3);  // nothing of the other's lost
 }
 
 TEST_CASE("concurrent edits: last writer wins and the loser is kept as a conflict")

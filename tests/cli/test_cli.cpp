@@ -10,6 +10,7 @@
 #include "cli/commands.h"
 #include "core/config.h"
 #include "core/library.h"
+#include "core/sync/history.h"
 
 using namespace on;
 
@@ -215,4 +216,42 @@ TEST_CASE("cli: titles, tags, notes, collections and the trash, marked for the n
     CHECK(jbool(*lib.item(course, keys[1]), "deleted"));
     cli.run({"restore", keys[1]});
     CHECK(!jbool(*lib.item(course, keys[1]), "deleted"));
+}
+
+TEST_CASE("cli: what it changes and syncs is in the app's sync history, as ournotes-cli's")
+{
+    Cli cli;
+    cli.lib.setOrigin("ournotes-cli");  // as main() does
+    auto lib = cli.lib.defaultLibrary();
+    auto key = jstr(cli.lib.createItem(lib, Json{{"itemType", "book"}, {"title", "Old"}}), "key");
+    CHECK(cli.run({"add-folder", pathString(cli.dir.path / "target")}).first == 0);
+    CHECK(cli.run({"set", key, "title=New"}).first == 0);
+    auto [code, out] = cli.run({"sync"});
+    INFO(out);
+    REQUIRE(code == 0);
+    sync::SyncHistory history(cli.lib.dataDir() / "sync-history.json");
+    REQUIRE(history.runs().size() == 1);
+    auto& run = history.runs()[0];
+    CHECK(run["by"] == "ournotes-cli");
+    CHECK(run["target"] == "target");
+    CHECK(run["ok"] == true);
+    REQUIRE(run["changes"].size() == 1);
+    CHECK(run["changes"][0]["key"] == key);
+    CHECK(run["changes"][0]["title"] == "New");
+    CHECK(run["changes"][0]["by"] == "ournotes-cli");
+
+    // a sync that fails is in it too
+    SyncTarget broken;
+    broken.id = "broken";
+    broken.name = "Broken";
+    broken.kind = "local";
+    broken.path = pathString(cli.dir.path / "data" / "ournotes.sqlite" / "target");  // under a file
+    cli.config.upsertTarget(broken);
+    auto failed = cli.run({"sync", "--target", "broken"});
+    INFO(failed.second);
+    CHECK(failed.first != 0);
+    history.reload();
+    REQUIRE(history.runs().size() == 2);
+    CHECK(history.runs()[0]["ok"] == false);
+    CHECK(history.runs()[0]["by"] == "ournotes-cli");
 }

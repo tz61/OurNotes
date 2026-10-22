@@ -2610,7 +2610,7 @@ TEST_CASE("sync history: the last syncs, each object once under the last that ch
         return r;
     };
     {
-        SyncHistory h(file);
+        sync::SyncHistory h(file);
         h.add("server", report({change("NOTE0001", "a", "added", false), change("BOOK0001", "Book", "added", false)}),
               true, "pushed 2");
         h.add("server", report({change("NOTE0001", "abc", "changed", false)}), true, "pushed 1");
@@ -2635,22 +2635,34 @@ TEST_CASE("sync history: the last syncs, each object once under the last that ch
         CHECK(h.runs()[1]["ok"] == false);
         CHECK(h.runs()[2]["changes"][0]["action"] == "deleted");
     }
-    SyncHistory again(file);  // kept in the file
+    sync::SyncHistory again(file);  // kept in the file
     REQUIRE(again.runs().size() == 4);
     for (int i = 0; i < 40; ++i)
         again.add("server", report({change("N" + std::to_string(i), "x", "added", true)}), true, "pulled 1");
-    CHECK(again.runs().size() == SyncHistory::kMaxRuns);
+    CHECK(again.runs().size() == sync::SyncHistory::kMaxRuns);
 
     SyncHistoryWindow window;
     window.reload(again);
     auto* tree = window.findChild<QTreeWidget*>("syncHistory");
     REQUIRE(tree);
-    CHECK(tree->topLevelItemCount() == SyncHistory::kMaxRuns);
+    CHECK(tree->topLevelItemCount() == sync::SyncHistory::kMaxRuns);
     auto* first = tree->topLevelItem(0);
     CHECK(first->text(0).contains("1 received"));
     REQUIRE(first->childCount() == 1);
     CHECK(first->child(0)->text(0).contains("Note"));
     CHECK(first->child(0)->text(1) == "Added");
+    CHECK(tree->isColumnHidden(2));  // no other program's changes: no By column
+
+    // ournotes-cli synced what an agent changed
+    auto agent = change("BOOK0002", "Renamed", "changed", false);
+    agent.by = "ournotes-cli";
+    sync::SyncHistory(file, "ournotes-cli").add("server", report({agent}), true, "pushed 1");
+    CHECK(again.reload());
+    window.reload(again);
+    CHECK(!tree->isColumnHidden(2));
+    CHECK(tree->topLevelItem(0)->text(0).contains("synced by ournotes-cli"));
+    CHECK(tree->topLevelItem(0)->child(0)->text(2) == "ournotes-cli");
+    CHECK(tree->topLevelItem(1)->child(0)->text(2).isEmpty());
 }
 
 TEST_CASE("storage window: this computer's disk and libraries, and the sync target's")
@@ -2795,6 +2807,25 @@ TEST_CASE("sync history: filled by the syncs the app runs")
         listed |= c["key"] == jstr(paper, "key") && c["title"] == "Synced Book" && c["incoming"] == false;
     CHECK(listed);
     CHECK(fs::exists(env.library.dataDir() / "sync-history.json"));
+
+    // ournotes-cli changes it and syncs while the app runs: its sync shows here soon
+    bool changed = false;
+    QObject::connect(&sync, &SyncController::historyChanged, [&] { changed = true; });
+    {
+        Library cli(env.library.dataDir());
+        cli.setOrigin("ournotes-cli");
+        cli.updateItem(env.lib, jstr(paper, "key"), [](Json& d) { d["title"] = "Renamed by an agent"; });
+        auto transport = makeTransport(target);
+        sync::SyncEngine engine(cli, *transport, target.id);
+        sync::SyncHistory(cli.dataDir() / "sync-history.json", "ournotes-cli")
+            .add(target.name, engine.syncAll(), true, "pushed 1");
+    }
+    REQUIRE(QTest::qWaitFor([&] { return changed; }, 5000));
+    REQUIRE(runs.size() == 1);  // the book was the first sync's only change, now under this one
+    CHECK(runs[0]["by"] == "ournotes-cli");
+    REQUIRE(runs[0]["changes"].size() == 1);
+    CHECK(runs[0]["changes"][0]["by"] == "ournotes-cli");
+    CHECK(runs[0]["changes"][0]["title"] == "Renamed by an agent");
 }
 
 TEST_CASE("sync: what another computer changed shows in the open PDF, beside it and in the item pane")

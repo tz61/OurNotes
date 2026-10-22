@@ -83,7 +83,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   and Notes, as on a PDF's page).
 - **Sync** — two-way, per object, with attachment files; last writer wins and the losing
   version is kept in *Tools → Sync Conflicts*. *Tools → Sync History* lists what the last
-  syncs brought in and sent out. Library names are synced, and deleting an (empty)
+  syncs brought in and sent out, and which of it `ournotes-cli` (an agent, a script) made
+  or synced. Library names are synced, and deleting an (empty)
   library deletes it everywhere. Works with a `ournotesd` server (HTTP/HTTPS, multiple
   users, shared libraries) or with a folder.
 - **Command line** — `ournotes-cli` for import/export, citing, adding items, indexing and
@@ -252,7 +253,8 @@ ournotes-cli add-server https://host:8642 --user alice    ournotes-cli sync
 **AI agents** (Claude Code, Codex, ...) can work on a library through `ournotes-cli`:
 summarise the papers in a collection into notes, rename titles, tag and file items.
 [docs/agents.md](docs/agents.md) tells them how (also `ournotes-cli guide`); point an agent
-at it. Changes go out with the next sync, and an open app shows them within seconds.
+at it. Changes go out with the app's next sync, and an open app shows them within seconds;
+*Tools → Sync History* tells them apart from the user's own.
 
 ## Architecture
 

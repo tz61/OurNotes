@@ -144,10 +144,16 @@ ournotes-cli items --collection "FA26/CS8803" --json |
 
 ## Sync, and the app running at the same time
 
+Leave syncing to the app: do not run `ournotes-cli sync` unless the user asks for it.
+
 - The app may be open while you work: it notices another program's changes within a couple
-  of seconds and shows them. With *Sync automatically* on, it syncs them about 20 seconds
-  later; `ournotes-cli sync` sends them at once (and brings in the others' changes).
-- With the app closed, it syncs when it is next opened.
+  of seconds and shows them, and (with *Sync automatically* on, as it is unless the user
+  turned it off) syncs them about 20 seconds later.
+- With the app closed, it syncs them when it is next opened.
+- When the user wants them on their other computers now (with the app closed, say),
+  `ournotes-cli sync` sends them at once and brings in the others' changes.
+- Either way the user can look over what you did in the app's *Tools → Sync History*: your
+  changes are marked as made by `ournotes-cli`, and a sync you ran as synced by it.
 - If the same item was changed on another computer meanwhile, the later change wins and
   the other is kept under *Tools → Sync Conflicts*.
 

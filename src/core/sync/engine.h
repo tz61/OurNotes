@@ -28,6 +28,7 @@ struct SyncChange {
     std::string parentKey;  // the item a note, attachment or annotation belongs to
     std::string action;     // "added", "changed" or "deleted"
     bool incoming = false;  // from the target (else sent to it)
+    std::string by;         // sent: the programs that made it, when not only the app (Library::changedBy)
 };
 
 struct SyncReport {
@@ -72,7 +73,7 @@ private:
     void applyRemote(int64_t lib, const RemoteObject& o, SyncReport& report);
     void syncName(const LibraryInfo& local, RemoteLibrary& remote);
     void record(SyncReport& report, int64_t lib, const std::string& type, const std::string& key, const Json& data,
-                const std::string& action, bool incoming);
+                const std::string& action, bool incoming, const std::string& by = {});
     bool cancelled() const { return options_.cancelled && options_.cancelled(); }
     void log(const std::string& msg) const;
     void progress(const std::string& stage, int done, int total) const;

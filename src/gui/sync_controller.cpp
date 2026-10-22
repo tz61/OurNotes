@@ -6,10 +6,10 @@
 #include <optional>
 
 #include "core/sync/engine.h"
+#include "core/sync/history.h"
 #include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
-#include "gui/sync_history.h"
 #include "sync/change_watcher.h"
 #include "sync/http_transport.h"
 #include "sync/local_transport.h"
@@ -24,7 +24,7 @@ std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& t)
 }
 
 SyncController::SyncController(QObject* parent)
-    : QObject(parent), history_(std::make_unique<SyncHistory>(AppContext::get().library().dataDir() / "sync-history.json"))
+    : QObject(parent), history_(std::make_unique<sync::SyncHistory>(AppContext::get().library().dataDir() / "sync-history.json"))
 {
     autoTimer_.setSingleShot(true);
     autoTimer_.setInterval(20000);
@@ -34,6 +34,13 @@ SyncController::SyncController(QObject* parent)
         if (AppContext::get().config().get("/sync/auto", true).get<bool>() && hasTarget())
             autoTimer_.start();
     });
+    // and when ournotes-cli synced, the history has its sync
+    historyTimer_.setInterval(2000);
+    connect(&historyTimer_, &QTimer::timeout, this, [this] {
+        if (history_->reload())
+            emit historyChanged();
+    });
+    historyTimer_.start();
     connect(&intervalTimer_, &QTimer::timeout, this, &SyncController::syncNow);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64, const QString& type, const QString& action, const QStringList&) {
