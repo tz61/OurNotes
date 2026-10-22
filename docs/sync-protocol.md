@@ -107,7 +107,7 @@ Limits: push ≤ 1000 objects and ≤ 64 MiB of JSON; `changes` returns at most
 ### `GET /info` (no auth)
 
 ```json
-{"server": "ournotesd", "version": "0.1.10", "api": 1}
+{"server": "ournotesd", "version": "0.1.11", "api": 1}
 ```
 
 ### `POST /login` (no auth)
