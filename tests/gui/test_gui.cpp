@@ -21,7 +21,9 @@
 #include <QTabBar>
 #include <QToolBar>
 #include <QListWidget>
+#include <QMenuBar>
 #include <QProxyStyle>
+#include <QRegularExpression>
 #include <QRandomGenerator>
 #include <QStyleFactory>
 #include <QStyleHints>
@@ -4230,6 +4232,38 @@ TEST_CASE("main window: the tabs make room for the title bar macOS slides over a
     window.setTitleBarOverlap(0);
     QApplication::processEvents();
     CHECK(strip->mapTo(&window, QPoint(0, 0)).y() == top);
+}
+
+TEST_CASE("main window: no menu item is taken for Quit, Preferences or About because of its text")
+{
+    app();
+    Env env;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    window.setWindowState(Qt::WindowFullScreen);
+    QApplication::processEvents();
+    auto menus = window.menuBar()->findChildren<QMenu*>();
+    for (auto* menu : menus)
+        emit menu->aboutToShow();  // the View menu then calls its item "Exit Full Screen"
+    // Qt on macOS moves an item into the application menu by the start of its text unless
+    // its role says otherwise: "Exit Full Screen" became Quit, with Command-Control-F
+    static const QRegularExpression guessed("^(quit|exit|about|config|preference|options|setting|setup)|about$",
+                                            QRegularExpression::CaseInsensitiveOption);
+    QAction* quit = nullptr;
+    for (auto* menu : menus)
+        for (auto* action : menu->actions()) {
+            QString text = action->text().remove('&');
+            if (action->menuRole() == QAction::TextHeuristicRole) {
+                INFO(text.toStdString());
+                CHECK(!text.contains(guessed));
+            }
+            if (action->menuRole() == QAction::QuitRole)
+                quit = action;
+        }
+    REQUIRE(quit);
+    CHECK(quit->shortcut() == QKeySequence(QKeySequence::Quit));
+    window.setWindowState(Qt::WindowNoState);
 }
 
 TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")
