@@ -66,3 +66,19 @@ TEST_CASE("schema")
     CHECK(j["publicationTitle"] == "Proc");
     CHECK(j["itemType"] == "journalArticle");
 }
+
+TEST_CASE("markdownToNoteHtml: a note as an agent writes it")
+{
+    auto html = markdownToNoteHtml("# Title\n\nA *first* and **strong** line\nrunning on, `code_x` and snake_case.\n\n"
+                                   "- one\n- [two](https://example.org)\n\n1. first\n2. second\n\n> quoted\n\n"
+                                   "Inline $a<b$ and display:\n\n$$\n\\sum_i x_i\n$$\n\n```\nint main() { return 1 < 2; }\n```\n---\n#### deep");
+    CHECK(html == "<div data-schema-version=\"9\"><h1>Title</h1>"
+                  "<p>A <em>first</em> and <strong>strong</strong> line running on, <code>code_x</code> and snake_case.</p>"
+                  "<ul><li>one</li><li><a href=\"https://example.org\">two</a></li></ul>"
+                  "<ol><li>first</li><li>second</li></ol>"
+                  "<blockquote><p>quoted</p></blockquote>"
+                  "<p>Inline <span class=\"math\">$a&lt;b$</span> and display:</p>"
+                  "<pre class=\"math\">$$\\sum_i x_i$$</pre>"
+                  "<pre>int main() { return 1 &lt; 2; }</pre><hr><h3>deep</h3></div>");
+    CHECK(markdownToNoteHtml("costs $5 and $10") == "<div data-schema-version=\"9\"><p>costs $5 and $10</p></div>");
+}

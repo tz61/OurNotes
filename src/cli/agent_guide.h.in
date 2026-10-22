@@ -1,0 +1,4 @@
+#pragma once
+
+// docs/agents.md, for `ournotes-cli guide` (made from it when the build is configured).
+inline const char* const kAgentGuide = R"OURNOTES_GUIDE(@OURNOTES_AGENT_GUIDE@)OURNOTES_GUIDE";

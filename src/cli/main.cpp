@@ -31,32 +31,37 @@ void usage()
 
 Usage: ournotes-cli [--data-dir DIR] <command> [options]
 
-Library:
+For AI agents and scripts: run `ournotes-cli guide` first (how to read and change a
+library safely, with examples).
+
+Library (--library takes an ID or a name; --collection a key or a path such as
+"FA26/CS8803"; --json prints JSON for scripts and agents):
+  guide                             how to work with a library from an agent or a script
   info                              data directory and library statistics
-  libraries                         list libraries
-  collections [--library ID]        list collections as a tree
-  items [--library ID] [--search TEXT] [--mode quick|all|everything] [--collection KEY]
-  show KEY [--library ID]           print an item as JSON
+  libraries [--json]                list libraries
+  collections [--library L] [--json]
+                                    list collections as a tree (all libraries)
+  items [--collection C | --library L] [--search TEXT] [--mode quick|all|everything] [--json]
+                                    list top-level items (all libraries)
+  show KEY [--json]                 an item as JSON (--json: with its notes and attachments)
+  text KEY [--pages N]              a PDF's text (an item's PDF, or an attachment's), or a note's
+  annotations KEY [--json]          the highlights and comments in an item's PDFs
+  set KEY FIELD=VALUE...            change fields (an empty VALUE removes the field)
+  tag KEY... [--add T,T] [--remove T,T]
+  add-note KEY [TEXT|-]             a note under an item (TEXT, or standard input)
+  add-note --collection C [TEXT|-]  a standalone note in a collection
+                                    (Markdown, or --html, --text)
+  edit-note NOTE [TEXT|-] [--append]
+                                    replace (or add to) a note's text
+  new-collection NAME [--parent C] [--library L]
+  file KEY... --collection C        put items into a collection (unfile: take them out)
+  trash KEY... | restore KEY...     move to the trash, or back
   import-zotero [ZOTERO_DIR] [--hardlink | --no-files] [--no-trash]
                                     import (or update from) a Zotero data directory
 )" OURNOTES_CLI_EXTRA_USAGE R"(
 The data directory defaults to the one configured in the desktop app
 (~/OurNotes unless changed); OURNOTES_DATA_DIR overrides it.
 )";
-}
-
-void printCollections(Library& lib, int64_t id, const std::string& parent, int depth)
-{
-    for (auto& c : lib.collections(id)) {
-        auto p = c.value("parentCollection", Json());
-        std::string pk = p.is_string() ? p.get<std::string>() : "";
-        if (pk != parent)
-            continue;
-        auto key = jstr(c, "key");
-        std::cout << std::string(depth * 2, ' ') << jstr(c, "name") << "  [" << key << "] ("
-                  << lib.collectionItemKeys(id, key).size() << ")\n";
-        printCollections(lib, id, key, depth + 1);
-    }
 }
 
 int cmdInfo(Library& lib, Args&)
@@ -86,67 +91,6 @@ int cmdInfo(Library& lib, Args&)
             std::cout << "  synced with target " << l.syncTarget << " at version " << l.syncVersion << ", "
                       << lib.dirtyObjects(l.id).size() << " local changes pending\n";
     }
-    return 0;
-}
-
-int cmdLibraries(Library& lib, Args&)
-{
-    for (auto& l : lib.libraries())
-        std::cout << l.id << "\t" << l.type << "\t" << l.name << "\t" << l.uid << "\n";
-    return 0;
-}
-
-int cmdCollections(Library& lib, Args& args)
-{
-    printCollections(lib, args.libraryId(lib), "", 0);
-    return 0;
-}
-
-int cmdItems(Library& lib, Args& args)
-{
-    auto id = args.libraryId(lib);
-    auto search = args.option("--search");
-    auto mode = args.option("--mode", "all");
-    auto collection = args.option("--collection");
-    std::set<std::string> filter;
-    bool filtered = false;
-    if (!search.empty()) {
-        auto m = mode == "quick" ? SearchMode::TitleCreatorYear
-                 : mode == "everything" ? SearchMode::Everything
-                                        : SearchMode::AllFields;
-        for (auto& k : lib.search(id, search, m))
-            filter.insert(lib.topLevelKey(id, k));
-        filtered = true;
-    }
-    std::set<std::string> inCollection;
-    if (!collection.empty())
-        inCollection = lib.collectionItemKeys(id, collection, true);
-    for (auto& r : lib.itemRows(id)) {
-        if (!r.parentKey.empty() || r.trashed)
-            continue;
-        if (filtered && !filter.count(r.key))
-            continue;
-        if (!collection.empty() && !inCollection.count(r.key))
-            continue;
-        std::cout << r.key << "  " << (r.year.empty() ? "    " : r.year) << "  " << r.creator
-                  << (r.creator.empty() ? "" : " - ") << r.title << "\n";
-    }
-    return 0;
-}
-
-int cmdShow(Library& lib, Args& args)
-{
-    auto key = args.positional(0);
-    auto id = args.libraryId(lib);
-    auto item = lib.item(id, key);
-    if (!item) {
-        std::cerr << "No item " << key << "\n";
-        return 1;
-    }
-    std::cout << item->dump(2) << "\n";
-    for (auto& c : lib.children(id, key))
-        std::cout << "child " << jstr(c, "itemType") << " " << jstr(c, "key") << ": "
-                  << (jstr(c, "itemType") == "note" ? noteTitle(jstr(c, "note")) : jstr(c, "title")) << "\n";
     return 0;
 }
 
@@ -204,12 +148,9 @@ int main(int argc, char** argv)
         Library lib(dataDir.empty() ? config.dataDir() : u8path(dataDir));
         std::map<std::string, std::function<int(Library&, Args&)>> commands = {
             {"info", cmdInfo},
-            {"libraries", cmdLibraries},
-            {"collections", cmdCollections},
-            {"items", cmdItems},
-            {"show", cmdShow},
             {"import-zotero", cmdImportZotero},
         };
+        registerAgentCommands(commands);
         registerExtraCommands(commands, config);
         auto it = commands.find(args.command);
         if (it == commands.end()) {

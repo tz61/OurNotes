@@ -240,11 +240,19 @@ or, optionally, when first opened.
 
 ```text
 ournotes-cli info | libraries | collections | items [--search TEXT]
+ournotes-cli items --collection "FA26/CS8803" --json      ournotes-cli show KEY --json
+ournotes-cli text KEY      ournotes-cli set KEY title="New title"      ournotes-cli tag KEY --add exam
+ournotes-cli add-note KEY - < summary.md                  ournotes-cli file KEY --collection "FA26"
 ournotes-cli add paper.pdf 10.1038/nature14539 arXiv:2301.08243
 ournotes-cli import refs.bib            ournotes-cli export --format ris -o out.ris
 ournotes-cli cite KEY... --style ieee   ournotes-cli index
 ournotes-cli add-server https://host:8642 --user alice    ournotes-cli sync
 ```
+
+**AI agents** (Claude Code, Codex, ...) can work on a library through `ournotes-cli`:
+summarise the papers in a collection into notes, rename titles, tag and file items.
+[docs/agents.md](docs/agents.md) tells them how (also `ournotes-cli guide`); point an agent
+at it. Changes go out with the next sync, and an open app shows them within seconds.
 
 ## Architecture
 

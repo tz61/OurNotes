@@ -120,7 +120,8 @@ void registerExtraCommands(CommandMap& commands, Config& config)
             std::cerr << "Unknown format; use bibtex, ris or csljson\n";
             return 1;
         }
-        auto out = f->exporter(collectItems(lib, args.libraryId(lib), args.option("--collection"), args.positionals));
+        auto collection = args.libraryAndCollection(lib).second;
+        auto out = f->exporter(collectItems(lib, args.itemsLibrary(lib), collection, args.positionals));
         auto file = args.option("-o");
         if (file.empty())
             std::cout << out;
@@ -136,8 +137,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
             std::cerr << "Unrecognised file format\n";
             return 1;
         }
-        auto id = args.libraryId(lib);
-        auto collection = args.option("--collection");
+        auto [id, collection] = args.libraryAndCollection(lib);
         int n = 0;
         Library::BatchGuard batch(lib);
         for (auto& d : f->importer(text)) {
@@ -157,7 +157,8 @@ void registerExtraCommands(CommandMap& commands, Config& config)
         return 0;
     };
     commands["cite"] = [](Library& lib, Args& args) {
-        auto items = collectItems(lib, args.libraryId(lib), args.option("--collection"), args.positionals);
+        auto collection = args.libraryAndCollection(lib).second;
+        auto items = collectItems(lib, args.itemsLibrary(lib), collection, args.positionals);
         auto style = args.option("--style", "apa");
         auto fmt = args.flag("--html") ? formats::OutputFormat::Html : formats::OutputFormat::Text;
         std::cout << (args.flag("--in-text") ? formats::formatCitation(items, style, fmt)
@@ -166,8 +167,7 @@ void registerExtraCommands(CommandMap& commands, Config& config)
         return 0;
     };
     commands["add"] = [](Library& lib, Args& args) {
-        auto id = args.libraryId(lib);
-        auto collection = args.option("--collection");
+        auto [id, collection] = args.libraryAndCollection(lib);
         int failures = 0;
         for (auto& arg : args.positionals) {
             auto path = u8path(arg);

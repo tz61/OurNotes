@@ -12,7 +12,7 @@ function(on_add_test name)
 endfunction()
 
 # Each suite is added only when its module is part of this build configuration.
-foreach(dir core sync formats pdf gui)
+foreach(dir core sync formats pdf gui cli)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt" AND TARGET ournotes_${dir})
         add_subdirectory(${dir})
     endif()

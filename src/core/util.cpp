@@ -472,6 +472,171 @@ std::string textToNoteHtml(std::string_view text)
     return out;
 }
 
+namespace {
+
+// One line's inline Markdown, escaped for HTML.
+std::string inlineMarkdown(std::string_view line)
+{
+    constexpr auto npos = std::string_view::npos;
+    std::string out;
+    size_t i = 0;
+    while (i < line.size()) {
+        char c = line[i];
+        if (c == '\\' && i + 1 < line.size() && std::string_view("\\`*_[]$#").find(line[i + 1]) != npos) {
+            out += htmlEscape(line.substr(i + 1, 1));
+            i += 2;
+            continue;
+        }
+        if (c == '`') {
+            auto end = line.find('`', i + 1);
+            if (end != npos) {
+                out += "<code>" + htmlEscape(line.substr(i + 1, end - i - 1)) + "</code>";
+                i = end + 1;
+                continue;
+            }
+        }
+        if (c == '$' && i + 1 < line.size() && line[i + 1] != ' ' && line[i + 1] != '$') {
+            auto end = line.find('$', i + 1);
+            if (end != npos && line[end - 1] != ' ') {
+                out += "<span class=\"math\">$" + htmlEscape(line.substr(i + 1, end - i - 1)) + "$</span>";
+                i = end + 1;
+                continue;
+            }
+        }
+        if ((c == '*' || c == '_') && i + 1 < line.size() && line[i + 1] == c) {
+            auto end = line.find(line.substr(i, 2), i + 2);
+            if (end != npos && end > i + 2) {
+                out += "<strong>" + inlineMarkdown(line.substr(i + 2, end - i - 2)) + "</strong>";
+                i = end + 2;
+                continue;
+            }
+        }
+        // (an _ inside a word, as in snake_case, is not emphasis)
+        if ((c == '*' || c == '_') && i + 1 < line.size() && line[i + 1] != ' ' &&
+            (c == '*' || i == 0 || !std::isalnum((unsigned char)line[i - 1]))) {
+            auto end = line.find(c, i + 1);
+            if (end != npos && line[end - 1] != ' ') {
+                out += "<em>" + inlineMarkdown(line.substr(i + 1, end - i - 1)) + "</em>";
+                i = end + 1;
+                continue;
+            }
+        }
+        if (c == '[') {
+            auto close = line.find("](", i + 1);
+            auto end = close == npos ? npos : line.find(')', close + 2);
+            if (end != npos) {
+                out += "<a href=\"" + htmlEscape(line.substr(close + 2, end - close - 2)) + "\">" +
+                       inlineMarkdown(line.substr(i + 1, close - i - 1)) + "</a>";
+                i = end + 1;
+                continue;
+            }
+        }
+        out += htmlEscape(line.substr(i, 1));
+        ++i;
+    }
+    return out;
+}
+
+// "- ", "* ", "+ " ("ul") or "1. ", "1) " ("ol"): the list and where its text begins.
+std::pair<std::string, size_t> listItem(std::string_view t)
+{
+    if (t.size() > 1 && (t[0] == '-' || t[0] == '*' || t[0] == '+') && t[1] == ' ')
+        return {"ul", 2};
+    size_t d = 0;
+    while (d < t.size() && std::isdigit((unsigned char)t[d]))
+        ++d;
+    if (d > 0 && d + 1 < t.size() && (t[d] == '.' || t[d] == ')') && t[d + 1] == ' ')
+        return {"ol", d + 2};
+    return {"", 0};
+}
+
+} // namespace
+
+std::string markdownToNoteHtml(std::string_view markdown)
+{
+    std::string out = "<div data-schema-version=\"9\">";
+    std::vector<std::string> lines;
+    for (auto& l : split(markdown, '\n', false))
+        lines.push_back(!l.empty() && l.back() == '\r' ? l.substr(0, l.size() - 1) : l);
+    std::string para, list;
+    auto flushPara = [&] {
+        if (!para.empty())
+            out += "<p>" + inlineMarkdown(para) + "</p>";
+        para.clear();
+    };
+    auto closeList = [&] {
+        if (!list.empty())
+            out += "</" + list + ">";
+        list.clear();
+    };
+    for (size_t i = 0; i < lines.size(); ++i) {
+        auto t = trim(lines[i]);
+        if (t.empty()) {
+            flushPara();
+            closeList();
+            continue;
+        }
+        if (startsWith(t, "```")) {  // to the closing fence
+            flushPara();
+            closeList();
+            std::string code;
+            while (++i < lines.size() && !startsWith(trim(lines[i]), "```"))
+                code += (code.empty() ? "" : "\n") + lines[i];
+            out += "<pre>" + htmlEscape(code) + "</pre>";
+            continue;
+        }
+        if (startsWith(t, "$$")) {  // a formula on its own lines
+            flushPara();
+            closeList();
+            std::string tex = t.substr(2);
+            while ((tex.size() < 2 || !endsWith(trim(tex), "$$")) && i + 1 < lines.size())
+                tex += "\n" + lines[++i];
+            tex = trim(tex);
+            if (endsWith(tex, "$$"))
+                tex.resize(tex.size() - 2);
+            out += "<pre class=\"math\">$$" + htmlEscape(trim(tex)) + "$$</pre>";
+            continue;
+        }
+        size_t hashes = 0;
+        while (hashes < t.size() && t[hashes] == '#')
+            ++hashes;
+        if (hashes > 0 && hashes <= 6 && hashes < t.size() && t[hashes] == ' ') {
+            flushPara();
+            closeList();
+            auto h = std::to_string(std::min<size_t>(hashes, 3));
+            out += "<h" + h + ">" + inlineMarkdown(trim(t.substr(hashes))) + "</h" + h + ">";
+            continue;
+        }
+        if (t == "---" || t == "***" || t == "___") {
+            flushPara();
+            closeList();
+            out += "<hr>";
+            continue;
+        }
+        if (startsWith(t, ">")) {
+            flushPara();
+            closeList();
+            out += "<blockquote><p>" + inlineMarkdown(trim(t.substr(1))) + "</p></blockquote>";
+            continue;
+        }
+        if (auto [kind, at] = listItem(t); !kind.empty()) {
+            flushPara();
+            if (list != kind) {
+                closeList();
+                list = kind;
+                out += "<" + list + ">";
+            }
+            out += "<li>" + inlineMarkdown(trim(t.substr(at))) + "</li>";
+            continue;
+        }
+        closeList();
+        para += (para.empty() ? "" : " ") + t;  // lines of a paragraph run on
+    }
+    flushPara();
+    closeList();
+    return out + "</div>";
+}
+
 std::string safeFilename(std::string_view name, std::string_view fallback)
 {
     std::string out;

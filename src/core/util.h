@@ -60,6 +60,10 @@ std::string htmlUnescape(std::string_view s);
 std::string htmlToText(std::string_view html);
 std::string noteTitle(std::string_view html);
 std::string textToNoteHtml(std::string_view text);
+// Markdown as a note (Zotero's note HTML): paragraphs, # headings (### and deeper as
+// level 3), - and 1. lists, > quotes, ``` code blocks, --- rules, **bold**, *italic*,
+// `code`, [links](url), and $…$ / $$…$$ formulas as the app keeps them.
+std::string markdownToNoteHtml(std::string_view markdown);
 
 std::string safeFilename(std::string_view name, std::string_view fallback = "file");
 std::string humanSize(uint64_t bytes);
