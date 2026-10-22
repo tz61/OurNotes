@@ -33,8 +33,9 @@ CollectionTree::CollectionTree(QWidget* parent) : QTreeWidget(parent)
     setAcceptDrops(true);
     setDropIndicatorShown(true);
     setDragDropMode(DragDrop);
-    // a drag near the top or the bottom scrolls to the collections out of sight
-    setAutoScrollMargin(std::max(autoScrollMargin(), 2 * fontMetrics().height()));
+    // a drag near the top or the bottom (within about three rows) scrolls to the
+    // collections out of sight
+    setAutoScrollMargin(std::max(autoScrollMargin(), 4 * fontMetrics().height()));
     setEditTriggers(NoEditTriggers);
     setUniformRowHeights(true);
     setIconSize(QSize(16, 16));

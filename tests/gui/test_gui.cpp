@@ -3002,7 +3002,8 @@ TEST_CASE("collections: a drag near the bottom of the tree scrolls it")
     auto* model = view.findChild<ItemsModel*>();
     REQUIRE(model);
     std::unique_ptr<QMimeData> mime(model->mimeData({model->index(0, 0)}));
-    QPoint at(tree->viewport()->width() / 2, tree->viewport()->height() - 4);
+    // three lines above the bottom, not at the very edge
+    QPoint at(tree->viewport()->width() / 2, tree->viewport()->height() - 3 * tree->fontMetrics().height());
     QCursor::setPos(tree->viewport()->mapToGlobal(at));
     QDragEnterEvent enter(at, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(tree->viewport(), &enter);
