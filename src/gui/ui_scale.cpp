@@ -4,10 +4,12 @@
 #include <QtGlobal>
 
 #include <algorithm>
+#include <utility>
 
 namespace on::gui {
 
 static bool g_fromEnvironment = false;
+static bool g_setHere = false;
 
 int interfaceScale(const Config& config)
 {
@@ -23,10 +25,18 @@ void applyInterfaceScale(const Config& config)
         return;
     }
     int percent = interfaceScale(config);
-    if (percent != 100)
+    if (percent != 100) {
         qputenv("QT_SCALE_FACTOR", QByteArray::number(percent / 100.0));
+        g_setHere = true;
+    }
 }
 
 bool interfaceScaleFromEnvironment() { return g_fromEnvironment; }
+
+void forgetInterfaceScale()
+{
+    if (std::exchange(g_setHere, false))
+        qunsetenv("QT_SCALE_FACTOR");  // (Qt reads it once, as the QApplication is created)
+}
 
 } // namespace on::gui

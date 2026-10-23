@@ -11,6 +11,7 @@ set(OURNOTES_GUI_SOURCES
     formats_actions.cpp
     fulltext_indexer.cpp
     icons.cpp
+    input_methods.cpp
     item_pane.cpp
     items_model.cpp
     library_view.cpp

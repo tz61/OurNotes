@@ -69,6 +69,7 @@
 #include "gui/connector_server.h"
 #include "gui/fancy_progress.h"
 #include "gui/flow_layout.h"
+#include "gui/input_methods.h"
 #include "gui/item_pane.h"
 #include "gui/library_view.h"
 #include "gui/main_window.h"
@@ -4505,6 +4506,44 @@ TEST_CASE("reader: keys 1 to 8 pick the tools, but not while typing")
     QTest::keyClicks(bubble->editor(), "page 5");
     CHECK(bubble->editor()->toPlainText() == "page 5");
     CHECK(view->tool() == ReaderTool::Select);
+}
+
+TEST_CASE("environment: fcitx gets Qt's ibus plugin to fall back on; the scale set here is not passed on")
+{
+    app();
+    auto keep = [](const char* name) { return std::pair(qEnvironmentVariableIsSet(name), qgetenv(name)); };
+    auto put = [](const char* name, const std::pair<bool, QByteArray>& v) {
+        if (v.first)
+            qputenv(name, v.second);
+        else
+            qunsetenv(name);
+    };
+    auto im = keep("QT_IM_MODULE"), ims = keep("QT_IM_MODULES"), scale = keep("QT_SCALE_FACTOR");
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
+    qunsetenv("QT_IM_MODULES");
+    qputenv("QT_IM_MODULE", "fcitx");
+    chooseInputMethods();
+    CHECK(qgetenv("QT_IM_MODULES") == "fcitx;ibus");
+    qunsetenv("QT_IM_MODULES");
+    qputenv("QT_IM_MODULE", "ibus");  // the user's choice
+    chooseInputMethods();
+    CHECK(!qEnvironmentVariableIsSet("QT_IM_MODULES"));
+    qputenv("QT_IM_MODULE", "fcitx");
+    qputenv("QT_IM_MODULES", "wayland;fcitx");  // the user's list
+    chooseInputMethods();
+    CHECK(qgetenv("QT_IM_MODULES") == "wayland;fcitx");
+#endif
+    // QT_SCALE_FACTOR set from the settings is gone once Qt has read it
+    qunsetenv("QT_SCALE_FACTOR");
+    Env env;
+    env.config.set("/ui/scale", 175);
+    applyInterfaceScale(env.config);
+    CHECK(qgetenv("QT_SCALE_FACTOR") == "1.75");
+    forgetInterfaceScale();
+    CHECK(!qEnvironmentVariableIsSet("QT_SCALE_FACTOR"));
+    put("QT_IM_MODULE", im);
+    put("QT_IM_MODULES", ims);
+    put("QT_SCALE_FACTOR", scale);
 }
 
 TEST_CASE("reader: F fits the width, F again the page")

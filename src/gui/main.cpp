@@ -14,6 +14,7 @@
 #include "gui/app_context.h"
 #include "gui/close_shortcut.h"
 #include "gui/common.h"
+#include "gui/input_methods.h"
 #include "gui/main_window.h"
 #include "gui/memory.h"
 #include "gui/shift_wheel.h"
@@ -60,8 +61,10 @@ int main(int argc, char** argv)
         config = std::make_unique<Config>(fs::path());
     }
     applyInterfaceScale(*config);
+    chooseInputMethods();  // (Qt chooses its input method as the QApplication is created)
 
     QApplication app(argc, argv);
+    forgetInterfaceScale();
     QApplication::setApplicationName("OurNotes");
     QApplication::setOrganizationName("OurNotes");
     QApplication::setApplicationVersion(OURNOTES_VERSION);
