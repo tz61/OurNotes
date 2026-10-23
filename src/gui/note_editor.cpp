@@ -91,6 +91,16 @@ void NoteTextEdit::changeEvent(QEvent* e)
 // Character format for text in a heading of `level` (0: a paragraph): sizes relative to
 // the note's font, as loading <h1>… gives them (so they look the same after a reload and
 // follow the note's text size).
+// Back to the note's own font: the format names no family. An empty family list is not
+// that: Qt then picks a fallback, on macOS Apple Color Emoji, whose spaces and digits are
+// three or four times as wide and whose lines are taller. Pasted text looked spread out,
+// and so did what was typed after it or after `code`.
+static void useNoteFont(QTextCharFormat& f)
+{
+    f.clearProperty(QTextFormat::FontFamilies);
+    f.clearProperty(QTextFormat::FontFamily);
+}
+
 static QTextCharFormat headingCharFormat(QTextCharFormat f, int level)
 {
     f.clearProperty(QTextFormat::FontPointSize);
@@ -676,8 +686,10 @@ bool NoteTextEdit::convertTypedMarkdown(const QString& typed)
          [](QTextCharFormat& f, bool on) { f.setFontStrikeOut(on); }},
         {QRegularExpression(R"((?:^|[^`])`([^`]+)`$)"), 1,
          [](QTextCharFormat& f, bool on) {
-             f.setFontFamilies(on ? QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()}
-                                  : QStringList{});
+             if (on)
+                 f.setFontFamilies(QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()});
+             else
+                 useNoteFont(f);
              f.setFontFixedPitch(on);
          }},
     };
@@ -700,9 +712,10 @@ bool NoteTextEdit::convertTypedMarkdown(const QString& typed)
         rule.style(on, true);
         c.mergeCharFormat(on);
         c.endEditBlock();
-        QTextCharFormat off;  // what is typed next is plain again
+        // what is typed next is plain again (set, not merged: merging cannot take a font away)
+        QTextCharFormat off = currentCharFormat();
         rule.style(off, false);
-        mergeCurrentCharFormat(off);
+        setCurrentCharFormat(off);
         return true;
     }
     static const QRegularExpression linkRe(R"(\[([^\]]+)\]\(([^)\s]+)\)$)");
@@ -1108,7 +1121,7 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
                 fragments.push_back(it.fragment());
         for (auto& fragment : fragments) {
             auto f = fragment.charFormat();
-            f.setFontFamilies(QStringList{});
+            useNoteFont(f);
             f.clearProperty(QTextFormat::FontPointSize);
             f.clearProperty(QTextFormat::FontPixelSize);
             QTextCursor c(&tmp);
@@ -1588,6 +1601,7 @@ void NoteEditor::setZoom(int percent)
     else
         f.setPixelSize(std::max(1, int(std::lround(baseFont_.pixelSize() * zoom_ / 100.0))));
     edit_->setFont(f);
+    edit_->setTabStopDistance(4 * QFontMetricsF(f).horizontalAdvance(' '));  // a tab is four spaces wide
     zoomButton_->setText(QString("%1%").arg(zoom_));
 }
 

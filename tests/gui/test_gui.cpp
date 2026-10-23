@@ -1569,6 +1569,99 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     CHECK(!bubble->isEditing());
 }
 
+// A format whose font families are an empty list is not the note's font: Qt then picks a
+// fallback, on macOS Apple Color Emoji, whose spaces and digits are three or four times as
+// wide and whose lines are taller.
+static bool usesNoteFont(const QTextCharFormat& f) { return !f.hasProperty(QTextFormat::FontFamilies); }
+
+TEST_CASE("notes: text copied from a note pastes as it was shown: font, spaces, lines")
+{
+    app();
+    Env env;
+    auto from = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>Test</p><ol><li>在note 内选中复制文本, 请复制源码, paste到note "
+                 "也要和被选中的显示一样. 现在在macos上面选中再复制会乱; 图片的话可以直接复制.</li><li>有时候note 1234</li></ol></div>");
+    auto to = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor a, b;
+    for (auto* e : {&a, &b}) {
+        e->resize(600, 400);
+        e->show();
+    }
+    a.setNote(env.lib, qs(jstr(from, "key")));
+    b.setNote(env.lib, qs(jstr(to, "key")));
+    QApplication::processEvents();
+    auto* source = a.findChild<NoteTextEdit*>();
+    auto* target = b.findChild<NoteTextEdit*>();
+    source->selectAll();
+    source->copy();
+    target->setFocus();
+    target->paste();
+    QApplication::processEvents();
+
+    auto blocks = [](QTextDocument* d) {
+        std::vector<QTextBlock> v;
+        for (auto block = d->begin(); block.isValid(); block = block.next())
+            v.push_back(block);
+        return v;
+    };
+    auto was = blocks(source->document()), now = blocks(target->document());
+    REQUIRE(was.size() == now.size());
+    for (size_t i = 0; i < was.size(); ++i) {
+        INFO("paragraph " << i << ": " << was[i].text().toStdString());
+        CHECK(now[i].text() == was[i].text());
+        for (auto it = now[i].begin(); !it.atEnd(); ++it)
+            CHECK(usesNoteFont(it.fragment().charFormat()));
+        // laid out alike: as many lines, as wide and as high
+        auto* before = was[i].layout();
+        auto* after = now[i].layout();
+        REQUIRE(after->lineCount() == before->lineCount());
+        for (int l = 0; l < before->lineCount(); ++l) {
+            CHECK(after->lineAt(l).naturalTextWidth() == doctest::Approx(before->lineAt(l).naturalTextWidth()));
+            CHECK(after->lineAt(l).height() == doctest::Approx(before->lineAt(l).height()));
+        }
+    }
+}
+
+TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    QApplication::processEvents();
+    QTest::keyClicks(edit, "run `make` then 1 2");
+    auto block = edit->document()->begin();
+    REQUIRE(block.text() == "run make then 1 2");
+    QTextCursor c(edit->document());
+    c.setPosition(block.position() + block.text().indexOf("make") + 1);
+    CHECK(c.charFormat().fontFixedPitch());  // the code
+    c.setPosition(block.position() + block.text().indexOf("then") + 1);
+    CHECK(usesNoteFont(c.charFormat()));
+    CHECK(usesNoteFont(edit->currentCharFormat()));
+}
+
+TEST_CASE("notes: a tab is as wide as four spaces, at any text size")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    for (int zoom : {100, 150}) {
+        editor.setZoom(zoom);
+        INFO("zoom " << zoom);
+        CHECK(edit->tabStopDistance() == doctest::Approx(4 * QFontMetricsF(edit->font()).horizontalAdvance(' ')));
+    }
+}
+
 TEST_CASE("notes: Ctrl+B, Ctrl+I and Ctrl+U format the text")
 {
     app();
