@@ -62,6 +62,7 @@
 #include "core/schema.h"
 #include "core/sync/engine.h"
 #include "gui/app_context.h"
+#include "gui/close_shortcut.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
 #include "gui/connector_server.h"
@@ -4807,6 +4808,49 @@ TEST_CASE("main window: no menu item is taken for Quit, Preferences or About bec
     REQUIRE(quit);
     CHECK(quit->shortcut() == QKeySequence(QKeySequence::Quit));
     window.setWindowState(Qt::WindowNoState);
+}
+
+TEST_CASE("windows: Ctrl+W (Command-W) closes any window but the main one, where it closes a tab")
+{
+    app();
+    Env env;
+    installCloseShortcuts();
+    TempDir tmp;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    for (int i = 0; i < 2; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+        window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+    }
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 3);
+    auto activate = [](QWidget* w) {
+        w->show();
+        w->raise();
+        w->activateWindow();
+        return QTest::qWaitForWindowActive(w);
+    };
+
+    StorageWindow storage(&window);  // Tools → Storage and Sync Status
+    REQUIRE(activate(&storage));
+    QTest::keySequence(&storage, QKeySequence("Ctrl+W"));
+    CHECK(!storage.isVisible());
+    CHECK(tabs->count() == 3);  // not a tab of the main window
+
+    QDialog dialog(&window);  // and the platform's Close (Ctrl+F4 on Windows)
+    REQUIRE(activate(&dialog));
+    QTest::keySequence(&dialog, QKeySequence(QKeySequence::Close));
+    CHECK(!dialog.isVisible());
+
+    // in the main window it is still Close Tab
+    REQUIRE(activate(&window));
+    tabs->setCurrentIndex(2);
+    QTest::keySequence(&window, QKeySequence("Ctrl+W"));
+    CHECK(tabs->count() == 2);
+    CHECK(window.isVisible());
 }
 
 TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")

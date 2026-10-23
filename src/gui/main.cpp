@@ -12,6 +12,7 @@
 #include "core/zotero_importer.h"
 #include "ournotes/version.h"
 #include "gui/app_context.h"
+#include "gui/close_shortcut.h"
 #include "gui/common.h"
 #include "gui/main_window.h"
 #include "gui/memory.h"
@@ -68,6 +69,7 @@ int main(int argc, char** argv)
     QApplication::setWindowIcon(QIcon(":/ournotes.svg"));
     applyAppearance(appearanceFromConfig(*config));
     ShiftWheelScrolling::install();
+    installCloseShortcuts();  // Ctrl+W / ⌘W closes the other windows
     dropX11SizeSteps();
 
     QCommandLineParser parser;

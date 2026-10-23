@@ -3,6 +3,7 @@ include(MicroTeX)
 
 set(OURNOTES_GUI_SOURCES
     app_context.cpp
+    close_shortcut.cpp
     collection_tree.cpp
     connector_server.cpp
     fancy_progress.cpp
