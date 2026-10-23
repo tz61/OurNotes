@@ -85,6 +85,7 @@ private:
     void reloadItems();
     void openIndex(const QModelIndex& index);
     void openSelected();
+    bool isStandaloneNote(const QString& key) const;
     void showItemMenu(const QPoint& pos);
     void selectKeys(const QStringList& keys, const QString& current);
     void fitColumns();

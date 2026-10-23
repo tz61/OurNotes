@@ -740,11 +740,17 @@ void LibraryView::openIndex(const QModelIndex& index)
         return;
     auto key = model_->keyAt(index);
     auto type = model_->typeAt(index);
+    auto& lib = AppContext::get().library();
     if (type == "note") {
-        pane_->noteEditor()->focusEditor();
+        // filed under no item: in a tab of its own, as a PDF is; under an item, beside it
+        if (isStandaloneNote(key)) {
+            pane_->noteEditor()->flush();  // the tab shows what was just typed here
+            emit openAttachmentRequested(libraryId(), key);
+        } else {
+            pane_->noteEditor()->focusEditor();
+        }
         return;
     }
-    auto& lib = AppContext::get().library();
     if (type == "attachment") {
         emit openAttachmentRequested(libraryId(), key);
         return;
@@ -762,8 +768,15 @@ void LibraryView::openIndex(const QModelIndex& index)
     }
 }
 
-// Enter on several items opens their files as tabs in list order (top to bottom) and
-// shows the first; notes and items without a file are skipped.
+// A note filed under no item (by its data: in the trash, a note can be listed on its own).
+bool LibraryView::isStandaloneNote(const QString& key) const
+{
+    auto d = AppContext::get().library().item(libraryId(), ss(key));
+    return d && jstr(*d, "itemType") == "note" && jstr(*d, "parentItem").empty();
+}
+
+// Enter on several items opens their files, and notes filed under no item, as tabs in list
+// order (top to bottom) and shows the first; other notes and items without a file are skipped.
 void LibraryView::openSelected()
 {
     auto rows = items_->selectionModel()->selectedRows(0);
@@ -781,17 +794,19 @@ void LibraryView::openSelected()
         auto key = model_->keyAt(i);
         auto type = model_->typeAt(i);
         QString file;
-        if (type == "attachment")
+        if (type == "attachment" || (type == "note" && isStandaloneNote(key))) {
             file = key;
-        else if (type != "note")
+        } else if (type != "note") {
             if (auto best = lib.bestAttachment(libraryId(), ss(key)))
                 file = jqs(*best, "key");
+        }
         if (!file.isEmpty() && !files.contains(file))
             files << file;
     }
     if (files.size() > 10 &&
         QMessageBox::question(this, tr("Open Items"), tr("Open %n items?", nullptr, files.size())) != QMessageBox::Yes)
         return;
+    pane_->noteEditor()->flush();  // (a note among them)
     for (auto& f : files)
         emit openAttachmentRequested(libraryId(), f);
     if (files.size() > 1)
@@ -1055,9 +1070,8 @@ void LibraryView::showItemMenu(const QPoint& pos)
     bool single = keys.size() == 1;
     bool regular = schema::isRegularType(ss(type));
 
-    if (single && (type == "attachment" || regular))
-        menu.addAction(icon("open"), type == "attachment" ? tr("Open") : tr("Open PDF"), this,
-                       [this, index] { openIndex(index); });
+    if (single && (type == "attachment" || regular || (type == "note" && isStandaloneNote(keys[0]))))
+        menu.addAction(icon("open"), regular ? tr("Open PDF") : tr("Open"), this, [this, index] { openIndex(index); });
     if (single && type == "attachment") {
         menu.addAction(tr("Show File"), this, [&, key = keys[0]] {
             if (auto d = lib.item(s.libraryId, ss(key))) {

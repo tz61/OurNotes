@@ -77,6 +77,7 @@
 #include "gui/metadata_progress.h"
 #include "gui/math_render.h"
 #include "gui/note_editor.h"
+#include "gui/note_tab.h"
 #include "gui/note_html.h"
 #include "gui/rich_text_images.h"
 #include "gui/search_field.h"
@@ -6339,6 +6340,144 @@ TEST_CASE("item pane: the top shows where the item is filed, with links")
     QApplication::processEvents();
     CHECK(view.scope().kind == ScopeKind::Collection);
     CHECK(view.scope().collectionKey == humanoid);
+}
+
+TEST_CASE("main window: a note filed under no item opens in a tab of its own, with nothing beside it")
+{
+    app();
+    Env env;
+    auto note = qs(jstr(env.library.createNote(env.lib, "<div data-schema-version=\"9\"><h1>My plan</h1><p>first</p></div>"), "key"));
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "A paper"}});
+    auto child = qs(jstr(env.library.createNote(env.lib, "<p>About the paper</p>", jstr(paper, "key")), "key"));
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    window.activateWindow();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto* library = window.findChild<LibraryView*>();
+    auto* items = library->itemsView();
+    auto* model = static_cast<ItemsModel*>(items->model());
+    auto openRow = [&](const QString& key) {
+        auto idx = model->indexOfKey(key);
+        REQUIRE(idx.isValid());
+        items->scrollTo(idx);
+        items->setCurrentIndex(idx);
+        QApplication::processEvents();
+        auto at = items->visualRect(idx).center();
+        QTest::mouseClick(items->viewport(), Qt::LeftButton, {}, at);  // a double-click: press, release,
+        QTest::mouseDClick(items->viewport(), Qt::LeftButton, {}, at);  // press again
+        QApplication::processEvents();
+    };
+
+    // double-clicked: a tab with the note's editor, and nothing else
+    openRow(note);
+    REQUIRE(tabs->count() == 2);
+    auto* tab = qobject_cast<NoteTab*>(tabs->currentWidget());
+    REQUIRE(tab);
+    CHECK(tab->findChildren<NoteEditor*>().size() == 1);
+    CHECK(!tab->findChild<AnnotationSidebar*>());
+    CHECK(!tab->findChild<InfoEditor*>());
+    CHECK(!tab->findChild<QTabWidget*>("readerContextTabs"));
+    CHECK(tabs->tabText(1) == "My plan");
+    CHECK(tabs->tabToolTip(1) == "My plan");
+    CHECK(!tabs->tabIcon(1).isNull());
+    auto* text = tab->findChild<NoteTextEdit*>();
+    REQUIRE(text);
+    CHECK(text->toPlainText().startsWith("My plan"));
+    CHECK(text->hasFocus());
+    // it needs no more room than the library (the window's minimum follows the tabs' contents)
+    CHECK(tab->minimumSizeHint().width() <= library->minimumSizeHint().width());
+    CHECK(tab->minimumSizeHint().height() <= library->minimumSizeHint().height());
+
+    // again, or Enter on it: the same tab; a note under an item stays beside it
+    tabs->setCurrentIndex(0);
+    openRow(note);
+    CHECK(tabs->count() == 2);
+    CHECK(tabs->currentWidget() == tab);
+    tabs->setCurrentIndex(0);
+    items->setCurrentIndex(model->indexOfKey(note));
+    QTest::keyClick(items, Qt::Key_Return);
+    CHECK(tabs->count() == 2);
+    CHECK(tabs->currentWidget() == tab);
+    tabs->setCurrentIndex(0);
+    items->expandAll();
+    QApplication::processEvents();
+    openRow(child);
+    CHECK(tabs->count() == 2);
+    CHECK(tabs->currentIndex() == 0);
+
+    // typed in: saved, and the tab is named after the note as it is now
+    tabs->setCurrentWidget(tab);
+    text->setFocus();
+    text->moveCursor(QTextCursor::Start);
+    QTest::keyClicks(text, "New ");
+    tab->editor()->flush();
+    CHECK(jstr(*env.library.item(env.lib, ss(note)), "note").find("New My plan") != std::string::npos);
+    REQUIRE(QTest::qWaitFor([&] { return tabs->tabText(1) == "New My plan"; }, 2000));
+
+    // the window's Find finds in the note
+    tab->setFocus();
+    for (auto* a : window.findChildren<QAction*>())
+        if (a->shortcut() == QKeySequence(QKeySequence::Find) && a->text() == "Find")
+            a->trigger();
+    auto* bar = tab->findChild<QWidget*>("noteFindBar");
+    REQUIRE(bar);
+    CHECK(bar->isVisible());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+
+    // closed, and back where it was with Ctrl+Shift+T
+    emit tabs->tabCloseRequested(1);
+    QApplication::processEvents();
+    REQUIRE(tabs->count() == 1);
+    QTest::keyClick(&window, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
+    QApplication::processEvents();
+    REQUIRE(tabs->count() == 2);
+    tab = qobject_cast<NoteTab*>(tabs->widget(1));
+    REQUIRE(tab);
+    CHECK(tab->noteKey() == note);
+
+    // deleted for good: its tab closes
+    env.library.eraseItems(env.lib, {ss(note)});
+    CHECK(QTest::qWaitFor([&] { return tabs->count() == 1; }, 2000));
+}
+
+TEST_CASE("main window: a note's tab comes back after a restart, next to a PDF's")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "The paper"}});
+    auto pdf = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    auto note = qs(jstr(env.library.createNote(env.lib, "<p>Reading list</p>"), "key"));
+    {
+        MainWindow window;
+        window.resize(1400, 900);
+        window.show();
+        QApplication::processEvents();
+        window.openAttachment(env.lib, pdf);
+        window.openNote(env.lib, note);
+        auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+        REQUIRE(tabs->count() == 3);
+        window.close();
+    }
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 3);
+    CHECK(tabs->currentIndex() == 2);  // the note was the tab shown
+    auto* tab = qobject_cast<NoteTab*>(tabs->widget(2));
+    REQUIRE(tab);
+    CHECK(tab->noteKey() == note);
+    CHECK(tabs->tabText(2) == "Reading list");
+    CHECK(tab->editor()->key() == note);
+    CHECK(tabs->tabText(1) == "The paper");
 }
 
 TEST_CASE("main window: Enter on several items opens them top to bottom")

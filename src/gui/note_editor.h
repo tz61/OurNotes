@@ -151,6 +151,10 @@ public:
     int zoom() const { return zoom_; }
     void setZoom(int percent);
     static int defaultZoom();  // /notes/zoom
+    // Find in the note: a bar at the bottom of the note, opened with Ctrl+F there and
+    // closed with Esc, a search field like the others (history, Tab, Aa); the hits are
+    // marked, the current one more, Enter goes to the next one and Shift+Enter back.
+    void openFind();
 
 signals:
     void saved(const QString& key);
@@ -171,11 +175,7 @@ private:
     void updateToolbar();
     void zoomBy(int steps);
     QString storeImage(const QImage& image);
-    // Find in the note: a bar at the bottom of the note, opened with Ctrl+F there and
-    // closed with Esc, a search field like the others (history, Tab, Aa); the hits are
-    // marked, the current one more, Enter goes to the next one and Shift+Enter back.
-    void buildFindBar();
-    void openFind();
+    void buildFindBar();  // (see openFind)
     void closeFind(bool focusNote);
     void updateHits(bool fromCursor);
     void findAgain(bool backwards);

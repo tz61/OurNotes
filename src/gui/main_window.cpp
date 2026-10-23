@@ -31,7 +31,9 @@
 #include <QVBoxLayout>
 #include <QWindow>
 
+#include <optional>
 #include <thread>
+#include <utility>
 
 #include "core/schema.h"
 #include "core/zotero_importer.h"
@@ -46,6 +48,7 @@
 #include "gui/library_view.h"
 #include "gui/mac_fullscreen.h"
 #include "gui/memory.h"
+#include "gui/note_tab.h"
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
 #include "gui/sync_controller.h"
@@ -74,6 +77,18 @@ public:
 };
 
 QString tabText(const QString& title) { return title.length() > 40 ? title.left(38) + "…" : title; }
+
+// The item a tab shows (a PDF's attachment, or a note), unless it is the library.
+std::optional<std::pair<int64_t, QString>> tabItem(QWidget* w)
+{
+    if (auto* r = qobject_cast<ReaderTab*>(w))
+        return std::pair(r->libraryId(), r->attachmentKey());
+    if (auto* p = dynamic_cast<PendingReaderTab*>(w))
+        return std::pair(p->libraryId, p->key);
+    if (auto* n = qobject_cast<NoteTab*>(w))
+        return std::pair(n->libraryId(), n->noteKey());
+    return std::nullopt;
+}
 
 } // namespace
 
@@ -123,11 +138,8 @@ MainWindow::MainWindow()
         if (i == 0)
             return;
         auto* w = tabs_->widget(i);
-        // for Reopen Closed Tab, while this window is open
-        if (auto* r = qobject_cast<ReaderTab*>(w))
-            closedTabs_.push_back({r->libraryId(), r->attachmentKey(), i});
-        else if (auto* p = dynamic_cast<PendingReaderTab*>(w))
-            closedTabs_.push_back({p->libraryId, p->key, i});
+        if (auto item = tabItem(w))  // for Reopen Closed Tab, while this window is open
+            closedTabs_.push_back({item->first, item->second, i});
         if (closedTabs_.size() > 50)
             closedTabs_.erase(closedTabs_.begin());
         tabs_->removeTab(i);
@@ -352,6 +364,8 @@ void MainWindow::buildActions()
     edit->addAction(tr("Find"), QKeySequence::Find, this, [this] {
         if (auto* r = qobject_cast<ReaderTab*>(tabs_->currentWidget()))
             r->focusFind();
+        else if (auto* n = qobject_cast<NoteTab*>(tabs_->currentWidget()))
+            n->focusFind();
         else
             library_->focusSearch();
     });
@@ -462,17 +476,27 @@ void MainWindow::reopenClosedTab()
 void MainWindow::refreshTabTitles()
 {
     bool changed = false;
+    std::vector<QWidget*> gone;  // the tabs of notes deleted for good
     for (int i = 1; i < tabs_->count(); ++i) {
         QString title;
-        if (auto* r = qobject_cast<ReaderTab*>(tabs_->widget(i)))
+        if (auto* r = qobject_cast<ReaderTab*>(tabs_->widget(i))) {
             title = ReaderTab::titleFor(r->libraryId(), r->attachmentKey());
-        else if (auto* p = dynamic_cast<PendingReaderTab*>(tabs_->widget(i)))
+        } else if (auto* p = dynamic_cast<PendingReaderTab*>(tabs_->widget(i))) {
             title = ReaderTab::titleFor(p->libraryId, p->key);
-        if (title.isEmpty() || title == tabs_->tabToolTip(i))  // (gone: its tab says so when shown)
+        } else if (auto* n = qobject_cast<NoteTab*>(tabs_->widget(i))) {
+            title = NoteTab::titleFor(n->libraryId(), n->noteKey());
+            if (title.isEmpty())
+                gone.push_back(n);
+        }
+        if (title.isEmpty() || title == tabs_->tabToolTip(i))  // (a PDF gone: its tab says so when shown)
             continue;
         tabs_->setTabText(i, tabText(title));
         tabs_->setTabToolTip(i, title);
         changed = true;
+    }
+    for (auto* w : gone) {
+        tabs_->removeTab(tabs_->indexOf(w));
+        w->deleteLater();
     }
     if (auto* tabs = qobject_cast<TabWidget*>(tabs_); tabs && changed)
         tabs->tabTextsChanged();
@@ -480,14 +504,9 @@ void MainWindow::refreshTabTitles()
 
 int MainWindow::findTab(int64_t libraryId, const QString& key) const
 {
-    for (int i = 1; i < tabs_->count(); ++i) {
-        if (auto* r = qobject_cast<ReaderTab*>(tabs_->widget(i)))
-            if (r->libraryId() == libraryId && r->attachmentKey() == key)
-                return i;
-        if (auto* p = dynamic_cast<PendingReaderTab*>(tabs_->widget(i)))
-            if (p->libraryId == libraryId && p->key == key)
-                return i;
-    }
+    for (int i = 1; i < tabs_->count(); ++i)
+        if (auto item = tabItem(tabs_->widget(i)); item && item->first == libraryId && item->second == key)
+            return i;
     return -1;
 }
 
@@ -522,15 +541,10 @@ void MainWindow::saveSession()
     Json tabs = Json::array();
     int selected = 0;
     for (int i = 1; i < tabs_->count(); ++i) {
-        auto* w = tabs_->widget(i);
-        Json tab;
-        if (auto* r = qobject_cast<ReaderTab*>(w))
-            tab = Json{{"libraryID", r->libraryId()}, {"key", ss(r->attachmentKey())}};
-        else if (auto* p = dynamic_cast<PendingReaderTab*>(w))
-            tab = Json{{"libraryID", p->libraryId}, {"key", ss(p->key)}};
-        else
+        auto item = tabItem(tabs_->widget(i));
+        if (!item)
             continue;
-        tabs.push_back(tab);
+        tabs.push_back(Json{{"libraryID", item->first}, {"key", ss(item->second)}});
         if (i == tabs_->currentIndex())
             selected = (int)tabs.size();
     }
@@ -548,8 +562,15 @@ void MainWindow::restoreSession()
     for (auto& t : session.value("tabs", Json::array())) {
         int64_t libraryId = jint(t, "libraryID");
         auto key = jqs(t, "key");
-        if (!lib.item(libraryId, ss(key)) || findTab(libraryId, key) >= 0)
+        auto item = lib.item(libraryId, ss(key));
+        if (!item || findTab(libraryId, key) >= 0)
             continue;  // deleted meanwhile, or already opened (e.g. from the command line)
+        if (jstr(*item, "itemType") == "note") {
+            auto title = NoteTab::titleFor(libraryId, key);
+            int i = tabs_->addTab(new NoteTab(libraryId, key), icon("type-note"), tabText(title));
+            tabs_->setTabToolTip(i, title);
+            continue;
+        }
         auto title = ReaderTab::titleFor(libraryId, key);
         int i = tabs_->addTab(new PendingReaderTab(libraryId, key), icon("type-pdf"), tabText(title));
         tabs_->setTabToolTip(i, title);
@@ -565,6 +586,10 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
     auto att = lib.item(libraryId, ss(key));
     if (!att)
         return;
+    if (jstr(*att, "itemType") == "note") {  // (a note opened as a tab is, or reopened)
+        openNote(libraryId, key);
+        return;
+    }
     auto mode = jstr(*att, "linkMode");
     if (mode == "linked_url") {
         QDesktopServices::openUrl(QUrl(jqs(*att, "url")));
@@ -616,6 +641,19 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
     if (!annotation.isEmpty())
         reader->selectAnnotation(annotation);
     reader->view()->setFocus();
+}
+
+void MainWindow::openNote(int64_t libraryId, const QString& key)
+{
+    auto* tab = qobject_cast<NoteTab*>(tabs_->widget(findTab(libraryId, key)));
+    if (!tab) {
+        tab = new NoteTab(libraryId, key, tabs_);
+        auto title = NoteTab::titleFor(libraryId, key);
+        int i = tabs_->addTab(tab, icon("type-note"), tabText(title));
+        tabs_->setTabToolTip(i, title);
+    }
+    tabs_->setCurrentWidget(tab);
+    tab->focusEditor();
 }
 
 void MainWindow::selectItem(const QString& key)

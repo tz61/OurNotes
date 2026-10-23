@@ -27,6 +27,8 @@ public:
     ~MainWindow() override;
 
     void openAttachment(int64_t libraryId, const QString& key, int page = -1, const QString& annotation = {});
+    // A note in a tab of its own (see NoteTab), or its tab if it has one.
+    void openNote(int64_t libraryId, const QString& key);
     void openFiles(const QStringList& files);
     void offerZoteroImport();
     void selectItem(const QString& key);

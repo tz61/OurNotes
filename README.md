@@ -53,7 +53,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   `$` signs, and putting the cursor between them opens it again. Rendered with MicroTeX in the text colour (or a colour
   set in Preferences; `\textcolor{red}{…}` for single formulas) and stored like
   Zotero's math. Images are scaled to fit the note width. Selecting a paper shows its
-  notes in a tab next to Info. Markdown typed or pasted becomes formatting (`# `, `- `,
+  notes in a tab next to Info; a note filed under no item opens in a tab of its own
+  (double-click or Enter), the note alone, as a PDF opens. Markdown typed or pasted becomes formatting (`# `, `- `,
   `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the
   markup). A table is typed as in Markdown: a row of cells between `|`s, a `|---|---|`
   row under it, then Enter; Tab and Enter go from cell to cell (and add rows), the
