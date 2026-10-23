@@ -14,6 +14,7 @@ FetchContent_Declare(tinyxml2
     SOURCE_SUBDIR do-not-build
     ${OURNOTES_EXTRACT_TIMESTAMP})
 FetchContent_MakeAvailable(microtex tinyxml2)
+include(PatchMicroTeX)
 
 file(GLOB_RECURSE _microtex_sources CONFIGURE_DEPENDS "${microtex_SOURCE_DIR}/src/*.cpp")
 list(FILTER _microtex_sources EXCLUDE REGEX "/src/(samples|platform)/")
