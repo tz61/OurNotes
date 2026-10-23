@@ -172,7 +172,9 @@ void CommentBubble::keyPressEvent(QKeyEvent* e)
             view->setFocus();  // back to the PDF
         return;
     }
-    QFrame::keyPressEvent(e);
+    // what the comment had no use for stays here: on the page, Ctrl+Space turned it, and
+    // Ctrl+Shift+Backspace deleted the very annotation being commented
+    e->accept();
 }
 
 void CommentBubble::leaveEvent(QEvent* e)

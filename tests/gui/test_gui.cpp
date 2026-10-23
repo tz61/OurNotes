@@ -4508,6 +4508,76 @@ TEST_CASE("reader: keys 1 to 8 pick the tools, but not while typing")
     CHECK(view->tool() == ReaderTool::Select);
 }
 
+TEST_CASE("reader: Ctrl+Space turns no page; keys a comment or a text box has no use for stay in it")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "many.pdf";
+    writeManyPagesPdf(file, 5);
+    PdfView view;
+    view.resize(900, 600);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    view.setFocus();
+    auto* bar = view.verticalScrollBar();
+    REQUIRE(bar->maximum() > 0);
+    QTest::keyClick(&view, Qt::Key_Space, Qt::ControlModifier);  // an input method's switch
+    CHECK(bar->value() == 0);
+    QTest::keyClick(&view, Qt::Key_Space, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(bar->value() == 0);
+    QTest::keyClick(&view, Qt::Key_Space);  // but Space and Shift+Space page
+    CHECK(bar->value() > 0);
+    QTest::keyClick(&view, Qt::Key_Space, Qt::ShiftModifier);
+    CHECK(bar->value() == 0);
+
+    // a comment being typed
+    std::vector<Json> anns;
+    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) {
+        anns.push_back(d);
+        view.setAnnotations(anns);
+    });
+    bool deleted = false;
+    QObject::connect(&view, &PdfView::annotationDeleted, [&] { deleted = true; });
+    QObject::connect(&view, &PdfView::toolChangeRequested, &view, &PdfView::setTool);  // as ReaderTab does
+    QTest::keyClick(&view, Qt::Key_2);
+    drag(view.viewport(), charCenter(view, 0), charCenter(view, 4));
+    REQUIRE(anns.size() == 1);
+    QTest::keyClick(&view, Qt::Key_1);
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 2).toPoint());
+    auto* bubble = view.commentBubble();
+    REQUIRE(bubble->isEditing());
+    int at = bar->value();
+    QTest::keyClick(bubble->editor(), Qt::Key_Space, Qt::ControlModifier);
+    QTest::keyClick(bubble->editor(), Qt::Key_Space, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(bubble->editor(), Qt::Key_End, Qt::AltModifier);
+    QTest::keyClick(bubble->editor(), Qt::Key_Backspace, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(bar->value() == at);
+    CHECK(!deleted);  // (it deleted the annotation being commented)
+    CHECK(bubble->isEditing());
+    QTest::keyClicks(bubble->editor(), "a b");
+    CHECK(bubble->editor()->toPlainText() == "a b");
+    QTest::keyClick(bubble->editor(), Qt::Key_Escape);
+    CHECK(!bubble->isEditing());
+
+    // a text box being typed
+    view.setFocus();
+    QTest::keyClick(&view, Qt::Key_5);
+    REQUIRE(view.tool() == ReaderTool::Text);
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, (charCenter(view, 0) + QPointF(0, 120)).toPoint());
+    auto* box = view.findChild<QPlainTextEdit*>();
+    REQUIRE(box);
+    at = bar->value();
+    QTest::keyClick(box, Qt::Key_Space, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(box, Qt::Key_End, Qt::AltModifier);
+    QTest::keyClick(box, Qt::Key_Backspace, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(bar->value() == at);
+    CHECK(!deleted);
+    QTest::keyClicks(box, "x y");
+    CHECK(box->toPlainText() == "x y");
+}
+
 TEST_CASE("environment: fcitx gets Qt's ibus plugin to fall back on; the scale set here is not passed on")
 {
     app();

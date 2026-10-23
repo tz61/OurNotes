@@ -33,6 +33,20 @@ namespace on::gui {
 
 namespace {
 
+// The text box being typed in: keys it has no use for stay with it, instead of going on to
+// the page (Ctrl+Shift+Space turned it, Alt+Left went a page back...).
+class TextBoxEdit : public QPlainTextEdit {
+public:
+    using QPlainTextEdit::QPlainTextEdit;
+
+protected:
+    void keyPressEvent(QKeyEvent* e) override
+    {
+        QPlainTextEdit::keyPressEvent(e);
+        e->accept();
+    }
+};
+
 constexpr double kMargin = 12;
 constexpr double kGap = 10;
 constexpr double kBaseScale = 96.0 / 72.0;
@@ -1282,7 +1296,7 @@ void PdfView::editTextAnnotation(const QString& key)
         return;
     closeTextEditor(true);
     editingKey_ = key;
-    textEditor_ = new QPlainTextEdit(viewport());
+    textEditor_ = new TextBoxEdit(viewport());
     textEditor_->setPlainText(a->comment);
     QFont f = font();
     f.setPixelSize(std::max(6, int(a->fontSize * scale_)));
@@ -1869,6 +1883,10 @@ void PdfView::keyPressEvent(QKeyEvent* e)
         verticalScrollBar()->setValue(verticalScrollBar()->maximum());
         return;
     case Qt::Key_Space:
+        // Space and Shift+Space page; with Ctrl, Alt or Meta it is no page key (Ctrl+Space
+        // switches input methods: it turned the page when none was there to take it)
+        if (e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))
+            break;
         verticalScrollBar()->triggerAction(e->modifiers() & Qt::ShiftModifier ? QAbstractSlider::SliderPageStepSub
                                                                               : QAbstractSlider::SliderPageStepAdd);
         return;
