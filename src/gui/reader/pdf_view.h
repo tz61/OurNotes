@@ -58,6 +58,8 @@ public:
     QString color() const { return color_; }
     void setColor(const QString& color);
     void setEditable(bool editable);
+    // Whether "Add to Note" is offered (a PDF filed under an item); on by default.
+    void setNotesAvailable(bool available);
 
     void setAnnotations(const std::vector<Json>& annotations);
     void selectAnnotation(const QString& key, bool scrollTo);
@@ -230,6 +232,7 @@ private:
     ReaderTool tool_ = ReaderTool::Select;
     QString color_ = "#ffd400";
     bool editable_ = true;
+    bool notesAvailable_ = true;
 
     std::vector<AnnView> anns_;
     QString selectedAnn_;

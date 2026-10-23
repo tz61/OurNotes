@@ -124,14 +124,15 @@ AnnotationCard::AnnotationCard(const Json& data, bool editable, QWidget* parent)
         auto text = jqs(data_, "annotationText");
         QApplication::clipboard()->setText(text.isEmpty() ? jqs(data_, "annotationComment") : text);
     });
-    menu->addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit addToNote(data_); });
+    auto* note = menu->addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit addToNote(data_); });
     menu->addSeparator();
     menu->addAction(icon("trash"), tr("Delete"), this, [this] { emit deleted(jqs(data_, "key")); });
     menu_->setMenu(menu);
-    connect(menu, &QMenu::aboutToShow, this, [this, colors, menu] {
+    connect(menu, &QMenu::aboutToShow, this, [this, colors, menu, note] {
         bool can = editable_ && !jbool(data_, "annotationIsExternal");
         colors->setEnabled(can);
         menu->actions().last()->setEnabled(can);
+        note->setVisible(!notesAvailable || notesAvailable());
     });
     connect(comment_, &AutoTextEdit::editingFinished, this, [this] {
         auto text = comment_->toPlainText();
@@ -293,6 +294,7 @@ void AnnotationSidebar::setAnnotations(const std::vector<Json>& annotations, boo
         if (!card) {
             card = new AnnotationCard(a, canEdit, container_);
             card->imageProvider = imageProvider;
+            card->notesAvailable = [this] { return notesAvailable_; };
             connect(card, &AnnotationCard::activated, this, &AnnotationSidebar::activated);
             connect(card, &AnnotationCard::changed, this, &AnnotationSidebar::changed);
             connect(card, &AnnotationCard::deleted, this, &AnnotationSidebar::deleted);

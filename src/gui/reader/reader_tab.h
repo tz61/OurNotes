@@ -29,9 +29,12 @@ class AnnotationSidebar;
 class SearchField;
 class InfoEditor;
 class NoteEditor;
+class RelatedBox;
+class TagsBox;
 
 // A tab showing one PDF attachment with its annotations, plus the parent item's
-// Info (fields, tags, related) and notes in a side pane.
+// Info (fields, tags, related) and notes in a side pane; a PDF filed under no item has
+// no such pane (until it is filed under one).
 class ReaderTab : public QWidget {
     Q_OBJECT
     friend class AnnotationEdit;
@@ -69,6 +72,7 @@ private:
     void buildToolbar();
     void buildSidebar();
     void buildContextPane();
+    void followParent();  // the pane and "Add to Note" for parentKey_, or none without one
     void reloadAnnotations();
     void reloadNotes();
     void importEmbeddedAnnotations();
@@ -104,6 +108,8 @@ private:
     QWidget* contextPane_;
     QTabWidget* contextTabs_;  // Info, Notes
     InfoEditor* info_;
+    TagsBox* tags_;
+    RelatedBox* related_;
     QListWidget* notesList_;
     NoteEditor* noteEditor_;
     QLineEdit* pageEdit_;

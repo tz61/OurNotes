@@ -136,6 +136,11 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     reloadTimer_.setSingleShot(true);
     reloadTimer_.setInterval(30);
     connect(&reloadTimer_, &QTimer::timeout, this, [this] {
+        // dragged onto an item in the library, or off it
+        if (auto att = AppContext::get().library().item(libraryId_, ss(key_)); att && jqs(*att, "parentItem") != parentKey_) {
+            parentKey_ = jqs(*att, "parentItem");
+            followParent();
+        }
         reloadAnnotations();
         reloadNotes();
     });
@@ -306,10 +311,10 @@ void ReaderTab::buildContextPane()
     iv->setContentsMargins(6, 6, 6, 6);
     info_ = new InfoEditor(infoPage);
     iv->addWidget(info_);
-    auto* tags = new TagsBox(infoPage);
-    iv->addWidget(tags);
-    auto* related = new RelatedBox(infoPage);
-    iv->addWidget(related);
+    tags_ = new TagsBox(infoPage);
+    iv->addWidget(tags_);
+    related_ = new RelatedBox(infoPage);
+    iv->addWidget(related_);
     iv->addStretch();
     auto* scroll = new QScrollArea;
     scroll->setWidgetResizable(true);
@@ -317,15 +322,7 @@ void ReaderTab::buildContextPane()
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setWidget(infoPage);
     contextTabs_->addTab(scroll, tr("Info"));
-    if (parentKey_.isEmpty()) {  // a PDF on its own: no paper to show
-        contextTabs_->setTabEnabled(0, false);
-        contextTabs_->setTabToolTip(0, tr("This file is not filed under an item."));
-    } else {
-        info_->setItem(libraryId_, parentKey_);
-        tags->setItems(libraryId_, {parentKey_});
-        related->setItem(libraryId_, parentKey_);
-    }
-    connect(related, &RelatedBox::itemActivated, this,
+    connect(related_, &RelatedBox::itemActivated, this,
             [this](const QString& key) { emit showInLibrary(libraryId_, key); });
 
     auto* notesPage = new QWidget;
@@ -545,14 +542,37 @@ void ReaderTab::buildToolbar()
     paneToggle_->setCheckable(true);
     paneToggle_->setChecked(true);
     connect(paneToggle_, &QAction::toggled, contextPane_, &QWidget::setVisible);
-    // the keys on the page
-    connect(view_, &PdfView::panelToggleRequested, this,
-            [this](bool right) { (right ? paneToggle_ : sideToggle_)->toggle(); });
+    // the keys on the page; without a parent item, there is no pane on the right
+    connect(view_, &PdfView::panelToggleRequested, this, [this](bool right) {
+        if (!right || !parentKey_.isEmpty())
+            (right ? paneToggle_ : sideToggle_)->toggle();
+    });
     connect(view_, &PdfView::contextTabRequested, this, [this](int tab) {
+        if (parentKey_.isEmpty())
+            return;
         paneToggle_->setChecked(true);
         chooseInfoNotesTab(contextTabs_, tab);
     });
+    followParent();
     connect(view_, &PdfView::darkPagesToggleRequested, this, [this] { setDarkPdfPages(!view_->darkPages()); });
+}
+
+void ReaderTab::followParent()
+{
+    bool filed = !parentKey_.isEmpty();
+    view_->setNotesAvailable(filed);
+    annotations_->setNotesAvailable(filed);
+    paneToggle_->setVisible(filed);
+    contextPane_->setVisible(filed && paneToggle_->isChecked());
+    contextTabs_->setTabEnabled(0, filed);
+    if (!filed) {
+        noteEditor_->clear();
+        return;
+    }
+    info_->setItem(libraryId_, parentKey_);
+    tags_->setItems(libraryId_, {parentKey_});
+    related_->setItem(libraryId_, parentKey_);
+    showChosenInfoNotesTab(contextTabs_);
 }
 
 void ReaderTab::useColor(const QString& color)
@@ -689,9 +709,6 @@ void ReaderTab::reloadAnnotations()
 
 void ReaderTab::reloadNotes()
 {
-    if (parentKey_.isEmpty()) {
-        contextPane_->setEnabled(editable_);
-    }
     auto current = notesList_->currentItem() ? notesList_->currentItem()->data(Qt::UserRole).toString() : QString();
     QSignalBlocker block(notesList_);
     notesList_->clear();

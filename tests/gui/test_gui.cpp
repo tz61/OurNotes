@@ -203,12 +203,69 @@ TEST_CASE("reader: the paper's info is beside the PDF, next to its notes")
         ReaderTab tab(env.lib, key);
         CHECK(tabsOf(tab)->currentIndex() == 1);
     }
-    // a PDF of its own has no paper to show
-    env.config.set("/ui/itemPaneTab", "info");
-    auto alone = qs(jstr(env.library.importAttachment(env.lib, file, ""), "key"));
-    ReaderTab tab(env.lib, alone);
-    CHECK(!tabsOf(tab)->isTabEnabled(0));
-    CHECK(tabsOf(tab)->currentIndex() == 1);
+}
+
+TEST_CASE("reader: a PDF filed under no item has no Info or Notes beside it, until it is filed")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto key = jstr(env.library.importAttachment(env.lib, file, ""), "key");
+    ReaderTab tab(env.lib, qs(key));
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    auto* right = tab.findChild<QTabWidget*>("readerContextTabs");
+    auto* toggle = tab.findChild<QAction*>("paneToggle");
+    QToolButton* addToNote = nullptr;  // on the bar over selected text
+    for (auto* b : view->findChildren<QToolButton*>())
+        if (b->toolTip() == "Add to Note")
+            addToNote = b;
+    REQUIRE(right);
+    REQUIRE(toggle);
+    REQUIRE(addToNote);
+    CHECK(!right->isVisible());
+    CHECK(!toggle->isVisible());
+    CHECK(addToNote->isHidden());
+    for (auto k : {Qt::Key_BracketRight, Qt::Key_N, Qt::Key_I}) {
+        QTest::keyClick(view, k);
+        CHECK(!right->isVisible());
+    }
+    CHECK(toggle->isChecked());  // the keys left the toggle as it was
+
+    // dragged onto an item in the library: its Info and notes are there
+    auto paper = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Filed at last"}});
+    env.library.createNote(env.lib, "<p>About it</p>", jstr(paper, "key"));
+    env.library.moveToParent(env.lib, {key}, jstr(paper, "key"));
+    REQUIRE(QTest::qWaitFor([&] { return right->isVisible(); }, 2000));
+    CHECK(toggle->isVisible());
+    CHECK(right->isTabEnabled(0));
+    CHECK(!addToNote->isHidden());
+    bool shown = false;
+    for (auto* e : tab.findChildren<QPlainTextEdit*>())
+        shown = shown || e->toPlainText() == "Filed at last";
+    for (auto* e : tab.findChildren<QLineEdit*>())
+        shown = shown || e->text() == "Filed at last";
+    CHECK(shown);
+    QListWidget* notes = nullptr;
+    for (auto* l : tab.findChildren<QListWidget*>())
+        if (l->count() == 1 && l->item(0)->text() == "About it")
+            notes = l;
+    CHECK(notes);
+    QTest::keyClick(view, Qt::Key_BracketRight);
+    CHECK(!right->isVisible());
+    QTest::keyClick(view, Qt::Key_BracketRight);
+    CHECK(right->isVisible());
+
+    // and off it again
+    env.library.moveToParent(env.lib, {key}, "");
+    REQUIRE(QTest::qWaitFor([&] { return !right->isVisible(); }, 2000));
+    CHECK(!toggle->isVisible());
+    CHECK(addToNote->isHidden());
 }
 
 TEST_CASE("main window: Info or Notes is one choice, for every item and every PDF")
@@ -890,7 +947,7 @@ TEST_CASE("reader: on a page the tool's icon is the cursor; Select keeps the usu
     QApplication::processEvents();
     auto* view = tab.view();
     view->setFocus();
-    QPoint onPage = view->pageToViewport(0, QPointF(400, 600)).toPoint();
+    QPoint onPage = view->pageToViewport(0, QPointF(300, 250)).toPoint();
     REQUIRE(view->viewport()->rect().contains(onPage));
     auto cursorAt = [&](QPoint at) {
         QTest::mouseMove(view->viewport(), at + QPoint(1, 0));

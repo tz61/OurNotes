@@ -1408,6 +1408,12 @@ void PdfView::setEditable(bool editable)
         setTool(ReaderTool::Select);
 }
 
+void PdfView::setNotesAvailable(bool available)
+{
+    notesAvailable_ = available;
+    popup_->note_->setVisible(available);
+}
+
 void PdfView::updateCursor(QPointF pos)
 {
     if (pageRects_.empty())
@@ -1915,9 +1921,10 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
             ->setEnabled(editable_);
         menu.addAction(icon("tool-underline"), tr("Underline"), this, [this] { createFromSelection("underline", color_); })
             ->setEnabled(editable_);
-        menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] {
-            emit addToNote("<blockquote><p>“" + selectedText().toHtmlEscaped() + "”</p></blockquote>");
-        });
+        if (notesAvailable_)
+            menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] {
+                emit addToNote("<blockquote><p>“" + selectedText().toHtmlEscaped() + "”</p></blockquote>");
+            });
         menu.addSeparator();
     }
     menu.addAction(icon("zoom-in"), tr("Zoom In"), this, &PdfView::zoomIn);

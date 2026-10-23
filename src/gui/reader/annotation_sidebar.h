@@ -47,6 +47,7 @@ public:
     bool isEditing() const;
     void focusComment();
     std::function<QImage(const Json&)> imageProvider;
+    std::function<bool()> notesAvailable;  // "Add to Note" in its menu; offered if unset
 
 signals:
     void activated(const QString& key);
@@ -79,6 +80,8 @@ public:
     void setAnnotations(const std::vector<Json>& annotations, bool editable);
     void setSelected(const QString& key, bool scroll);
     void focusComment(const QString& key);
+    // Whether the cards offer "Add to Note" (a PDF filed under an item); on by default.
+    void setNotesAvailable(bool available) { notesAvailable_ = available; }
     std::function<QImage(const Json&)> imageProvider;
 
 signals:
@@ -98,6 +101,7 @@ private:
     QVBoxLayout* list_;
     QLabel* empty_;
     QMap<QString, AnnotationCard*> cards_;
+    bool notesAvailable_ = true;
     QString selected_;
 };
 

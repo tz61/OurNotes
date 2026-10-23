@@ -30,5 +30,7 @@ void applySidePaneWidth(QSplitter* split);
 void shareInfoNotesTab(QTabWidget* tabs);
 // Shows Info (0) or Notes (1) in `tabs` and everywhere else, as a click on it does.
 void chooseInfoNotesTab(QTabWidget* tabs, int index);
+// Shows in `tabs` the one chosen everywhere (after its Info tab was enabled again).
+void showChosenInfoNotesTab(QTabWidget* tabs);
 
 } // namespace on::gui

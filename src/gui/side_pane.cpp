@@ -129,8 +129,7 @@ void shareInfoNotesTab(QTabWidget* tabs)
     auto& all = tabSharing();
     all.erase(std::remove_if(all.begin(), all.end(), [](auto& t) { return t.isNull(); }), all.end());
     all.push_back(tabs);
-    auto chosen = AppContext::get().config().get(kTabKey, "info").get<std::string>();
-    showTab(tabs, chosen == "notes" ? 1 : 0);
+    showChosenInfoNotesTab(tabs);
     // a click, not any change: the pages deleted with a closed tab change it, too
     QObject::connect(tabs, &QTabWidget::tabBarClicked, tabs, [tabs](int index) { chooseInfoNotesTab(tabs, index); });
 }
@@ -144,6 +143,11 @@ void chooseInfoNotesTab(QTabWidget* tabs, int index)
     for (auto& other : tabSharing())
         if (other && other != tabs)
             showTab(other, index);
+}
+
+void showChosenInfoNotesTab(QTabWidget* tabs)
+{
+    showTab(tabs, AppContext::get().config().get(kTabKey, "info").get<std::string>() == "notes" ? 1 : 0);
 }
 
 } // namespace on::gui
