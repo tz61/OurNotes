@@ -1895,6 +1895,42 @@ TEST_CASE("notes: copied out, formulas are their LaTeX and pictures [image]; a p
     CHECK(formulasIn(edit->document()).size() == 2);
 }
 
+TEST_CASE("notes: copied out, headings keep their level: <h1>..<h6> in HTML, # signs in text")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><h2>Title</h2><p>text with <span class=\"math\">$x$</span></p>"
+                                                "<h1>Big</h1><h3>Small</h3></div>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->selectAll();
+    edit->copy();
+    auto* copied = QApplication::clipboard()->mimeData();
+    CHECK(copied->text() == "## Title\ntext with $x$\n# Big\n### Small");
+    QString html = copied->html();
+    CHECK(html.contains("<h2>Title</h2>"));
+    CHECK(html.contains("<h1>Big</h1>"));
+    CHECK(html.contains("<h3>Small</h3>"));
+
+    // from the middle of a heading to the next line: the part of it, with its level
+    QTextCursor c(edit->document());
+    c.setPosition(2);
+    c.setPosition(edit->document()->begin().next().position() + 4, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    CHECK(QApplication::clipboard()->mimeData()->text() == "tle\ntext");
+    // a few words of a heading are just words
+    c.setPosition(1);
+    c.setPosition(4, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    CHECK(QApplication::clipboard()->mimeData()->text() == "itl");
+}
+
 TEST_CASE("notes: LaTeX pasted from other programs becomes formulas; prices stay text")
 {
     app();

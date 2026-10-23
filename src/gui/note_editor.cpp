@@ -1133,8 +1133,12 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
     QTextDocument copy;
     QTextCursor(&copy).insertFragment(cursor.selection());
     QStringList lines;
-    for (auto block = copy.begin(); block.isValid(); block = block.next()) {
+    // a heading copied from its start is "## …" in text, by its level, as in Markdown
+    bool fromStart = cursor.selectionStart() == document()->findBlock(cursor.selectionStart()).position();
+    for (auto block = copy.begin(); block.isValid(); block = block.next(), fromStart = true) {
         QString line;
+        if (int level = block.blockFormat().headingLevel(); level > 0 && fromStart)
+            line = QString(std::min(level, 6), '#') + ' ';
         for (auto it = block.begin(); !it.atEnd(); ++it) {
             auto fragment = it.fragment();
             auto format = fragment.charFormat();
