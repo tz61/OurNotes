@@ -3187,6 +3187,39 @@ TEST_CASE("storage window: the server line has the window's width and shows all 
             form->parentWidget()->setStyle(nullptr);
 }
 
+// macOS's style keeps a form's fields at their size hint (other styles let them grow).
+struct MacFormsStyle : QProxyStyle {
+    int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget, QStyleHintReturn* data) const override
+    {
+        return hint == SH_FormLayoutFieldGrowthPolicy ? QFormLayout::FieldsStayAtSizeHint
+                                                      : QProxyStyle::styleHint(hint, option, widget, data);
+    }
+};
+
+TEST_CASE("preferences: the formula colour's hint is one line, also on macOS")
+{
+    app();
+    Env env;
+    SyncController sync;
+    MacFormsStyle style;
+    PreferencesDialog dialog(&sync);
+    for (auto* form : dialog.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(&style);
+    dialog.show();
+    dialog.showPage(0);
+    QApplication::processEvents();
+    auto* hint = dialog.findChild<QLabel*>("formulaColorHint");
+    REQUIRE(hint);
+    REQUIRE(hint->isVisible());
+    // squeezed beside the colour's menu, it wrapped onto two lines and lost part of the second
+    CHECK(hint->width() >= hint->fontMetrics().horizontalAdvance(hint->text()));
+    CHECK(hint->height() >= hint->fontMetrics().height());
+    for (auto* form : dialog.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(nullptr);
+}
+
 TEST_CASE("main window: what another program changes shows at once; its own sync is not taken for that")
 {
     app();
