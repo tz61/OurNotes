@@ -88,9 +88,6 @@ void NoteTextEdit::changeEvent(QEvent* e)
     }
 }
 
-// Character format for text in a heading of `level` (0: a paragraph): sizes relative to
-// the note's font, as loading <h1>… gives them (so they look the same after a reload and
-// follow the note's text size).
 // Back to the note's own font: the format names no family. An empty family list is not
 // that: Qt then picks a fallback, on macOS Apple Color Emoji, whose spaces and digits are
 // three or four times as wide and whose lines are taller. Pasted text looked spread out,
@@ -132,6 +129,9 @@ static void noParagraphSpacing(QTextDocument* doc)
     }
 }
 
+// Character format for text in a heading of `level` (0: a paragraph): sizes relative to
+// the note's font, as loading <h1>… gives them (so they look the same after a reload and
+// follow the note's text size).
 static QTextCharFormat headingCharFormat(QTextCharFormat f, int level)
 {
     f.clearProperty(QTextFormat::FontPointSize);
