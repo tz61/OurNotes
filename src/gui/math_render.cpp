@@ -11,8 +11,11 @@
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 
+#include "core/formula.h"
 #include "latex.h"
+#include "render.h"
 #include "platform/qt/graphic_qt.h"
 
 namespace on::gui {
@@ -114,14 +117,75 @@ bool parseMathResourceName(const QString& name, QString* latex, bool* display)
     return true;
 }
 
-// MicroTeX crashes on a style command (\displaystyle, \textstyle, ...) followed by the end
-// of a row or a cell (\\, \cr, \hline, &): as "\textstyle " before an inline formula that
-// begins with \\ is. An empty group between them keeps it from that.
+// MicroTeX crashes on a style command (\displaystyle, \textstyle, ...) with nothing after it
+// to style: followed by the end of a row or a cell (\\, \cr, \hline, &), of a group (}, \right)
+// or of the formula. An empty group after it keeps it from that.
 static QString guardStyles(QString tex)
 {
     static const QRegularExpression re(
-        R"((\\(?:display|text|script|scriptscript)style)(?![A-Za-z])(\s*)(?=\\\\|\\cr|\\hline|&))");
+        R"((\\(?:display|text|script|scriptscript)style)(?![A-Za-z])(\s*)(?=\\\\|\\cr|\\hline|&|\}|\\right|$))");
     return tex.replace(re, "\\1{}\\2");
+}
+
+// An inline formula is one line, as MathJax has it: \\ and \newline outside an environment
+// (matrix, cases...) and a group are a space in it. MicroTeX stacked what came after them
+// under the rest, and the formula stood below the text of its line.
+static QString oneLine(const QString& tex)
+{
+    QString out;
+    int groups = 0, environments = 0;
+    for (qsizetype i = 0; i < tex.size(); ++i) {
+        if (tex[i] != '\\' || i + 1 >= tex.size()) {
+            if (tex[i] == '{')
+                ++groups;
+            else if (tex[i] == '}')
+                groups = std::max(0, groups - 1);
+            out += tex[i];
+            continue;
+        }
+        if (QStringView(tex).mid(i).startsWith(u"\\begin{"))
+            ++environments;
+        else if (QStringView(tex).mid(i).startsWith(u"\\end{"))
+            environments = std::max(0, environments - 1);
+        bool top = groups == 0 && environments == 0;
+        if (top && tex[i + 1] == '\\') {  // \\, and its [length] if it has one
+            i += 1;
+            qsizetype j = i + 1;
+            while (j < tex.size() && tex[j].isSpace())
+                ++j;
+            if (j < tex.size() && tex[j] == '[')
+                if (auto close = tex.indexOf(']', j); close > 0)
+                    i = close;
+            out += ' ';
+            continue;
+        }
+        if (top && QStringView(tex).mid(i).startsWith(u"\\newline") &&
+            (i + 8 >= tex.size() || !tex[i + 8].isLetter())) {
+            i += 7;
+            out += ' ';
+            continue;
+        }
+        out += tex[i];  // a command, or an escaped character (\{ is no group)
+        out += tex[++i];
+    }
+    return out;
+}
+
+// Every { closed, and no } that opens nothing (\{ and \} are braces as text). MicroTeX
+// takes a group left open at the end as closed, and showed half a formula as all of it.
+static bool bracesBalanced(const QString& tex)
+{
+    int open = 0;
+    for (qsizetype i = 0; i < tex.size(); ++i) {
+        if (tex[i] == '\\') {
+            ++i;  // an escaped character, or a command's first letter
+        } else if (tex[i] == '{') {
+            ++open;
+        } else if (tex[i] == '}' && --open < 0) {
+            return false;
+        }
+    }
+    return open == 0;
 }
 
 MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const QColor& color, qreal dpr)
@@ -138,9 +202,20 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
         m = sourceImage(latex, display, pixelSize, dpr, QObject::tr("LaTeX fonts not found"));
     } else {
         try {
-            std::wstring tex = guardStyles((display ? QString() : QString("\\textstyle ")) + latex).toStdWString();
-            std::unique_ptr<tex::TeXRender> r(
-                tex::LaTeX::parse(tex, 100000, float(pixelSize), float(pixelSize) / 3.f, color.rgba()));
+            // as LaTeX::parse, but an inline formula in text style (not with "\textstyle "
+            // before it, which made MicroTeX crash on some formulas)
+            if (!bracesBalanced(latex))
+                throw std::runtime_error(QObject::tr("A { is not closed, or a } opens nothing").toStdString());
+            tex::Formula formula;
+            formula.setLaTeX(guardStyles(display ? latex : oneLine(latex)).toStdWString());
+            tex::TeXRenderBuilder builder;
+            std::unique_ptr<tex::TeXRender> r(builder.setStyle(display ? tex::TexStyle::display : tex::TexStyle::text)
+                                                  .setTextSize(float(pixelSize))
+                                                  .setWidth(tex::UnitType::pixel, 100000, tex::Alignment::left)
+                                                  .setIsMaxWidth(true)
+                                                  .setLineSpace(tex::UnitType::pixel, float(pixelSize) / 3.f)
+                                                  .setForeground(color.rgba())
+                                                  .build(formula));
             int w = std::max(1, r->getWidth()), h = std::max(1, r->getHeight()), d = r->getDepth();
             // Ink reaches outside the TeX box (radicals, fraction parts, smoothing) and
             // MicroTeX rounds the box down to whole pixels: cut to the box, formulas lost

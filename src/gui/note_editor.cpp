@@ -32,6 +32,7 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include <functional>
 #include <utility>
 
 #include "core/hash.h"
@@ -78,6 +79,10 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &NoteTextEdit::updateMathPreview);
     if (auto* ctx = AppContext::tryGet())
         connect(ctx, &AppContext::appearanceChanged, this, [this] { viewport()->update(); });
+    baselineTimer_.setSingleShot(true);
+    baselineTimer_.setInterval(0);
+    connect(&baselineTimer_, &QTimer::timeout, this, &NoteTextEdit::alignTableBaselines);
+    connect(document(), &QTextDocument::contentsChanged, &baselineTimer_, qOverload<>(&QTimer::start));
 }
 
 void NoteTextEdit::changeEvent(QEvent* e)
@@ -87,6 +92,14 @@ void NoteTextEdit::changeEvent(QEvent* e)
         adaptColors();
         viewport()->update();
     }
+    if (e->type() == QEvent::FontChange)  // the text size: lines of other heights
+        baselineTimer_.start();
+}
+
+void NoteTextEdit::resizeEvent(QResizeEvent* e)
+{
+    QTextEdit::resizeEvent(e);
+    baselineTimer_.start();  // lines wrapped elsewhere
 }
 
 // Back to the note's own font: the format names no family. An empty family list is not
@@ -1067,6 +1080,85 @@ void NoteTextEdit::editTable(const QTextCursor& at, TableEdit edit)
         break;
     }
     c.endEditBlock();
+}
+
+// A cell's content is moved down (more room above it in the cell, not saved) so that its
+// first line's baseline is as low as the lowest of its row's: a formula that makes one cell's
+// first line taller no longer leaves the text of the others above the text beside it. (Qt
+// has no such vertical alignment for cells, and leaves out a cell's first top margin.)
+void NoteTextEdit::alignTableBaselines()
+{
+    std::vector<QTextTable*> tables;
+    std::function<void(QTextFrame*)> collect = [&](QTextFrame* frame) {
+        for (auto* child : frame->childFrames()) {
+            if (auto* t = qobject_cast<QTextTable*>(child))
+                tables.push_back(t);
+            collect(child);
+        }
+    };
+    collect(document()->rootFrame());
+    if (tables.empty())
+        return;
+    auto* layout = document()->documentLayout();
+    struct Move {
+        QTextTableCell cell;
+        qreal padding;  // the table's
+        qreal extra;    // room above that
+    };
+    std::vector<Move> moves;
+    for (auto* table : tables) {
+        qreal padding = table->format().cellPadding();
+        for (int r = 0; r < table->rows(); ++r) {
+            std::vector<std::pair<Move, qreal>> cells;  // as now, and the baseline without the extra room
+            for (int c = 0; c < table->columns(); ++c) {
+                auto cell = table->cellAt(r, c);
+                if (cell.row() != r || cell.column() != c)
+                    continue;  // a span's
+                auto block = cell.firstCursorPosition().block();
+                QRectF rect = layout->blockBoundingRect(block);  // (lays it out)
+                auto* lines = block.layout();
+                if (!lines || lines->lineCount() == 0)
+                    continue;
+                auto first = lines->lineAt(0);
+                auto f = cell.format().toTableCellFormat();
+                qreal extra = f.hasProperty(QTextFormat::TableCellTopPadding) ? f.topPadding() - padding : 0;
+                cells.push_back({{cell, padding, extra}, rect.top() + first.y() + first.ascent() - extra});
+            }
+            qreal lowest = 0;
+            for (auto& c : cells)
+                lowest = std::max(lowest, c.second);
+            for (auto& [move, baseline] : cells) {
+                qreal want = std::round(lowest - baseline);
+                if (std::abs(want - move.extra) >= 0.5)
+                    moves.push_back({move.cell, move.padding, want});
+            }
+        }
+    }
+    if (moves.empty())
+        return;
+    // Part of the edit that made it necessary, so undo and redo take it along; opened, with
+    // nothing to undo, no step of its own.
+    auto* doc = document();
+    bool fresh = doc->availableUndoSteps() == 0 && doc->availableRedoSteps() == 0;
+    ++internal_;
+    if (fresh)
+        doc->setUndoRedoEnabled(false);
+    QTextCursor c(doc);
+    if (!fresh)
+        c.joinPreviousEditBlock();
+    for (auto& m : moves) {
+        auto f = m.cell.format().toTableCellFormat();
+        if (m.extra > 0)
+            f.setTopPadding(m.padding + m.extra);
+        else
+            f.clearProperty(QTextFormat::TableCellTopPadding);  // the table's padding again
+        m.cell.setFormat(f);
+    }
+    if (!fresh)
+        c.endEditBlock();
+    if (fresh)
+        doc->setUndoRedoEnabled(true);
+    --internal_;
 }
 
 // Backspace at the start of a heading shows its "## " before the text, as typed: the level

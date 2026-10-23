@@ -56,6 +56,9 @@ public:
     void insertTable(int columns = 2);
     enum class TableEdit { RowAbove, RowBelow, ColumnLeft, ColumnRight, DeleteRow, DeleteColumn, DeleteTable };
     void editTable(const QTextCursor& at, TableEdit edit);
+    // The cells of a table's row line up on their first lines' baselines, as text does in a
+    // line (Qt only aligns cells at their tops): done after every change and resize.
+    void alignTableBaselines();
 
 protected:
     QMimeData* createMimeDataFromSelection() const override;
@@ -69,6 +72,7 @@ protected:
     void focusOutEvent(QFocusEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
+    void resizeEvent(QResizeEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
 
 private:
@@ -105,6 +109,7 @@ private:
     void adaptColors();
 
     FittedImageHandler* images_ = nullptr;
+    QTimer baselineTimer_;  // alignTableBaselines, once the document is laid out again
     QLabel* preview_ = nullptr;
     QPoint pressPos_;
     int internal_ = 0;

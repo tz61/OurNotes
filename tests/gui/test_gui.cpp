@@ -1516,10 +1516,11 @@ TEST_CASE("notes: Zotero math markup survives load and save")
 TEST_CASE("formulas MicroTeX cannot take do not bring the app down")
 {
     app();
-    // a style followed by the end of a row or cell crashed MicroTeX: "\textstyle " goes
-    // before every inline formula, so one that began with \\ took the app with it
+    // a style with nothing after it to style crashed MicroTeX: "\textstyle " went before
+    // every inline formula, so one that began with \\ took the app with it
     for (QString tex : {"\\\\alpha", "\\\\", "\\\\ x", "\\textstyle \\\\", "\\displaystyle \\\\ x", "\\scriptstyle \\cr",
-                        "\\textstyle \\hline", "\\textstyle &", "\\begin{matrix} \\displaystyle & b \\end{matrix}"})
+                        "\\textstyle \\hline", "\\textstyle &", "\\begin{matrix} \\displaystyle & b \\end{matrix}",
+                        "\\textstyle \\textstyle  ", "\\left( \\textstyle \\right)", "\\textstyle }", "\\displaystyle "})
         for (bool display : {false, true}) {
             INFO(tex.toStdString() << (display ? " (display)" : " (inline)"));
             auto m = renderMath(tex, display, 16, Qt::black, 1);
@@ -2411,6 +2412,75 @@ TEST_CASE("notes: a Markdown table typed is a table; Tab and Enter go through it
     QTest::keyClicks(edit, "|---|");
     QTest::keyClick(edit, Qt::Key_Return);
     CHECK(!edit->textCursor().currentTable());
+}
+
+TEST_CASE("notes: a table's cells line up on their first lines, formulas or not; inline formulas are one line")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><table><tr><th>Model</th><th>Params</th><th>Acc.</th></tr>"
+                 "<tr><td><span class=\"math\">$\\frac{1}{2}$</span>-Net</td><td>25M</td><td><span class=\"math\">$x^2$</span></td></tr>"
+                 "<tr><td>plain</td><td>12M</td><td>74.2</td></tr></table><p>after</p></div>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    auto* doc = edit->document();
+    QApplication::processEvents();
+    QTextTable* table = nullptr;
+    for (auto* f : doc->rootFrame()->childFrames())
+        table = table ? table : qobject_cast<QTextTable*>(f);
+    REQUIRE(table);
+    auto baselines = [&](int row) {
+        std::vector<qreal> out;
+        for (int c = 0; c < table->columns(); ++c) {
+            auto block = table->cellAt(row, c).firstCursorPosition().block();
+            QRectF r = doc->documentLayout()->blockBoundingRect(block);
+            auto line = block.layout()->lineAt(0);
+            out.push_back(r.top() + line.y() + line.ascent());
+        }
+        return out;
+    };
+    auto even = [&](int row) {
+        auto b = baselines(row);
+        auto [lo, hi] = std::minmax_element(b.begin(), b.end());
+        INFO("row " << row << ": " << b[0] << " " << b[1] << " " << b[2]);
+        return *hi - *lo <= 1.0;
+    };
+    CHECK(even(0));
+    CHECK(even(1));  // the fraction made the first cell's line taller
+    CHECK(even(2));
+    CHECK(doc->availableUndoSteps() == 0);  // opened: nothing to undo
+    editor.flush();
+    CHECK(jstr(*env.library.item(env.lib, jstr(note, "key")), "note").find("margin") == std::string::npos);
+
+    // a formula typed into a cell of the last row: the others come down with it; undone,
+    // back up
+    QTextCursor c(doc);
+    c.setPosition(table->cellAt(2, 1).lastPosition());
+    edit->setTextCursor(c);
+    edit->setFocus();
+    QTest::keyClicks(edit, " $\\frac{a}{b}$");
+    QTest::keyClick(edit, Qt::Key_Right);
+    QApplication::processEvents();
+    REQUIRE(countMath(doc) == 3);
+    CHECK(even(2));
+    auto before = baselines(2);
+    while (countMath(doc) == 3)
+        QTest::keyClick(edit, Qt::Key_Z, Qt::ControlModifier);
+    QApplication::processEvents();
+    CHECK(even(2));
+    CHECK(baselines(2)[0] < before[0]);  // up again
+
+    // \\ in an inline formula is a space: the formula is one line, as tall as without it
+    auto oneLine = renderMath("alpha", false, 16, Qt::black, 1);
+    auto broken = renderMath("\\\\alpha", false, 16, Qt::black, 1);
+    CHECK(broken.ok);
+    CHECK(std::abs(broken.image.height() - oneLine.image.height()) <= 2);
+    CHECK(renderMath("\\begin{matrix} a \\\\ b \\end{matrix}", false, 16, Qt::black, 1).image.height() >
+          oneLine.image.height() + 8);  // in an environment it stays
 }
 
 TEST_CASE("notes: Markdown and web tables pasted in are tables, with a header row and lines")
@@ -6498,4 +6568,5 @@ int main(int argc, char** argv)
     doctest::Context context(argc, argv);
     return context.run();
 }
+
 
