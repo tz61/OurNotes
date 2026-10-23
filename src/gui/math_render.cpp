@@ -7,6 +7,7 @@
 #include <QFontMetricsF>
 #include <QHash>
 #include <QPainter>
+#include <QRegularExpression>
 
 #include <cmath>
 #include <memory>
@@ -113,6 +114,16 @@ bool parseMathResourceName(const QString& name, QString* latex, bool* display)
     return true;
 }
 
+// MicroTeX crashes on a style command (\displaystyle, \textstyle, ...) followed by the end
+// of a row or a cell (\\, \cr, \hline, &): as "\textstyle " before an inline formula that
+// begins with \\ is. An empty group between them keeps it from that.
+static QString guardStyles(QString tex)
+{
+    static const QRegularExpression re(
+        R"((\\(?:display|text|script|scriptscript)style)(?![A-Za-z])(\s*)(?=\\\\|\\cr|\\hline|&))");
+    return tex.replace(re, "\\1{}\\2");
+}
+
 MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const QColor& color, qreal dpr)
 {
     QString key = QString("%1|%2|%3|%4|%5").arg(display).arg(pixelSize).arg(color.rgba()).arg(dpr).arg(latex);
@@ -127,7 +138,7 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
         m = sourceImage(latex, display, pixelSize, dpr, QObject::tr("LaTeX fonts not found"));
     } else {
         try {
-            std::wstring tex = ((display ? QString() : QString("\\textstyle ")) + latex).toStdWString();
+            std::wstring tex = guardStyles((display ? QString() : QString("\\textstyle ")) + latex).toStdWString();
             std::unique_ptr<tex::TeXRender> r(
                 tex::LaTeX::parse(tex, 100000, float(pixelSize), float(pixelSize) / 3.f, color.rgba()));
             int w = std::max(1, r->getWidth()), h = std::max(1, r->getHeight()), d = r->getDepth();

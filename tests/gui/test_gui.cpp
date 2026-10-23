@@ -1512,6 +1512,21 @@ TEST_CASE("notes: Zotero math markup survives load and save")
     CHECK(!bad.ok);
 }
 
+TEST_CASE("formulas MicroTeX cannot take do not bring the app down")
+{
+    app();
+    // a style followed by the end of a row or cell crashed MicroTeX: "\textstyle " goes
+    // before every inline formula, so one that began with \\ took the app with it
+    for (QString tex : {"\\\\alpha", "\\\\", "\\\\ x", "\\textstyle \\\\", "\\displaystyle \\\\ x", "\\scriptstyle \\cr",
+                        "\\textstyle \\hline", "\\textstyle &", "\\begin{matrix} \\displaystyle & b \\end{matrix}"})
+        for (bool display : {false, true}) {
+            INFO(tex.toStdString() << (display ? " (display)" : " (inline)"));
+            auto m = renderMath(tex, display, 16, Qt::black, 1);
+            CHECK(!m.image.isNull());
+        }
+    CHECK(renderMath("-x", false, 16, Qt::black, 1).ok);  // and nothing more before others
+}
+
 TEST_CASE("notes: typing $...$ makes a formula, prices stay text")
 {
     app();
