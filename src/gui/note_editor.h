@@ -52,6 +52,7 @@ public:
     bool isInternalEdit() const { return internal_ > 0; }
 
 protected:
+    QMimeData* createMimeDataFromSelection() const override;
     bool canInsertFromMimeData(const QMimeData* source) const override;
     void insertFromMimeData(const QMimeData* source) override;
     void mousePressEvent(QMouseEvent* e) override;
@@ -67,7 +68,8 @@ protected:
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
     bool convertTypedMarkdown(const QString& typed);
-    void markdownDocument(const QString& markdown, QTextDocument* out) const;
+    // Text as rich text in `out`, Markdown or plain; its formulas ($…$, $$…$$) as formulas.
+    void textDocument(const QString& text, bool markdown, QTextDocument* out) const;
     bool markdown_ = false;
     int wheelZoom_ = 0;  // Ctrl+wheel turned less than a notch
     struct MathRun {

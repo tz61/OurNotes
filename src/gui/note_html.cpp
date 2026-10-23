@@ -16,9 +16,11 @@
 namespace on::gui {
 
 // Zotero stores formulas as <span class="math">$…$</span> and <pre class="math">$$…$$</pre>.
-static QString mathToImages(const QString& html)
+QString mathMarkupToImages(const QString& html)
 {
-    static const QRegularExpression display(R"re(<pre class="math">([\s\S]*?)</pre>)re");
+    // a display formula may have a colour (OurNotes writes it so; an inline one is in a
+    // coloured span, like text)
+    static const QRegularExpression display(R"re(<pre class="math"(?: style="color: (#[0-9A-Fa-f]{6})")?>([\s\S]*?)</pre>)re");
     static const QRegularExpression inl(R"re(<span class="math">([\s\S]*?)</span>)re");
     auto strip = [](QString tex, const QString& delim) {
         tex = qs(htmlUnescape(ss(tex))).trimmed();
@@ -26,23 +28,18 @@ static QString mathToImages(const QString& html)
             tex = tex.mid(delim.size(), tex.size() - 2 * delim.size());
         return tex.trimmed();
     };
-    QString out = html;
-    out.replace(display, "\x01\\1\x02");  // placeholders, replaced below with escaping
     QString result;
     qsizetype i = 0;
-    while (i < out.size()) {
-        qsizetype a = out.indexOf(QChar(1), i);
-        if (a < 0) {
-            result += out.mid(i);
-            break;
-        }
-        qsizetype b = out.indexOf(QChar(2), a);
-        result += out.mid(i, a - i);
-        auto tex = strip(out.mid(a + 1, b - a - 1), "$$");
-        result += "<p align=\"center\"><img src=\"" + mathResourceName(tex, true) +
-                  "\" style=\"vertical-align: middle\"></p>";
-        i = b + 1;
+    for (auto it = display.globalMatch(html); it.hasNext();) {
+        auto m = it.next();
+        result += html.mid(i, m.capturedStart() - i);
+        QString img = "<img src=\"" + mathResourceName(strip(m.captured(2), "$$"), true) + "\" style=\"vertical-align: middle\">";
+        if (!m.captured(1).isEmpty())
+            img = "<span style=\"color: " + m.captured(1) + "\">" + img + "</span>";
+        result += "<p align=\"center\">" + img + "</p>";
+        i = m.capturedEnd();
     }
+    result += html.mid(i);
     QString final;
     i = 0;
     auto it = inl.globalMatch(result);
@@ -59,7 +56,7 @@ static QString mathToImages(const QString& html)
 
 QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocument* doc)
 {
-    QString html = mathToImages(rawHtml);
+    QString html = mathMarkupToImages(rawHtml);
     static const QRegularExpression img(R"re(<img\b([^>]*?)data-attachment-key="([A-Za-z0-9]+)"([^>]*)>)re");
     auto& lib = AppContext::get().library();
     QString out;
@@ -106,13 +103,37 @@ QString mathSourceLatex(const QString& text, bool display)
     return t.trimmed();
 }
 
+// The colour a formula has of its own (that of the text it was typed in), also when hidden
+// for contrast in dark mode; invalid if none.
+QColor ownFormulaColor(const QTextCharFormat& f)
+{
+    if (f.hasProperty(kOriginalForegroundProperty))
+        return f.property(kOriginalForegroundProperty).value<QColor>();
+    return f.hasProperty(QTextFormat::ForegroundBrush) ? f.foreground().color() : QColor();
+}
+
+// An inline formula with a colour of its own is in a coloured span, as Zotero colours text.
+QString inlineFormula(const QTextCharFormat& f, const QString& latex)
+{
+    QString html = "<span class=\"math\">$" + esc(latex) + "$</span>";
+    QColor colour = ownFormulaColor(f);
+    return colour.isValid() ? "<span style=\"color: " + colour.name() + "\">" + html + "</span>" : html;
+}
+
+QString displayFormula(const QTextCharFormat& f, const QString& latex)
+{
+    QColor colour = ownFormulaColor(f);
+    return "<pre class=\"math\"" + (colour.isValid() ? " style=\"color: " + colour.name() + "\"" : QString()) + ">$$" + esc(latex) +
+           "$$</pre>";
+}
+
 QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefault)
 {
     auto f = frag.charFormat();
     if (int kind = f.property(kMathSourceProperty).toInt()) {
         auto latex = mathSourceLatex(frag.text(), kind == 2);
         // an empty one is its signs, as text: what stays when it is left so
-        return latex.isEmpty() ? esc(kind == 2 ? "$$$$" : "$$") : "<span class=\"math\">$" + esc(latex) + "$</span>";
+        return latex.isEmpty() ? esc(kind == 2 ? "$$$$" : "$$") : inlineFormula(f, latex);
     }
     if (f.isImageFormat()) {
         auto img = f.toImageFormat();
@@ -124,7 +145,7 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
         auto name = img.name();
         QString latex;
         if (parseMathResourceName(name, &latex, nullptr))
-            return "<span class=\"math\">$" + esc(latex) + "$</span>";
+            return inlineFormula(f, latex);
         if (name.startsWith("attachment:"))
             return "<img data-attachment-key=\"" + esc(name.mid(11)) + "\"" + attrs + ">";
         return "<img src=\"" + esc(name) + "\"" + attrs + ">";
@@ -278,7 +299,7 @@ void serializeFrame(QTextFrame* frame, QString& out)
         if (auto first = block.begin(); !first.atEnd() && first.fragment().charFormat().property(kMathSourceProperty).toInt() == 2 &&
                                         first.fragment().length() == block.length() - 1 &&
                                         !mathSourceLatex(first.fragment().text(), true).isEmpty()) {
-            out += "<pre class=\"math\">$$" + esc(mathSourceLatex(first.fragment().text(), true)) + "$$</pre>";
+            out += displayFormula(first.fragment().charFormat(), mathSourceLatex(first.fragment().text(), true));
             continue;
         }
         if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
@@ -286,7 +307,7 @@ void serializeFrame(QTextFrame* frame, QString& out)
             QString latex;
             bool display = false;
             if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display) && display) {
-                out += "<pre class=\"math\">$$" + esc(latex) + "$$</pre>";
+                out += displayFormula(f, latex);
                 continue;
             }
         }

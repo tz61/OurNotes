@@ -21,6 +21,7 @@
 #include <QTabBar>
 #include <QToolBar>
 #include <QListWidget>
+#include <QFormLayout>
 #include <QMenuBar>
 #include <QProxyStyle>
 #include <QRegularExpression>
@@ -61,6 +62,7 @@
 #include "core/schema.h"
 #include "core/sync/engine.h"
 #include "gui/app_context.h"
+#include "gui/close_shortcut.h"
 #include "gui/collection_tree.h"
 #include "gui/common.h"
 #include "gui/connector_server.h"
@@ -1568,6 +1570,449 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     CHECK(!bubble->isEditing());
 }
 
+// A format whose font families are an empty list is not the note's font: Qt then picks a
+// fallback, on macOS Apple Color Emoji, whose spaces and digits are three or four times as
+// wide and whose lines are taller.
+static bool usesNoteFont(const QTextCharFormat& f) { return !f.hasProperty(QTextFormat::FontFamilies); }
+
+TEST_CASE("notes: text copied from a note pastes as it was shown: font, spaces, lines")
+{
+    app();
+    Env env;
+    auto from = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>Test</p><ol><li>在note 内选中复制文本, 请复制源码, paste到note "
+                 "也要和被选中的显示一样. 现在在macos上面选中再复制会乱; 图片的话可以直接复制.</li><li>有时候note 1234</li></ol></div>");
+    auto to = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor a, b;
+    for (auto* e : {&a, &b}) {
+        e->resize(600, 400);
+        e->show();
+    }
+    a.setNote(env.lib, qs(jstr(from, "key")));
+    b.setNote(env.lib, qs(jstr(to, "key")));
+    QApplication::processEvents();
+    auto* source = a.findChild<NoteTextEdit*>();
+    auto* target = b.findChild<NoteTextEdit*>();
+    source->selectAll();
+    source->copy();
+    target->setFocus();
+    target->paste();
+    QApplication::processEvents();
+
+    auto blocks = [](QTextDocument* d) {
+        std::vector<QTextBlock> v;
+        for (auto block = d->begin(); block.isValid(); block = block.next())
+            v.push_back(block);
+        return v;
+    };
+    auto was = blocks(source->document()), now = blocks(target->document());
+    REQUIRE(was.size() == now.size());
+    for (size_t i = 0; i < was.size(); ++i) {
+        INFO("paragraph " << i << ": " << was[i].text().toStdString());
+        CHECK(now[i].text() == was[i].text());
+        for (auto it = now[i].begin(); !it.atEnd(); ++it)
+            CHECK(usesNoteFont(it.fragment().charFormat()));
+        // laid out alike: as many lines, as wide and as high
+        auto* before = was[i].layout();
+        auto* after = now[i].layout();
+        REQUIRE(after->lineCount() == before->lineCount());
+        for (int l = 0; l < before->lineCount(); ++l) {
+            CHECK(after->lineAt(l).naturalTextWidth() == doctest::Approx(before->lineAt(l).naturalTextWidth()));
+            CHECK(after->lineAt(l).height() == doctest::Approx(before->lineAt(l).height()));
+        }
+    }
+}
+
+TEST_CASE("notes: the next paragraph is as far below as the next line, opened, pasted or typed")
+{
+    app();
+    Env env;
+    const QString longText = "A paragraph long enough to take two lines in a narrow note, so that the room "
+                             "between its own lines can be measured against the room between paragraphs.";
+    auto note = env.library.createNote(
+        env.lib, qs("<div data-schema-version=\"9\"><h2>Title</h2><p>" + longText.toStdString() +
+                    "</p><p>One</p><p>Two</p><ul><li>a</li><li>b</li></ul><blockquote><p>Quoted</p></blockquote><p>After</p></div>")
+                     .toStdString());
+    NoteEditor editor;
+    editor.resize(420, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    auto* layout = edit->document()->documentLayout();
+    // from one line's top to the next one's: within a paragraph, and across into the next
+    auto lineTops = [&] {
+        std::vector<double> tops;
+        for (auto block = edit->document()->begin(); block.isValid(); block = block.next()) {
+            double y = layout->blockBoundingRect(block).top();
+            for (int i = 0; i < block.layout()->lineCount(); ++i)
+                tops.push_back(y + block.layout()->lineAt(i).y());
+        }
+        return tops;
+    };
+    auto paragraph = edit->document()->begin().next();
+    REQUIRE(paragraph.text() == longText);
+    REQUIRE(paragraph.layout()->lineCount() >= 2);
+    double line = paragraph.layout()->lineAt(1).y() - paragraph.layout()->lineAt(0).y();
+    auto everyLine = [&](const char* what) {
+        auto tops = lineTops();
+        // past the heading (its line is taller): every step is one line of text
+        for (size_t i = 2; i < tops.size(); ++i) {
+            INFO(std::string(what) << ", line " << i);
+            CHECK(tops[i] - tops[i - 1] == doctest::Approx(line));
+        }
+        return tops.size();
+    };
+    size_t lines = everyLine("as opened");
+    // the heading's own line is no taller than its text
+    auto title = edit->document()->begin();
+    CHECK(layout->blockBoundingRect(title).height() == doctest::Approx(title.layout()->lineAt(0).height()));
+
+    // pasted: from another program's HTML with Qt's 12 px around paragraphs, and Markdown
+    edit->moveCursor(QTextCursor::End);
+    auto* html = new QMimeData;
+    html->setHtml("<p style=\"margin-top:12px; margin-bottom:12px;\">Pasted one</p><p style=\"margin-top:12px; "
+                  "margin-bottom:12px;\">Pasted two</p>");
+    QApplication::clipboard()->setMimeData(html);
+    QTest::keyClick(edit, Qt::Key_Return);
+    edit->paste();
+    auto* markdown = new QMimeData;
+    markdown->setText("# Pasted heading\n\nParagraph.\n\n- one\n- two\n");
+    QApplication::clipboard()->setMimeData(markdown);
+    QTest::keyClick(edit, Qt::Key_Return);
+    edit->paste();
+    QApplication::processEvents();
+    // a heading typed in Markdown, and the line after it
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "## Typed");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "text");
+    QApplication::processEvents();
+    auto tops = lineTops();
+    REQUIRE(tops.size() > lines + 6);
+    for (auto block = edit->document()->begin(); block.isValid(); block = block.next()) {
+        INFO(block.text().toStdString());
+        CHECK(block.blockFormat().topMargin() == 0);
+        CHECK(block.blockFormat().bottomMargin() == 0);
+        // every block is as high as its lines, with nothing around them
+        double linesHeight = 0;
+        for (int i = 0; i < block.layout()->lineCount(); ++i)
+            linesHeight += block.layout()->lineAt(i).height();
+        CHECK(layout->blockBoundingRect(block).height() == doctest::Approx(linesHeight));
+    }
+}
+
+TEST_CASE("notes: a formula has the colour of the text it is typed in, kept when saved")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    QColor green("#00aa00");
+    // where the formula is, and whether it is drawn in green
+    auto formulaIn = [](NoteTextEdit* edit) -> std::optional<QTextFragment> {
+        for (auto block = edit->document()->begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isImageFormat() &&
+                    parseMathResourceName(it.fragment().charFormat().toImageFormat().name(), nullptr, nullptr))
+                    return it.fragment();
+        return std::nullopt;
+    };
+    auto drawnGreen = [](NoteTextEdit* edit, const QTextFragment& formula) {
+        QTextCursor at(edit->document());
+        at.setPosition(formula.position());
+        QRect from = edit->cursorRect(at);
+        at.setPosition(formula.position() + 1);
+        QRect to = edit->cursorRect(at);
+        QImage shot = edit->viewport()->grab().toImage();
+        double dpr = shot.devicePixelRatio();
+        int greenish = 0;
+        for (int x = from.left(); x < to.left(); ++x)
+            for (int y = from.top(); y <= from.bottom(); ++y) {
+                QColor c = shot.pixelColor(int(x * dpr), int(y * dpr));
+                if (c.green() > c.red() + 60 && c.green() > c.blue() + 60)
+                    ++greenish;
+            }
+        return greenish > 5;
+    };
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(note, "key")));
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        edit->setFocus();
+        QApplication::processEvents();
+        edit->setTextColor(green);
+        QTest::keyClicks(edit, "a $x^2+y$ b");
+        QApplication::processEvents();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+        editor.flush();
+    }
+    auto html = jstr(*env.library.item(env.lib, jstr(note, "key")), "note");
+    CHECK(html.find("<span style=\"color: #00aa00\"><span class=\"math\">$x^2+y$</span></span>") != std::string::npos);
+    {
+        NoteEditor editor;  // opened again
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(note, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+    }
+
+    // a formula on a line of its own, too
+    auto own = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>before</p><pre class=\"math\" style=\"color: #00aa00\">$$a+b$$</pre></div>");
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(own, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+        edit->moveCursor(QTextCursor::Start);
+        QTest::keyClicks(edit, "x");
+        editor.flush();
+    }
+    CHECK(jstr(*env.library.item(env.lib, jstr(own, "key")), "note").find("<pre class=\"math\" style=\"color: #00aa00\">$$a+b$$</pre>") !=
+          std::string::npos);
+
+    // in dark mode a black formula is shown readable, and still saved black
+    applyAppearance(Appearance::Dark);
+    auto dark = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>z <span style=\"color: #000000\"><span class=\"math\">$y$</span></span></p></div>");
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(dark, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(!formula->charFormat().hasProperty(QTextFormat::ForegroundBrush));  // the formula colour, readable
+        QTest::keyClicks(edit, "!");
+        editor.flush();
+    }
+    CHECK(jstr(*env.library.item(env.lib, jstr(dark, "key")), "note").find("<span style=\"color: #000000\"><span class=\"math\">$y$</span></span>") !=
+          std::string::npos);
+    applyAppearance(Appearance::System);
+}
+
+// The formulas in a note, in order: their LaTeX, and whether on a line of their own.
+static std::vector<std::pair<QString, bool>> formulasIn(QTextDocument* doc)
+{
+    std::vector<std::pair<QString, bool>> out;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            QString latex;
+            bool display = false;
+            auto f = it.fragment().charFormat();
+            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display))
+                out.push_back({latex, display});
+        }
+    return out;
+}
+
+static int picturesIn(QTextDocument* doc)
+{
+    int n = 0;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto f = it.fragment().charFormat();
+            if (f.isImageFormat() && !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr))
+                n += it.fragment().length();
+        }
+    return n;
+}
+
+TEST_CASE("notes: copied out, formulas are their LaTeX and pictures [image]; a picture alone is the picture")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>a <span class=\"math\">$x^2$</span> <strong>b</strong></p>"
+                                                "<pre class=\"math\">$$\\int f$$</pre><p>c</p></div>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    REQUIRE(formulasIn(edit->document()).size() == 2);
+    // a picture pasted in (it becomes the note's attachment)
+    QImage picture(40, 30, QImage::Format_RGB32);
+    picture.fill(Qt::red);
+    auto* image = new QMimeData;
+    image->setImageData(picture);
+    QApplication::clipboard()->setMimeData(image);
+    edit->moveCursor(QTextCursor::End);
+    edit->paste();
+    QTest::keyClicks(edit, " d");
+    REQUIRE(picturesIn(edit->document()) == 1);
+
+    edit->selectAll();
+    edit->copy();
+    auto* copied = QApplication::clipboard()->mimeData();
+    CHECK(copied->text() == "a $x^2$ b\n$$\\int f$$\nc[image] d");
+    QString html = copied->html();
+    // its encoding said: without it, macOS (Notes, TextEdit) reads it as Latin-1, and
+    // Chinese turns into "ä¸­æ–‡"
+    CHECK(html.startsWith("<html><head><meta charset=\"utf-8\">"));
+    CHECK(html.contains("<span class=\"math\">$x^2$</span>"));
+    CHECK(html.contains("<strong>b</strong>"));
+    CHECK(html.contains("<pre class=\"math\">$$\\int f$$</pre>"));
+    CHECK(html.contains("[image]"));
+    CHECK(!html.contains("<img"));
+    CHECK(!html.contains("math:"));
+
+    // the picture alone: copied as a picture
+    auto last = edit->document()->lastBlock();
+    int at = last.position() + last.text().indexOf(QChar::ObjectReplacementCharacter);
+    QTextCursor c(edit->document());
+    c.setPosition(at);
+    c.setPosition(at + 1, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    copied = QApplication::clipboard()->mimeData();
+    REQUIRE(copied->hasImage());
+    CHECK(qvariant_cast<QImage>(copied->imageData()).size() == QSize(40, 30));
+    CHECK(!copied->hasText());
+    // and pasted into a note, it is the picture again
+    edit->moveCursor(QTextCursor::End);
+    edit->paste();
+    CHECK(picturesIn(edit->document()) == 2);
+    CHECK(formulasIn(edit->document()).size() == 2);
+}
+
+TEST_CASE("notes: copied out, headings keep their level: <h1>..<h6> in HTML, # signs in text")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><h2>Title</h2><p>text with <span class=\"math\">$x$</span></p>"
+                                                "<h1>Big</h1><h3>Small</h3></div>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->selectAll();
+    edit->copy();
+    auto* copied = QApplication::clipboard()->mimeData();
+    CHECK(copied->text() == "## Title\ntext with $x$\n# Big\n### Small");
+    QString html = copied->html();
+    CHECK(html.contains("<h2>Title</h2>"));
+    CHECK(html.contains("<h1>Big</h1>"));
+    CHECK(html.contains("<h3>Small</h3>"));
+
+    // from the middle of a heading to the next line: the part of it, with its level
+    QTextCursor c(edit->document());
+    c.setPosition(2);
+    c.setPosition(edit->document()->begin().next().position() + 4, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    CHECK(QApplication::clipboard()->mimeData()->text() == "tle\ntext");
+    // a few words of a heading are just words
+    c.setPosition(1);
+    c.setPosition(4, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    CHECK(QApplication::clipboard()->mimeData()->text() == "itl");
+}
+
+TEST_CASE("notes: LaTeX pasted from other programs becomes formulas; prices stay text")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    auto paste = [&](QMimeData* data) {
+        QApplication::clipboard()->setMimeData(data);
+        edit->moveCursor(QTextCursor::End);
+        edit->paste();
+        QApplication::processEvents();
+    };
+    auto* plain = new QMimeData;
+    plain->setText("E $E=mc^2$ costs $5 and $10\n$$a+b$$\nend");
+    paste(plain);
+    auto formulas = formulasIn(edit->document());
+    REQUIRE(formulas.size() == 2);
+    CHECK(formulas[0] == std::pair<QString, bool>{"E=mc^2", false});
+    CHECK(formulas[1] == std::pair<QString, bool>{"a+b", true});
+    CHECK(edit->document()->begin().text().contains("costs $5 and $10"));
+    CHECK(edit->document()->toPlainText().endsWith("end"));
+
+    // Zotero's formulas, and LaTeX in another program's rich text
+    auto* zotero = new QMimeData;
+    zotero->setHtml("<p>z <span class=\"math\">$y$</span></p>");
+    paste(zotero);
+    auto* rich = new QMimeData;
+    rich->setHtml("<p>see <b>$k_1$</b> here, for $3 or $4</p>");
+    paste(rich);
+    formulas = formulasIn(edit->document());
+    REQUIRE(formulas.size() == 4);
+    CHECK(formulas[2].first == "y");
+    CHECK(formulas[3].first == "k_1");
+    CHECK(edit->document()->toPlainText().contains("for $3 or $4"));
+}
+
+TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    QApplication::processEvents();
+    QTest::keyClicks(edit, "run `make` then 1 2");
+    auto block = edit->document()->begin();
+    REQUIRE(block.text() == "run make then 1 2");
+    QTextCursor c(edit->document());
+    c.setPosition(block.position() + block.text().indexOf("make") + 1);
+    CHECK(c.charFormat().fontFixedPitch());  // the code
+    c.setPosition(block.position() + block.text().indexOf("then") + 1);
+    CHECK(usesNoteFont(c.charFormat()));
+    CHECK(usesNoteFont(edit->currentCharFormat()));
+}
+
+TEST_CASE("notes: a tab is as wide as four spaces, at any text size")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    for (int zoom : {100, 150}) {
+        editor.setZoom(zoom);
+        INFO("zoom " << zoom);
+        CHECK(edit->tabStopDistance() == doctest::Approx(4 * QFontMetricsF(edit->font()).horizontalAdvance(' ')));
+    }
+}
+
 TEST_CASE("notes: Ctrl+B, Ctrl+I and Ctrl+U format the text")
 {
     app();
@@ -2731,6 +3176,84 @@ TEST_CASE("storage window: this computer's disk and libraries, and the sync targ
         CHECK(bar->fraction() > 0);
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         window.grab().save(dir + "/storage-window.png");
+}
+
+TEST_CASE("storage window: the server line has the window's width and shows all of its text, also on macOS")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "USB stick";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "a folder with a rather long name, so that the line is long");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    {
+        Library lib(env.library.dataDir());
+        sync::LocalTransport transport(target.path);
+        REQUIRE(sync::SyncEngine(lib, transport, "folder1").syncAll().errors.empty());
+    }
+    // macOS's style keeps a form's fields at their size hint: a wrapped label stayed
+    // narrow, and lost what did not fit ("ournotesd 0.1.14," and no more)
+    struct MacForms : QProxyStyle {
+        int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget,
+                      QStyleHintReturn* data) const override
+        {
+            return hint == SH_FormLayoutFieldGrowthPolicy ? QFormLayout::FieldsStayAtSizeHint
+                                                          : QProxyStyle::styleHint(hint, option, widget, data);
+        }
+    } style;
+    StorageWindow window;
+    for (auto* form : window.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(&style);
+    window.resize(760, 680);
+    window.show();
+    window.refresh();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isLoading(); }, 10000));
+    QApplication::processEvents();
+    auto* server = window.findChild<QLabel*>("server");
+    REQUIRE(server->text().startsWith("a folder"));
+    CHECK(server->width() > window.width() / 2);
+    CHECK(server->height() >= server->heightForWidth(server->width()));
+    for (auto* form : window.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(nullptr);
+}
+
+// macOS's style keeps a form's fields at their size hint (other styles let them grow).
+struct MacFormsStyle : QProxyStyle {
+    int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget, QStyleHintReturn* data) const override
+    {
+        return hint == SH_FormLayoutFieldGrowthPolicy ? QFormLayout::FieldsStayAtSizeHint
+                                                      : QProxyStyle::styleHint(hint, option, widget, data);
+    }
+};
+
+TEST_CASE("preferences: the formula colour's hint is one line, also on macOS")
+{
+    app();
+    Env env;
+    SyncController sync;
+    MacFormsStyle style;
+    PreferencesDialog dialog(&sync);
+    for (auto* form : dialog.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(&style);
+    dialog.show();
+    dialog.showPage(0);
+    QApplication::processEvents();
+    auto* hint = dialog.findChild<QLabel*>("formulaColorHint");
+    REQUIRE(hint);
+    REQUIRE(hint->isVisible());
+    // squeezed beside the colour's menu, it wrapped onto two lines and lost part of the second
+    CHECK(hint->width() >= hint->fontMetrics().horizontalAdvance(hint->text()));
+    CHECK(hint->height() >= hint->fontMetrics().height());
+    for (auto* form : dialog.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(nullptr);
 }
 
 TEST_CASE("main window: what another program changes shows at once; its own sync is not taken for that")
@@ -4354,6 +4877,62 @@ TEST_CASE("main window: no menu item is taken for Quit, Preferences or About bec
     REQUIRE(quit);
     CHECK(quit->shortcut() == QKeySequence(QKeySequence::Quit));
     window.setWindowState(Qt::WindowNoState);
+}
+
+TEST_CASE("windows: Ctrl+W (Command-W) closes any window but the main one, where it closes a tab")
+{
+    app();
+    Env env;
+    installCloseShortcuts();
+    TempDir tmp;
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    for (int i = 0; i < 2; ++i) {
+        auto file = tmp.path / ("paper" + std::to_string(i) + ".pdf");
+        writeSamplePdf(file);
+        auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+        window.openAttachment(env.lib, qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key")));
+    }
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->count() == 3);
+    auto activate = [](QWidget* w) {
+        w->show();
+        w->raise();
+        w->activateWindow();
+        return QTest::qWaitForWindowActive(w);
+    };
+
+    StorageWindow storage(&window);  // Tools → Storage and Sync Status
+    REQUIRE(activate(&storage));
+    QTest::keySequence(&storage, QKeySequence("Ctrl+W"));
+    CHECK(!storage.isVisible());
+    CHECK(tabs->count() == 3);  // not a tab of the main window
+
+    QDialog dialog(&window);  // and the platform's Close (Ctrl+F4 on Windows)
+    REQUIRE(activate(&dialog));
+    QTest::keySequence(&dialog, QKeySequence(QKeySequence::Close));
+    CHECK(!dialog.isVisible());
+
+    // macOS's menu bar takes ⌘W before the front window does, and triggers the main
+    // window's Close Tab: that closes the front window then, not a tab
+    QAction* closeTab = nullptr;
+    for (auto* a : window.findChildren<QAction*>())
+        if (a->text() == "Close Tab" && a->shortcut() == QKeySequence("Ctrl+W"))
+            closeTab = a;
+    REQUIRE(closeTab);
+    StorageWindow front(&window);
+    REQUIRE(activate(&front));
+    closeTab->trigger();
+    CHECK(!front.isVisible());
+    CHECK(tabs->count() == 3);
+
+    // in the main window it is still Close Tab
+    REQUIRE(activate(&window));
+    tabs->setCurrentIndex(2);
+    QTest::keySequence(&window, QKeySequence("Ctrl+W"));
+    CHECK(tabs->count() == 2);
+    CHECK(window.isVisible());
 }
 
 TEST_CASE("main window: Control-Tab and Control-Shift-Tab switch tabs")

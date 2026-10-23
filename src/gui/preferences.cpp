@@ -201,8 +201,10 @@ QWidget* PreferencesDialog::formulaColorRow(QWidget* page)
     h->addWidget(mode);
     h->addWidget(swatch);
     auto* hint = new QLabel(tr("Single formulas can use \\textcolor{red}{…}."), row);
+    hint->setObjectName("formulaColorHint");
     hint->setForegroundRole(QPalette::PlaceholderText);
-    hint->setWordWrap(true);
+    // one line: wrapped, macOS's form kept it as narrow as its size hint, on two lines
+    // without room for the second
     h->addWidget(hint, 1);
 
     auto stored = [] { return qs(AppContext::get().config().get("/notes/formulaColor", "").get<std::string>()); };

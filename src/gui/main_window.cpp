@@ -331,6 +331,13 @@ void MainWindow::buildActions()
     file->addSeparator();
     // Ctrl+W (⌘W) everywhere: Windows' standard Close is Ctrl+F4
     file->addAction(tr("Close Tab"), QKeySequence("Ctrl+W"), this, [this] {
+        // macOS's menu bar serves all windows and takes ⌘W before the front one does: in
+        // another window (Sync History, Storage and Sync Status, a dialog) it closes that
+        // window, not a tab here (see installCloseShortcuts)
+        if (auto* front = QApplication::activeWindow(); front && front != this) {
+            front->close();
+            return;
+        }
         int i = tabs_->currentIndex();
         if (i > 0)
             emit tabs_->tabCloseRequested(i);
