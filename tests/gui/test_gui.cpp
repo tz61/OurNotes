@@ -1808,6 +1808,134 @@ TEST_CASE("notes: a formula has the colour of the text it is typed in, kept when
     applyAppearance(Appearance::System);
 }
 
+// The formulas in a note, in order: their LaTeX, and whether on a line of their own.
+static std::vector<std::pair<QString, bool>> formulasIn(QTextDocument* doc)
+{
+    std::vector<std::pair<QString, bool>> out;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            QString latex;
+            bool display = false;
+            auto f = it.fragment().charFormat();
+            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display))
+                out.push_back({latex, display});
+        }
+    return out;
+}
+
+static int picturesIn(QTextDocument* doc)
+{
+    int n = 0;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto f = it.fragment().charFormat();
+            if (f.isImageFormat() && !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr))
+                n += it.fragment().length();
+        }
+    return n;
+}
+
+TEST_CASE("notes: copied out, formulas are their LaTeX and pictures [image]; a picture alone is the picture")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>a <span class=\"math\">$x^2$</span> <strong>b</strong></p>"
+                                                "<pre class=\"math\">$$\\int f$$</pre><p>c</p></div>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    REQUIRE(formulasIn(edit->document()).size() == 2);
+    // a picture pasted in (it becomes the note's attachment)
+    QImage picture(40, 30, QImage::Format_RGB32);
+    picture.fill(Qt::red);
+    auto* image = new QMimeData;
+    image->setImageData(picture);
+    QApplication::clipboard()->setMimeData(image);
+    edit->moveCursor(QTextCursor::End);
+    edit->paste();
+    QTest::keyClicks(edit, " d");
+    REQUIRE(picturesIn(edit->document()) == 1);
+
+    edit->selectAll();
+    edit->copy();
+    auto* copied = QApplication::clipboard()->mimeData();
+    CHECK(copied->text() == "a $x^2$ b\n$$\\int f$$\nc[image] d");
+    QString html = copied->html();
+    // its encoding said: without it, macOS (Notes, TextEdit) reads it as Latin-1, and
+    // Chinese turns into "ä¸­æ–‡"
+    CHECK(html.startsWith("<html><head><meta charset=\"utf-8\">"));
+    CHECK(html.contains("<span class=\"math\">$x^2$</span>"));
+    CHECK(html.contains("<strong>b</strong>"));
+    CHECK(html.contains("<pre class=\"math\">$$\\int f$$</pre>"));
+    CHECK(html.contains("[image]"));
+    CHECK(!html.contains("<img"));
+    CHECK(!html.contains("math:"));
+
+    // the picture alone: copied as a picture
+    auto last = edit->document()->lastBlock();
+    int at = last.position() + last.text().indexOf(QChar::ObjectReplacementCharacter);
+    QTextCursor c(edit->document());
+    c.setPosition(at);
+    c.setPosition(at + 1, QTextCursor::KeepAnchor);
+    edit->setTextCursor(c);
+    edit->copy();
+    copied = QApplication::clipboard()->mimeData();
+    REQUIRE(copied->hasImage());
+    CHECK(qvariant_cast<QImage>(copied->imageData()).size() == QSize(40, 30));
+    CHECK(!copied->hasText());
+    // and pasted into a note, it is the picture again
+    edit->moveCursor(QTextCursor::End);
+    edit->paste();
+    CHECK(picturesIn(edit->document()) == 2);
+    CHECK(formulasIn(edit->document()).size() == 2);
+}
+
+TEST_CASE("notes: LaTeX pasted from other programs becomes formulas; prices stay text")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    auto paste = [&](QMimeData* data) {
+        QApplication::clipboard()->setMimeData(data);
+        edit->moveCursor(QTextCursor::End);
+        edit->paste();
+        QApplication::processEvents();
+    };
+    auto* plain = new QMimeData;
+    plain->setText("E $E=mc^2$ costs $5 and $10\n$$a+b$$\nend");
+    paste(plain);
+    auto formulas = formulasIn(edit->document());
+    REQUIRE(formulas.size() == 2);
+    CHECK(formulas[0] == std::pair<QString, bool>{"E=mc^2", false});
+    CHECK(formulas[1] == std::pair<QString, bool>{"a+b", true});
+    CHECK(edit->document()->begin().text().contains("costs $5 and $10"));
+    CHECK(edit->document()->toPlainText().endsWith("end"));
+
+    // Zotero's formulas, and LaTeX in another program's rich text
+    auto* zotero = new QMimeData;
+    zotero->setHtml("<p>z <span class=\"math\">$y$</span></p>");
+    paste(zotero);
+    auto* rich = new QMimeData;
+    rich->setHtml("<p>see <b>$k_1$</b> here, for $3 or $4</p>");
+    paste(rich);
+    formulas = formulasIn(edit->document());
+    REQUIRE(formulas.size() == 4);
+    CHECK(formulas[2].first == "y");
+    CHECK(formulas[3].first == "k_1");
+    CHECK(edit->document()->toPlainText().contains("for $3 or $4"));
+}
+
 TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
 {
     app();

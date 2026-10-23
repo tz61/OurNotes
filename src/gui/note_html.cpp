@@ -16,7 +16,7 @@
 namespace on::gui {
 
 // Zotero stores formulas as <span class="math">$…$</span> and <pre class="math">$$…$$</pre>.
-static QString mathToImages(const QString& html)
+QString mathMarkupToImages(const QString& html)
 {
     // a display formula may have a colour (OurNotes writes it so; an inline one is in a
     // coloured span, like text)
@@ -56,7 +56,7 @@ static QString mathToImages(const QString& html)
 
 QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocument* doc)
 {
-    QString html = mathToImages(rawHtml);
+    QString html = mathMarkupToImages(rawHtml);
     static const QRegularExpression img(R"re(<img\b([^>]*?)data-attachment-key="([A-Za-z0-9]+)"([^>]*)>)re");
     auto& lib = AppContext::get().library();
     QString out;

@@ -108,6 +108,18 @@ static void useNoteFont(QTextCharFormat& f)
 static const QString kNoteStyleSheet =
     "p, ul, ol, li, pre, blockquote, h1, h2, h3, h4, h5, h6 { margin-top: 0px; margin-bottom: 0px; }";
 
+// A note's selection, copied or dragged, for another note: exactly as it was (Qt's HTML).
+// Other programs get text and Zotero's HTML, with formulas as LaTeX.
+static const QString kNoteFragmentMime = "application/x-ournotes-note-fragment";
+
+// LaTeX in text: $$…$$, and $…$ with no space inside its signs and no digit after it
+// ("$5 and $10" is not a formula).
+static const QRegularExpression& latexInText()
+{
+    static const QRegularExpression re(R"re(\$\$([^$]*\S[^$]*)\$\$|(?<![\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?!\d))re");
+    return re;
+}
+
 static void noParagraphSpacing(QTextDocument* doc)
 {
     for (auto block = doc->begin(); block.isValid(); block = block.next()) {
@@ -173,6 +185,31 @@ static QTextImageFormat mathFormat(const QString& latex, bool display, const QTe
     f.setVerticalAlignment(QTextCharFormat::AlignMiddle);
     f.setToolTip(latex);
     return f;
+}
+
+// LaTeX written in pasted rich text becomes formulas, in the colour of its text; one alone
+// on its line, $$…$$, is centred.
+static void formulasFromText(QTextDocument* doc)
+{
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        QString text = block.text();
+        std::vector<QRegularExpressionMatch> found;
+        for (auto it = latexInText().globalMatch(text); it.hasNext();)
+            found.push_back(it.next());
+        for (auto m = found.rbegin(); m != found.rend(); ++m) {
+            bool display = m->capturedLength(1) > 0;
+            QTextCursor c(doc);
+            c.setPosition(block.position() + int(m->capturedStart()));
+            c.setPosition(block.position() + int(m->capturedEnd()), QTextCursor::KeepAnchor);
+            auto colour = c.charFormat();
+            c.insertImage(mathFormat((display ? m->captured(1) : m->captured(2)).trimmed(), display, colour));
+        }
+        if (found.size() == 1 && found[0].capturedLength(1) > 0 && text.trimmed() == found[0].captured(0)) {
+            auto bf = block.blockFormat();
+            bf.setAlignment(Qt::AlignHCenter);
+            QTextCursor(block).setBlockFormat(bf);
+        }
+    }
 }
 
 static QString stripDelimiters(QString text, bool display)
@@ -825,25 +862,25 @@ void NoteTextEdit::finishHeading()
     committing_ = false;
 }
 
-// Markdown text as rich text in `out`; formulas ($…$, $$…$$) become formulas.
-void NoteTextEdit::markdownDocument(const QString& markdown, QTextDocument* out) const
+void NoteTextEdit::textDocument(const QString& source, bool markdown, QTextDocument* out) const
 {
     // set aside first: Markdown would read the _ and * in them as emphasis
-    static const QRegularExpression math(
-        R"re(\$\$([^$]*\S[^$]*)\$\$|(?<![\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?!\d))re");
     std::vector<std::pair<QString, bool>> formulas;
     QString text;
     qsizetype last = 0;
-    for (auto it = math.globalMatch(markdown); it.hasNext();) {
+    for (auto it = latexInText().globalMatch(source); it.hasNext();) {
         auto m = it.next();
         bool display = m.capturedLength(1) > 0;
-        text += markdown.mid(last, m.capturedStart() - last);
+        text += source.mid(last, m.capturedStart() - last);
         text += QChar(0xE000) + QString::number(formulas.size()) + QChar(0xE001);
         formulas.push_back({(display ? m.captured(1) : m.captured(2)).trimmed(), display});
         last = m.capturedEnd();
     }
-    text += markdown.mid(last);
-    out->setMarkdown(text, QTextDocument::MarkdownDialectGitHub);
+    text += source.mid(last);
+    if (markdown)
+        out->setMarkdown(text, QTextDocument::MarkdownDialectGitHub);
+    else
+        out->setPlainText(text);
     static const QRegularExpression token(QString(QChar(0xE000)) + "(\\d+)" + QChar(0xE001));
     for (auto c = out->find(token); !c.isNull(); c = out->find(token, c)) {
         size_t i = c.selectedText().mid(1).chopped(1).toULong();
@@ -1071,9 +1108,62 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
     menu->exec(e->globalPos());
 }
 
+// Copied or dragged out of a note. Another note gets the selection as it was; other
+// programs get formulas as their LaTeX ($…$, $$…$$ on a line of its own) and pictures as
+// "[image]", in text and in Zotero's HTML; a picture selected alone is copied as a picture.
+QMimeData* NoteTextEdit::createMimeDataFromSelection() const
+{
+    auto cursor = textCursor();
+    std::unique_ptr<QMimeData> qt(QTextEdit::createMimeDataFromSelection());
+    if (!cursor.hasSelection())
+        return qt.release();
+    auto* data = new QMimeData;
+    data->setData(kNoteFragmentMime, qt->html().toUtf8());
+    QTextCursor one(document());
+    one.setPosition(cursor.selectionEnd());
+    auto f = one.charFormat();
+    if (cursor.selectionEnd() - cursor.selectionStart() == 1 && f.isImageFormat() &&
+        !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr)) {
+        auto image = document()->resource(QTextDocument::ImageResource, QUrl(f.toImageFormat().name())).value<QImage>();
+        if (!image.isNull()) {
+            data->setImageData(image);
+            return data;
+        }
+    }
+    QTextDocument copy;
+    QTextCursor(&copy).insertFragment(cursor.selection());
+    QStringList lines;
+    for (auto block = copy.begin(); block.isValid(); block = block.next()) {
+        QString line;
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto fragment = it.fragment();
+            auto format = fragment.charFormat();
+            QString latex;
+            bool display = false;
+            if (!format.isImageFormat())
+                line += fragment.text();
+            else if (parseMathResourceName(format.toImageFormat().name(), &latex, &display))
+                line += display ? "$$" + latex + "$$" : "$" + latex + "$";
+            else
+                line += QString("[image]").repeated(fragment.length());
+        }
+        line.replace(QChar::LineSeparator, '\n');
+        line.replace(QChar::Nbsp, ' ');
+        lines << line;
+    }
+    data->setText(lines.join('\n'));
+    // a whole page that says its encoding: macOS (Notes, TextEdit) reads HTML that does not
+    // as Latin-1, and Chinese became "ä¸­æ–‡"
+    static const QRegularExpression picture(R"(<img\b[^>]*>)");
+    data->setHtml("<html><head><meta charset=\"utf-8\"></head><body>" + documentToNoteHtml(&copy).replace(picture, "[image]") +
+                  "</body></html>");
+    return data;
+}
+
 bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 {
-    return (storeImage && source->hasImage()) || QTextEdit::canInsertFromMimeData(source);
+    return source->hasFormat(kNoteFragmentMime) || (storeImage && source->hasImage()) ||
+           QTextEdit::canInsertFromMimeData(source);
 }
 
 void NoteTextEdit::insertFromMimeData(const QMimeData* source)
@@ -1101,7 +1191,8 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
                 leaveMath(*now, now->display);
         return;
     }
-    if (storeImage && source->hasImage()) {
+    bool fromNote = source->hasFormat(kNoteFragmentMime);
+    if (storeImage && source->hasImage() && !fromNote) {
         auto image = qvariant_cast<QImage>(source->imageData());
         if (!image.isNull()) {
             auto name = storeImage(image);
@@ -1132,9 +1223,11 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     static const QRegularExpression markdownRe(
         R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
         QRegularExpression::MultilineOption);
-    if (markdown_ && !source->hasHtml() && source->hasText() && markdownRe.match(source->text()).hasMatch()) {
+    // Markdown, or text with LaTeX in it: formulas, formatting and lines as such
+    bool markdown = markdown_ && markdownRe.match(source->text()).hasMatch();
+    if (!fromNote && !source->hasHtml() && source->hasText() && (markdown || latexInText().match(source->text()).hasMatch())) {
         QTextDocument pasted;
-        markdownDocument(source->text(), &pasted);
+        textDocument(source->text(), markdown, &pasted);
         noParagraphSpacing(&pasted);
         auto cursor = textCursor();
         bool emptyLine = cursor.block().length() <= 1;
@@ -1151,10 +1244,16 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         return;
     }
     // keep pasted rich text but not foreign fonts and sizes; relative sizes (headings)
-    // follow the note's text size
-    if (source->hasHtml()) {
+    // follow the note's text size. From another program, Zotero's formulas and LaTeX
+    // written in the text become formulas; from a note, it is as it was.
+    if (fromNote || source->hasHtml()) {
         QTextDocument tmp;
-        tmp.setHtml(source->html());
+        if (fromNote) {
+            tmp.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
+        } else {
+            tmp.setHtml(mathMarkupToImages(source->html()));
+            formulasFromText(&tmp);
+        }
         noParagraphSpacing(&tmp);
         std::vector<QTextFragment> fragments;
         for (auto block = tmp.begin(); block.isValid(); block = block.next())
