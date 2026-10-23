@@ -82,3 +82,24 @@ TEST_CASE("markdownToNoteHtml: a note as an agent writes it")
                   "<pre>int main() { return 1 &lt; 2; }</pre><hr><h3>deep</h3></div>");
     CHECK(markdownToNoteHtml("costs $5 and $10") == "<div data-schema-version=\"9\"><p>costs $5 and $10</p></div>");
 }
+
+TEST_CASE("markdownToNoteHtml: tables, as GitHub has them")
+{
+    auto html = markdownToNoteHtml("Results:\n\n| Model | Acc. | Notes |\n|:------|----:|:-:|\n| **A** | 0.91 | a \\| b |\n"
+                                   "| B | 0.87 |\nafter");
+    CHECK(html.find("<p>Results:</p><table>") != std::string::npos);
+    CHECK(html.find("<tr><th align=\"left\">Model</th><th align=\"right\">Acc.</th><th align=\"center\">Notes</th></tr>") !=
+          std::string::npos);
+    CHECK(html.find("<tr><td><strong>A</strong></td><td align=\"right\">0.91</td><td align=\"center\">a | b</td></tr>") !=
+          std::string::npos);
+    CHECK(html.find("<tr><td>B</td><td align=\"right\">0.87</td><td align=\"center\"></td></tr></table><p>after</p>") !=
+          std::string::npos);
+    // no delimiter row, or one of another width: not a table
+    CHECK(markdownToNoteHtml("a | b\nc | d").find("<table>") == std::string::npos);
+    CHECK(markdownToNoteHtml("| a | b |\n|---|\n| c | d |").find("<table>") == std::string::npos);
+    CHECK(markdownTableCells("no pipes").empty());
+    CHECK(markdownTableAlignments("| a | b |").empty());
+    CHECK(markdownTableAlignments("---|:--:") == "lc");
+    // as text: a row's cells apart
+    CHECK(htmlToText("<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>") == "A\tB\n1\t2");
+}

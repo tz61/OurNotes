@@ -6,6 +6,7 @@
 #include <cstdint>
 
 class QTextDocument;
+class QTextTable;
 
 namespace on::gui {
 
@@ -20,6 +21,12 @@ QString noteHtmlForEditor(const QString& html, int64_t libraryId, QTextDocument*
 // Zotero's formulas (<span class="math">$…$</span>, <pre class="math">$$…$$</pre>) as
 // "math:" images, which the note editor renders: for notes, and for HTML pasted in.
 QString mathMarkupToImages(const QString& html);
+// A table's first row of <th> cells in a <thead>, which QTextDocument takes for a header
+// row (QTextTableFormat::headerRowCount); written back as <th> (documentToNoteHtml).
+QString tableHeadersForEditor(const QString& html);
+// How tables look in a note: lines around the cells, some room in them.
+void styleNoteTable(QTextTable* table);
+void styleNoteTables(QTextDocument* doc);
 
 // Serialise a QTextDocument to clean note HTML in Zotero's format
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.

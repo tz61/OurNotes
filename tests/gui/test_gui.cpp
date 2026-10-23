@@ -40,6 +40,7 @@
 #include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
+#include <QTextTable>
 #include <QMimeData>
 #include <QPushButton>
 #include <QLineEdit>
@@ -2259,6 +2260,201 @@ TEST_CASE("notes: Markdown typed or pasted becomes formatting")
     comment.show();
     QTest::keyClicks(&comment, "# not a heading **nor bold**");
     CHECK(comment.toPlainText() == "# not a heading **nor bold**");
+}
+
+TEST_CASE("notes: a Markdown table typed is a table; Tab and Enter go through it; kept as Zotero's <table>")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    edit->setFocus();
+    auto* doc = edit->document();
+    auto cellText = [](QTextTable* t, int r, int c) {
+        auto cell = t->cellAt(r, c);
+        QTextCursor cur = cell.firstCursorPosition();
+        cur.setPosition(cell.lastCursorPosition().position(), QTextCursor::KeepAnchor);
+        return cur.selectedText();
+    };
+    auto alignOf = [](QTextTable* t, int r, int c) {
+        return t->cellAt(r, c).firstCursorPosition().blockFormat().alignment() & (Qt::AlignLeft | Qt::AlignRight | Qt::AlignHCenter);
+    };
+
+    QTest::keyClicks(edit, "Results");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "| Model | Acc. |");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "|:--|--:|");
+    QTest::keyClick(edit, Qt::Key_Return);
+    auto* table = edit->textCursor().currentTable();
+    REQUIRE(table);
+    CHECK(table->rows() == 2);
+    CHECK(table->columns() == 2);
+    CHECK(table->format().headerRowCount() == 1);
+    CHECK(table->format().border() == 1);
+    CHECK(cellText(table, 0, 0) == "Model");
+    CHECK(cellText(table, 0, 1) == "Acc.");
+    CHECK(table->cellAt(0, 0).firstCursorPosition().charFormat().fontWeight() == QFont::Bold);
+    CHECK(alignOf(table, 1, 1) == Qt::AlignRight);
+    CHECK(table->cellAt(edit->textCursor()).row() == 1);  // in the first cell under the header
+    CHECK(table->cellAt(edit->textCursor()).column() == 0);
+    CHECK(doc->begin().text() == "Results");
+
+    // Tab to the next cell, a new row after the last; Shift+Tab back
+    QTest::keyClicks(edit, "A");
+    QTest::keyClick(edit, Qt::Key_Tab);
+    QTest::keyClicks(edit, "0.91");
+    QTest::keyClick(edit, Qt::Key_Backtab);
+    CHECK(table->cellAt(edit->textCursor()).column() == 0);
+    QTest::keyClick(edit, Qt::Key_Tab);
+    QTest::keyClick(edit, Qt::Key_Tab);
+    CHECK(table->rows() == 3);
+    CHECK(table->cellAt(edit->textCursor()).row() == 2);
+    CHECK(alignOf(table, 2, 1) == Qt::AlignRight);  // as the column above
+    CHECK(table->cellAt(2, 0).firstCursorPosition().charFormat().fontWeight() != QFont::Bold);
+    QTest::keyClicks(edit, "B");
+    // Enter: the cell below (a new row); in an empty last row, out of the table without it
+    QTest::keyClick(edit, Qt::Key_Return);
+    CHECK(table->rows() == 4);
+    QTest::keyClick(edit, Qt::Key_Return);
+    CHECK(!edit->textCursor().currentTable());
+    CHECK(table->rows() == 3);
+    QTest::keyClicks(edit, "after");
+    CHECK(edit->textCursor().block().text() == "after");
+
+    editor.flush();
+    auto html = jstr(*env.library.item(env.lib, jstr(note, "key")), "note");
+    INFO(html);
+    CHECK(html.find("<p>Results</p><table><tr><th align=\"left\">Model</th><th align=\"right\">Acc.</th></tr>"
+                    "<tr><td>A</td><td align=\"right\">0.91</td></tr><tr><td>B</td><td align=\"right\"></td></tr></table>"
+                    "<p>after</p>") != std::string::npos);
+    CHECK(html.find("<strong>") == std::string::npos);  // the header row is bold as <th>
+
+    // opened again: the same table, header row and all
+    {
+        NoteEditor again;
+        again.resize(700, 500);
+        again.show();
+        again.setNote(env.lib, qs(jstr(note, "key")));
+        auto* d = again.findChild<NoteTextEdit*>()->document();
+        QTextTable* t = nullptr;
+        for (auto* f : d->rootFrame()->childFrames())
+            t = t ? t : qobject_cast<QTextTable*>(f);
+        REQUIRE(t);
+        CHECK(t->rows() == 3);
+        CHECK(t->format().headerRowCount() == 1);
+        CHECK(t->format().border() == 1);
+        CHECK(cellText(t, 1, 1) == "0.91");
+        CHECK(alignOf(t, 1, 1) == Qt::AlignRight);
+        CHECK(alignOf(t, 0, 0) == Qt::AlignLeft);
+        again.flush();
+        CHECK(jstr(*env.library.item(env.lib, jstr(note, "key")), "note") == html);  // nothing to save
+    }
+
+    // copied out: a Markdown table in text, Zotero's table in HTML
+    edit->selectAll();
+    edit->copy();
+    auto* copied = QApplication::clipboard()->mimeData();
+    INFO(copied->text().toStdString());
+    CHECK(copied->text() == "Results\n| Model | Acc. |\n| --- | --: |\n| A | 0.91 |\n| B |  |\nafter");
+    CHECK(copied->html().contains("<th align=\"left\">Model</th>"));
+
+    // the context menu's rows and columns
+    QTextCursor inA(doc);
+    inA.setPosition(table->cellAt(1, 0).firstPosition());
+    edit->editTable(inA, NoteTextEdit::TableEdit::RowAbove);
+    CHECK(table->rows() == 4);
+    CHECK(cellText(table, 2, 0) == "A");
+    edit->editTable(inA, NoteTextEdit::TableEdit::DeleteRow);
+    CHECK(table->rows() == 3);
+    QTextCursor inHeader(doc);
+    inHeader.setPosition(table->cellAt(0, 1).firstPosition());
+    edit->editTable(inHeader, NoteTextEdit::TableEdit::ColumnRight);
+    CHECK(table->columns() == 3);
+    CHECK(table->cellAt(0, 2).firstCursorPosition().charFormat().fontWeight() == QFont::Bold);
+    edit->editTable(inHeader, NoteTextEdit::TableEdit::RowAbove);  // not above the header
+    CHECK(cellText(table, 0, 0) == "Model");
+    QTextCursor inNew(doc);
+    inNew.setPosition(table->cellAt(1, 2).firstPosition());
+    edit->editTable(inNew, NoteTextEdit::TableEdit::DeleteColumn);
+    CHECK(table->columns() == 2);
+    QTextCursor anywhere(doc);
+    anywhere.setPosition(table->cellAt(1, 1).firstPosition());
+    edit->editTable(anywhere, NoteTextEdit::TableEdit::DeleteTable);
+    bool tableLeft = false;
+    for (auto* f : doc->rootFrame()->childFrames())
+        tableLeft = tableLeft || qobject_cast<QTextTable*>(f);
+    CHECK(!tableLeft);
+    CHECK(doc->toPlainText() == "Results\nafter");  // the lines around it stay apart
+
+    // Ctrl+Z after Enter gives back the two typed lines
+    edit->moveCursor(QTextCursor::End);
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "| a | b |");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "|---|---|");
+    QTest::keyClick(edit, Qt::Key_Return);
+    REQUIRE(edit->textCursor().currentTable());
+    QTest::keyClick(edit, Qt::Key_Z, Qt::ControlModifier);
+    CHECK(!edit->textCursor().currentTable());
+    CHECK(doc->toPlainText().endsWith("| a | b |\n|---|---|"));
+    // a row of dashes under text that is not a row of cells is no table
+    edit->selectAll();
+    QTest::keyClick(edit, Qt::Key_Delete);
+    QTest::keyClicks(edit, "just words");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "|---|");
+    QTest::keyClick(edit, Qt::Key_Return);
+    CHECK(!edit->textCursor().currentTable());
+}
+
+TEST_CASE("notes: Markdown and web tables pasted in are tables, with a header row and lines")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    auto tables = [&] {
+        std::vector<QTextTable*> out;
+        for (auto* f : edit->document()->rootFrame()->childFrames())
+            if (auto* t = qobject_cast<QTextTable*>(f))
+                out.push_back(t);
+        return out;
+    };
+    QApplication::clipboard()->setText("| x | y |\n|---|:-:|\n| 1 | **2** |\n");
+    edit->paste();
+    REQUIRE(tables().size() == 1);
+    auto* t = tables()[0];
+    CHECK(t->rows() == 2);
+    CHECK(t->format().headerRowCount() == 1);
+    CHECK(t->format().border() == 1);
+    CHECK((t->cellAt(1, 1).firstCursorPosition().blockFormat().alignment() & Qt::AlignHCenter));
+    edit->moveCursor(QTextCursor::End);
+    auto* web = new QMimeData;
+    web->setHtml("<table border=\"0\"><tr><th>Name</th><th>Year</th></tr><tr><td>Zotero</td><td>2006</td></tr></table>");
+    QApplication::clipboard()->setMimeData(web);
+    edit->paste();
+    REQUIRE(tables().size() == 2);
+    t = tables()[1];
+    CHECK(t->format().headerRowCount() == 1);
+    CHECK(t->format().border() == 1);
+    editor.flush();
+    auto html = jstr(*env.library.item(env.lib, jstr(note, "key")), "note");
+    INFO(html);
+    CHECK(html.find("<th align=\"left\">x</th><th align=\"center\">y</th>") != std::string::npos);
+    CHECK(html.find("<td>1</td><td align=\"center\"><strong>2</strong></td>") != std::string::npos);
+    CHECK(html.find("<th align=\"center\">Name</th>") != std::string::npos);
+    CHECK(html.find("<td>Zotero</td>") != std::string::npos);
 }
 
 TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")
@@ -6302,3 +6498,4 @@ int main(int argc, char** argv)
     doctest::Context context(argc, argv);
     return context.run();
 }
+

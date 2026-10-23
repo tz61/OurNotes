@@ -61,9 +61,15 @@ std::string htmlToText(std::string_view html);
 std::string noteTitle(std::string_view html);
 std::string textToNoteHtml(std::string_view text);
 // Markdown as a note (Zotero's note HTML): paragraphs, # headings (### and deeper as
-// level 3), - and 1. lists, > quotes, ``` code blocks, --- rules, **bold**, *italic*,
-// `code`, [links](url), and $…$ / $$…$$ formulas as the app keeps them.
+// level 3), - and 1. lists, > quotes, ``` code blocks, --- rules, | tables |, **bold**,
+// *italic*, `code`, [links](url), and $…$ / $$…$$ formulas as the app keeps them.
 std::string markdownToNoteHtml(std::string_view markdown);
+// A row of a Markdown table (GitHub's): its cells, trimmed, "\|" in them as "|". Empty
+// when the line has no |.
+std::vector<std::string> markdownTableCells(std::string_view line);
+// A Markdown table's delimiter row ("|---|:-:|--:|"): each column's alignment, 'l', 'c'
+// or 'r'. Empty when the line is not one.
+std::string markdownTableAlignments(std::string_view line);
 
 std::string safeFilename(std::string_view name, std::string_view fallback = "file");
 std::string humanSize(uint64_t bytes);

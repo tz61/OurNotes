@@ -26,6 +26,7 @@
 #include <QTextBlock>
 #include <QTextDocumentFragment>
 #include <QTextList>
+#include <QTextTable>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -611,6 +612,7 @@ void NoteTextEdit::prepareDocument()
             img.setToolTip(latex);
             c.setCharFormat(img);
         }
+    styleNoteTables(document());
     --internal_;
     adaptColors();
 }
@@ -817,6 +819,256 @@ bool NoteTextEdit::convertTypedMarkdown(const QString& typed)
     return false;
 }
 
+// --- Tables ---------------------------------------------------------------------------------
+//
+// Typed as Markdown (a row of cells between |s, a row of dashes under it, and Enter) or
+// pasted as Markdown, kept as Zotero keeps them: <table>, the header row's cells <th>.
+// Tab and Shift+Tab go from cell to cell, Enter to the cell below; past the last row they
+// add one, and Enter in an empty last row leaves the table without it.
+
+namespace {
+
+Qt::Alignment cellAlignment(char markdown)
+{
+    return markdown == 'c' ? Qt::AlignHCenter : markdown == 'r' ? Qt::AlignRight : Qt::AlignLeft;
+}
+
+void alignCell(QTextTableCell cell, Qt::Alignment align)
+{
+    auto c = cell.firstCursorPosition();
+    c.setPosition(cell.lastCursorPosition().position(), QTextCursor::KeepAnchor);
+    QTextBlockFormat bf;
+    bf.setAlignment(align);
+    c.mergeBlockFormat(bf);
+}
+
+void boldCell(QTextTableCell cell)
+{
+    auto c = cell.firstCursorPosition();
+    c.setPosition(cell.lastCursorPosition().position(), QTextCursor::KeepAnchor);
+    QTextCharFormat bold;
+    bold.setFontWeight(QFont::Bold);
+    c.mergeBlockCharFormat(bold);
+    c.mergeCharFormat(bold);
+}
+
+// The cells of `row` (just added) aligned as those of the row above or below, and bold in
+// the header row.
+void likeTheirColumn(QTextTable* table, int row)
+{
+    int other = row > 0 ? row - 1 : row + 1;
+    for (int c = 0; c < table->columns(); ++c) {
+        if (other < table->rows())
+            alignCell(table->cellAt(row, c),
+                      table->cellAt(other, c).firstCursorPosition().blockFormat().alignment() & Qt::AlignHorizontal_Mask);
+        if (row < table->format().headerRowCount())
+            boldCell(table->cellAt(row, c));
+    }
+}
+
+void likeTheirRow(QTextTable* table, int column)
+{
+    for (int r = 0; r < table->rows(); ++r) {
+        alignCell(table->cellAt(r, column), Qt::AlignLeft);
+        if (r < table->format().headerRowCount())
+            boldCell(table->cellAt(r, column));
+    }
+}
+
+// The whole table away; the lines before and after it stay lines of their own.
+void removeTable(QTextTable* table)
+{
+    auto* doc = table->document();
+    int at = table->firstPosition() - 1;  // where it begins
+    table->removeRows(0, table->rows());
+    QTextCursor c(doc);
+    c.setPosition(std::min(at, doc->characterCount() - 1));
+    if (!c.atBlockStart() && !c.atBlockEnd())
+        c.insertBlock();
+}
+
+bool rowEmpty(QTextTable* table, int row)
+{
+    for (int c = 0; c < table->columns(); ++c) {
+        auto cell = table->cellAt(row, c);
+        if (cell.lastCursorPosition().position() > cell.firstCursorPosition().position())
+            return false;
+    }
+    return true;
+}
+
+QTextTable* newTable(QTextCursor& at, const std::vector<QString>& header, const std::string& aligns)
+{
+    QTextTableFormat tf;
+    tf.setHeaderRowCount(1);
+    int columns = int(aligns.size());
+    auto* table = at.insertTable(2, columns, tf);
+    styleNoteTable(table);
+    for (int c = 0; c < columns; ++c) {
+        for (int r = 0; r < 2; ++r)
+            alignCell(table->cellAt(r, c), cellAlignment(aligns[c]));
+        boldCell(table->cellAt(0, c));
+        if (c < (int)header.size() && !header[c].isEmpty()) {
+            auto cursor = table->cellAt(0, c).firstCursorPosition();
+            cursor.insertText(header[c]);
+        }
+    }
+    return table;
+}
+
+} // namespace
+
+bool NoteTextEdit::convertTypedTable()
+{
+    auto cursor = textCursor();
+    auto block = cursor.block(), above = block.previous();
+    if (cursor.hasSelection() || !cursor.atBlockEnd() || !above.isValid() || cursor.currentTable() ||
+        QTextCursor(above).currentTable() || block.textList() || above.textList())
+        return false;
+    auto aligns = markdownTableAlignments(ss(block.text()));
+    auto cells = markdownTableCells(ss(above.text()));
+    if (aligns.empty() || aligns.size() != cells.size())
+        return false;
+    std::vector<QString> header;
+    for (auto& c : cells)
+        header.push_back(qs(c));
+    QTextCursor c(document());  // one step: Ctrl+Z gives back the two lines
+    c.beginEditBlock();
+    // the table right after the line before, if there is one (and it is not a table's):
+    // put into an empty line, the table would have it before it
+    auto before = above.previous();
+    bool afterText = before.isValid() && !QTextCursor(before).currentTable();
+    c.setPosition(afterText ? above.position() - 1 : above.position());
+    c.setPosition(block.position() + block.length() - 1, QTextCursor::KeepAnchor);
+    c.removeSelectedText();
+    if (!afterText)
+        c.setBlockFormat(QTextBlockFormat());
+    auto* table = newTable(c, header, aligns);
+    c.endEditBlock();
+    setTextCursor(table->cellAt(1, 0).firstCursorPosition());
+    return true;
+}
+
+void NoteTextEdit::insertTable(int columns)
+{
+    auto c = textCursor();
+    c.beginEditBlock();
+    if (c.block().length() > 1)  // a table of its own, not in a line of text
+        c.insertBlock();
+    auto* table = newTable(c, {}, std::string(std::max(1, columns), 'l'));
+    c.endEditBlock();
+    setTextCursor(table->cellAt(0, 0).firstCursorPosition());
+}
+
+bool NoteTextEdit::tableKey(QKeyEvent* e)
+{
+    auto cursor = textCursor();
+    auto* table = cursor.currentTable();
+    if (!table)
+        return false;
+    auto cell = table->cellAt(cursor);
+    int row = cell.row(), column = cell.column();
+    auto moveTo = [&](int r, int c) { setTextCursor(table->cellAt(r, c).lastCursorPosition()); };
+    auto addRow = [&] {
+        QTextCursor edit(document());
+        edit.beginEditBlock();
+        table->appendRows(1);
+        likeTheirColumn(table, table->rows() - 1);
+        edit.endEditBlock();
+    };
+    bool enter = (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && e->modifiers() == Qt::NoModifier;
+    if (e->key() == Qt::Key_Tab && e->modifiers() == Qt::NoModifier) {
+        if (column + cell.columnSpan() < table->columns()) {
+            moveTo(row, column + cell.columnSpan());
+        } else if (row + cell.rowSpan() < table->rows()) {
+            moveTo(row + cell.rowSpan(), 0);
+        } else {
+            addRow();
+            moveTo(table->rows() - 1, 0);
+        }
+        return true;
+    }
+    if (e->key() == Qt::Key_Backtab) {
+        if (column > 0)
+            moveTo(row, column - 1);
+        else if (row > 0)
+            moveTo(row - 1, table->columns() - 1);
+        return true;
+    }
+    if (!enter)
+        return false;
+    if (row + cell.rowSpan() < table->rows()) {
+        moveTo(row + cell.rowSpan(), column);
+    } else if (row >= table->format().headerRowCount() && rowEmpty(table, row)) {
+        // out of the table, onto a line of its own after it
+        QTextCursor edit(document());
+        edit.beginEditBlock();
+        int after = table->lastPosition() + 1;
+        if (table->rows() > 1) {
+            table->removeRows(row, 1);
+            after = table->lastPosition() + 1;
+        }
+        edit.setPosition(after);
+        if (edit.block().length() > 1) {
+            edit.insertBlock();
+            edit.movePosition(QTextCursor::PreviousBlock);
+        }
+        edit.setBlockFormat(QTextBlockFormat());
+        edit.endEditBlock();
+        setTextCursor(edit);
+    } else {
+        addRow();
+        moveTo(table->rows() - 1, column);
+    }
+    return true;
+}
+
+void NoteTextEdit::editTable(const QTextCursor& at, TableEdit edit)
+{
+    auto* table = at.currentTable();
+    if (!table || isReadOnly())
+        return;
+    auto cell = table->cellAt(at);
+    int row = cell.row(), column = cell.column();
+    int header = table->format().headerRowCount();
+    QTextCursor c(document());
+    c.beginEditBlock();
+    switch (edit) {
+    case TableEdit::RowAbove:
+        table->insertRows(std::max(row, header), 1);  // not above the header row
+        likeTheirColumn(table, std::max(row, header));
+        break;
+    case TableEdit::RowBelow:
+        table->insertRows(row + 1, 1);
+        likeTheirColumn(table, row + 1);
+        break;
+    case TableEdit::ColumnLeft:
+        table->insertColumns(column, 1);
+        likeTheirRow(table, column);
+        break;
+    case TableEdit::ColumnRight:
+        table->insertColumns(column + 1, 1);
+        likeTheirRow(table, column + 1);
+        break;
+    case TableEdit::DeleteRow:
+        if (table->rows() - header > 1 && row >= header)
+            table->removeRows(row, 1);
+        else
+            removeTable(table);  // the last row: the table goes
+        break;
+    case TableEdit::DeleteColumn:
+        if (table->columns() > 1)
+            table->removeColumns(column, 1);
+        else
+            removeTable(table);
+        break;
+    case TableEdit::DeleteTable:
+        removeTable(table);
+        break;
+    }
+    c.endEditBlock();
+}
+
 // Backspace at the start of a heading shows its "## " before the text, as typed: the level
 // can be changed there (a # more or less), or the heading taken back to text (the space
 // after the #s deleted). Leaving the line makes it a heading again (finishHeading).
@@ -881,6 +1133,16 @@ void NoteTextEdit::textDocument(const QString& source, bool markdown, QTextDocum
         out->setMarkdown(text, QTextDocument::MarkdownDialectGitHub);
     else
         out->setPlainText(text);
+    for (auto* frame : out->rootFrame()->childFrames())
+        if (auto* table = qobject_cast<QTextTable*>(frame)) {  // a Markdown table's first row
+            auto f = table->format();
+            f.setHeaderRowCount(1);
+            table->setFormat(f);
+            for (int c = 0; c < table->columns() && table->rows() > 1; ++c)  // aligned as its column
+                alignCell(table->cellAt(0, c),
+                          table->cellAt(1, c).firstCursorPosition().blockFormat().alignment() & Qt::AlignHorizontal_Mask);
+        }
+    styleNoteTables(out);
     static const QRegularExpression token(QString(QChar(0xE000)) + "(\\d+)" + QChar(0xE001));
     for (auto c = out->find(token); !c.isNull(); c = out->find(token, c)) {
         size_t i = c.selectedText().mid(1).chopped(1).toULong();
@@ -1004,6 +1266,13 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         insertPlainText(QApplication::clipboard()->text());  // as it is, Markdown or not
         return;
     }
+    if (!isReadOnly() && !runAtCursor()) {
+        if (tableKey(e))
+            return;
+        if (markdown_ && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && e->modifiers() == Qt::NoModifier &&
+            convertTypedTable())
+            return;
+    }
     QTextEdit::keyPressEvent(e);
     switch (e->key()) {  // the cursor moved between the signs of an empty formula
     case Qt::Key_Left:
@@ -1104,6 +1373,24 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
         menu->addSeparator();
         menu->addAction(tr("Insert Inline Formula"), this, [this] { insertMath(false); });
         menu->addAction(tr("Insert Display Formula"), this, [this] { insertMath(true); });
+        auto at = cursorForPosition(e->pos());
+        if (auto* table = at.currentTable()) {
+            auto* t = menu->addMenu(tr("Table"));
+            bool header = table->cellAt(at).row() < table->format().headerRowCount();
+            auto add = [&](const QString& text, TableEdit edit, bool enabled = true) {
+                t->addAction(text, this, [this, at, edit] { editTable(at, edit); })->setEnabled(enabled);
+            };
+            add(tr("Insert Row Above"), TableEdit::RowAbove, !header);
+            add(tr("Insert Row Below"), TableEdit::RowBelow);
+            add(tr("Insert Column Left"), TableEdit::ColumnLeft);
+            add(tr("Insert Column Right"), TableEdit::ColumnRight);
+            t->addSeparator();
+            add(tr("Delete Row"), TableEdit::DeleteRow, !header);
+            add(tr("Delete Column"), TableEdit::DeleteColumn);
+            add(tr("Delete Table"), TableEdit::DeleteTable);
+        } else {
+            menu->addAction(tr("Insert Table"), this, [this] { insertTable(); });
+        }
     }
     menu->exec(e->globalPos());
 }
@@ -1132,11 +1419,9 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
     }
     QTextDocument copy;
     QTextCursor(&copy).insertFragment(cursor.selection());
-    QStringList lines;
-    // a heading copied from its start is "## …" in text, by its level, as in Markdown
-    bool fromStart = cursor.selectionStart() == document()->findBlock(cursor.selectionStart()).position();
-    for (auto block = copy.begin(); block.isValid(); block = block.next(), fromStart = true) {
+    auto lineOf = [](const QTextBlock& block, bool fromStart) {
         QString line;
+        // a heading copied from its start is "## …" in text, by its level, as in Markdown
         if (int level = block.blockFormat().headingLevel(); level > 0 && fromStart)
             line = QString(std::min(level, 6), '#') + ' ';
         for (auto it = block.begin(); !it.atEnd(); ++it) {
@@ -1151,9 +1436,37 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
             else
                 line += QString("[image]").repeated(fragment.length());
         }
-        line.replace(QChar::LineSeparator, '\n');
         line.replace(QChar::Nbsp, ' ');
-        lines << line;
+        return line;
+    };
+    // a table as a Markdown table: its first row the header, the delimiter row as aligned
+    auto tableLines = [&](QTextTable* table) {
+        QStringList rows;
+        for (int r = 0; r < table->rows(); ++r) {
+            QStringList cells, delimiters;
+            for (int c = 0; c < table->columns(); ++c) {
+                auto cell = table->cellAt(r, c);
+                QStringList parts;
+                for (auto it = cell.begin(); !it.atEnd(); ++it)
+                    if (it.currentBlock().isValid())
+                        parts << lineOf(it.currentBlock(), false);
+                cells << parts.join(' ').replace(QChar::LineSeparator, ' ').replace('|', "\\|");
+                auto align = cell.firstCursorPosition().blockFormat().alignment();
+                delimiters << ((align & Qt::AlignHCenter) ? ":-:" : (align & Qt::AlignRight) ? "--:" : "---");
+            }
+            rows << "| " + cells.join(" | ") + " |";
+            if (r == 0)
+                rows << "| " + delimiters.join(" | ") + " |";
+        }
+        return rows;
+    };
+    QStringList lines;
+    bool fromStart = cursor.selectionStart() == document()->findBlock(cursor.selectionStart()).position();
+    for (auto it = copy.rootFrame()->begin(); !it.atEnd(); ++it, fromStart = true) {
+        if (auto* table = qobject_cast<QTextTable*>(it.currentFrame()))
+            lines << tableLines(table);
+        else if (it.currentBlock().isValid())
+            lines << lineOf(it.currentBlock(), fromStart).replace(QChar::LineSeparator, '\n');
     }
     data->setText(lines.join('\n'));
     // a whole page that says its encoding: macOS (Notes, TextEdit) reads HTML that does not
@@ -1225,7 +1538,7 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         return;
     }
     static const QRegularExpression markdownRe(
-        R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
+        R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|^ {0,3}\|? *:?-+:? *\|[ :|-]*$|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
         QRegularExpression::MultilineOption);
     // Markdown, or text with LaTeX in it: formulas, formatting and lines as such
     bool markdown = markdown_ && markdownRe.match(source->text()).hasMatch();
@@ -1255,10 +1568,11 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         if (fromNote) {
             tmp.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
         } else {
-            tmp.setHtml(mathMarkupToImages(source->html()));
+            tmp.setHtml(tableHeadersForEditor(mathMarkupToImages(source->html())));
             formulasFromText(&tmp);
         }
         noParagraphSpacing(&tmp);
+        styleNoteTables(&tmp);
         std::vector<QTextFragment> fragments;
         for (auto block = tmp.begin(); block.isValid(); block = block.next())
             for (auto it = block.begin(); !it.atEnd(); ++it)

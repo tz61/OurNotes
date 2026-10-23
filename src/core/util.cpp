@@ -418,6 +418,8 @@ std::string htmlToText(std::string_view html)
             while (nameEnd < tag.size() && std::isalnum((unsigned char)tag[nameEnd]))
                 ++nameEnd;
             std::string name = toLower(tag.substr(0, nameEnd));
+            if ((name == "td" || name == "th") && html[i + 1] == '/')
+                out += '\t';  // a row's cells apart
             for (auto* b : blockTags) {
                 if (name == b) {
                     out += '\n';
@@ -552,6 +554,46 @@ std::pair<std::string, size_t> listItem(std::string_view t)
 
 } // namespace
 
+std::vector<std::string> markdownTableCells(std::string_view line)
+{
+    auto t = trim(line);
+    if (t.find('|') == std::string::npos)
+        return {};
+    if (startsWith(t, "|"))
+        t.erase(0, 1);
+    if (endsWith(t, "|") && !endsWith(t, "\\|"))
+        t.pop_back();
+    std::vector<std::string> cells(1);
+    for (size_t i = 0; i < t.size(); ++i) {
+        if (t[i] == '\\' && i + 1 < t.size() && t[i + 1] == '|') {
+            cells.back() += '|';
+            ++i;
+        } else if (t[i] == '|') {
+            cells.emplace_back();
+        } else {
+            cells.back() += t[i];
+        }
+    }
+    for (auto& c : cells)
+        c = trim(c);
+    return cells;
+}
+
+std::string markdownTableAlignments(std::string_view line)
+{
+    if (trim(line).find('-') == std::string::npos)
+        return {};
+    std::string out;
+    for (auto& cell : markdownTableCells(line)) {
+        bool left = startsWith(cell, ":"), right = endsWith(cell, ":");
+        auto dashes = cell.substr(left ? 1 : 0, cell.size() - (left ? 1 : 0) - (right && cell.size() > 1 ? 1 : 0));
+        if (dashes.empty() || dashes.find_first_not_of('-') != std::string::npos)
+            return {};
+        out += left && right ? 'c' : right ? 'r' : 'l';
+    }
+    return out;
+}
+
 std::string markdownToNoteHtml(std::string_view markdown)
 {
     std::string out = "<div data-schema-version=\"9\">";
@@ -618,6 +660,36 @@ std::string markdownToNoteHtml(std::string_view markdown)
             closeList();
             out += "<blockquote><p>" + inlineMarkdown(trim(t.substr(1))) + "</p></blockquote>";
             continue;
+        }
+        // a table: a header row, a delimiter row as many columns wide, then rows of cells
+        if (auto header = markdownTableCells(t); !header.empty() && i + 1 < lines.size()) {
+            auto aligns = markdownTableAlignments(lines[i + 1]);
+            if (!aligns.empty() && aligns.size() == header.size()) {
+                flushPara();
+                closeList();
+                auto row = [&](const std::vector<std::string>& cells, const char* tag) {
+                    out += "<tr>";
+                    for (size_t c = 0; c < aligns.size(); ++c) {
+                        std::string align = aligns[c] == 'c' ? " align=\"center\"" : aligns[c] == 'r' ? " align=\"right\"" : "";
+                        if (std::string(tag) == "th" && align.empty())
+                            align = " align=\"left\"";
+                        out += std::string("<") + tag + align + ">" + (c < cells.size() ? inlineMarkdown(cells[c]) : "") +
+                               "</" + tag + ">";
+                    }
+                    out += "</tr>";
+                };
+                out += "<table>";
+                row(header, "th");
+                for (i += 2; i < lines.size(); ++i) {
+                    auto cells = markdownTableCells(lines[i]);
+                    if (cells.empty() || trim(lines[i]).empty())
+                        break;
+                    row(cells, "td");
+                }
+                --i;
+                out += "</table>";
+                continue;
+            }
         }
         if (auto [kind, at] = listItem(t); !kind.empty()) {
             flushPara();

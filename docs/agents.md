@@ -108,7 +108,8 @@ ournotes-cli import refs.bib --collection "FA26/CS8803"             # BibTeX, RI
   line, and for text that begins with `-`). It is read as Markdown unless `--html` or
   `--text` says otherwise, or it begins with `<` (then it is taken as HTML).
 - Markdown in notes: paragraphs, `#` headings (`###` and deeper become level 3), `-` and
-  `1.` lists (not nested), `>` quotes, code blocks between ```` ``` ````, `---`,
+  `1.` lists (not nested), `>` quotes, code blocks between ```` ``` ````, `---`, tables
+  (a header row, a `|---|:-:|--:|` row, then rows of cells; `\|` for a | in a cell),
   `**bold**`, `*italic*`, `` `code` ``, `[links](https://...)`, and formulas: `$x^2$` in a
   line, `$$...$$` on lines of their own, shown as formulas in the app.
 - Nothing is deleted for good: `trash` moves items to the trash, where the user can look

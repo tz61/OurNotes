@@ -55,7 +55,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   Zotero's math. Images are scaled to fit the note width. Selecting a paper shows its
   notes in a tab next to Info. Markdown typed or pasted becomes formatting (`# `, `- `,
   `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the
-  markup). Backspace at the start of a heading shows its `## ` to change the level;
+  markup). A table is typed as in Markdown: a row of cells between `|`s, a `|---|---|`
+  row under it, then Enter; Tab and Enter go from cell to cell (and add rows), the
+  context menu adds and deletes rows and columns, and Markdown tables pasted in are
+  tables too. Backspace at the start of a heading shows its `## ` to change the level;
   leaving the line makes it a heading again. Ctrl+F in a note finds in it, in a bar at
   the bottom of the note (with the same history, Tab and Aa as the search; Esc closes it). Each note view has its own text size (− / +, Ctrl+wheel), starting at the
   size set in Preferences.

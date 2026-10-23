@@ -51,6 +51,12 @@ public:
     // True while the editor adjusts the document itself (not a user edit).
     bool isInternalEdit() const { return internal_ > 0; }
 
+    // Tables: one with a header row and an empty row, `columns` wide, at the cursor; and
+    // what the context menu does to the table at `at`.
+    void insertTable(int columns = 2);
+    enum class TableEdit { RowAbove, RowBelow, ColumnLeft, ColumnRight, DeleteRow, DeleteColumn, DeleteTable };
+    void editTable(const QTextCursor& at, TableEdit edit);
+
 protected:
     QMimeData* createMimeDataFromSelection() const override;
     bool canInsertFromMimeData(const QMimeData* source) const override;
@@ -68,6 +74,8 @@ protected:
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
     bool convertTypedMarkdown(const QString& typed);
+    bool convertTypedTable();       // Enter after a table's header and delimiter rows
+    bool tableKey(QKeyEvent* e);    // Tab, Shift+Tab, Enter in a table
     // Text as rich text in `out`, Markdown or plain; its formulas ($…$, $$…$$) as formulas.
     void textDocument(const QString& text, bool markdown, QTextDocument* out) const;
     bool markdown_ = false;

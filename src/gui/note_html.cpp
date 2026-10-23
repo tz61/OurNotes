@@ -9,6 +9,9 @@
 #include <QTextTable>
 #include <QUrl>
 
+#include <functional>
+#include <vector>
+
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/math_render.h"
@@ -54,9 +57,60 @@ QString mathMarkupToImages(const QString& html)
     return final;
 }
 
+QString tableHeadersForEditor(const QString& html)
+{
+    static const QRegularExpression firstRow(
+        R"re((<table\b[^>]*>\s*)(<tbody\b[^>]*>\s*)?(<tr\b[^>]*>((?:(?!</tr>)[\s\S])*)</tr>))re",
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression th(R"re(<th\b)re", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression td(R"re(<td\b)re", QRegularExpression::CaseInsensitiveOption);
+    QString out;
+    qsizetype last = 0;
+    for (auto it = firstRow.globalMatch(html); it.hasNext();) {
+        auto m = it.next();
+        if (!m.captured(4).contains(th) || m.captured(4).contains(td))
+            continue;
+        out += html.mid(last, m.capturedStart() - last);
+        out += m.captured(1) + "<thead>" + m.captured(3) + "</thead>" + m.captured(2);
+        last = m.capturedEnd();
+    }
+    return out + html.mid(last);
+}
+
+void styleNoteTable(QTextTable* table)
+{
+    auto f = table->format();
+    QTextTableFormat want = f;
+    want.setBorder(1);
+    want.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+    want.setBorderBrush(QColor(128, 128, 128));  // a grey that shows on light and dark
+    want.setBorderCollapse(true);
+    want.setCellSpacing(0);
+    want.setCellPadding(4);
+    want.setTopMargin(4);
+    want.setBottomMargin(4);
+    if (want != f)
+        table->setFormat(want);
+}
+
+void styleNoteTables(QTextDocument* doc)
+{
+    std::vector<QTextTable*> tables;
+    std::function<void(QTextFrame*)> collect = [&](QTextFrame* frame) {
+        for (auto* child : frame->childFrames()) {
+            if (auto* t = qobject_cast<QTextTable*>(child))
+                tables.push_back(t);
+            collect(child);
+        }
+    };
+    collect(doc->rootFrame());
+    for (auto* t : tables)
+        styleNoteTable(t);
+}
+
 QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocument* doc)
 {
-    QString html = mathMarkupToImages(rawHtml);
+    QString html = tableHeadersForEditor(mathMarkupToImages(rawHtml));
     static const QRegularExpression img(R"re(<img\b([^>]*?)data-attachment-key="([A-Za-z0-9]+)"([^>]*)>)re");
     auto& lib = AppContext::get().library();
     QString out;
@@ -186,11 +240,12 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     return open + text + close;
 }
 
-QString blockContent(const QTextBlock& block)
+// header: in a table's header cell (bold, as a heading is)
+QString blockContent(const QTextBlock& block, bool header = false)
 {
     QString out;
     auto def = block.charFormat();
-    if (block.blockFormat().headingLevel() > 0)
+    if (block.blockFormat().headingLevel() > 0 || header)
         def.setFontWeight(QFont::Bold);  // headings are bold by definition
     for (auto it = block.begin(); !it.atEnd(); ++it)
         if (it.fragment().isValid())
@@ -200,10 +255,15 @@ QString blockContent(const QTextBlock& block)
 
 void serializeFrame(QTextFrame* frame, QString& out);
 
+// The header row's cells are <th>, and say how they are aligned (a <th> is centred unless
+// it says otherwise); other cells say so when centred or to the right.
 void serializeTable(QTextTable* table, QString& out)
 {
+    int headerRows = table->format().headerRowCount();
     out += "<table>";
     for (int r = 0; r < table->rows(); ++r) {
+        bool header = r < headerRows;
+        QString tag = header ? "th" : "td";
         out += "<tr>";
         for (int c = 0; c < table->columns(); ++c) {
             auto cell = table->cellAt(r, c);
@@ -214,13 +274,26 @@ void serializeTable(QTextTable* table, QString& out)
                 attrs += QString(" rowspan=\"%1\"").arg(cell.rowSpan());
             if (cell.columnSpan() > 1)
                 attrs += QString(" colspan=\"%1\"").arg(cell.columnSpan());
-            out += "<td" + attrs + ">";
-            QStringList paras;
-            for (auto it = cell.begin(); !it.atEnd(); ++it)
-                if (it.currentBlock().isValid())
-                    paras << blockContent(it.currentBlock());
-            out += paras.join("<br>");
-            out += "</td>";
+            auto align = cell.firstCursorPosition().blockFormat().alignment();
+            if (align & Qt::AlignHCenter)
+                attrs += " align=\"center\"";
+            else if (align & Qt::AlignRight)
+                attrs += " align=\"right\"";
+            else if (header)
+                attrs += " align=\"left\"";
+            out += "<" + tag + attrs + ">";
+            QStringList parts;
+            for (auto it = cell.begin(); !it.atEnd(); ++it) {
+                if (auto* inner = qobject_cast<QTextTable*>(it.currentFrame())) {  // a table in the cell
+                    QString nested;
+                    serializeTable(inner, nested);
+                    parts << nested;
+                } else if (it.currentBlock().isValid()) {
+                    parts << blockContent(it.currentBlock(), header);
+                }
+            }
+            out += parts.join("<br>");
+            out += "</" + tag + ">";
         }
         out += "</tr>";
     }
