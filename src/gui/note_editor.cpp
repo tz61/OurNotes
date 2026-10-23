@@ -153,9 +153,22 @@ static void applyHeading(QTextCursor cursor, int level)
     cursor.endEditBlock();
 }
 
-static QTextImageFormat mathFormat(const QString& latex, bool display)
+// A formula has the colour of the text it was typed in (or was given): that colour and
+// nothing else of `from`, also when hidden for contrast in dark mode (see adaptColors).
+static void copyTextColor(const QTextCharFormat& from, QTextCharFormat& to)
+{
+    for (int property : {int(QTextFormat::ForegroundBrush), kOriginalForegroundProperty}) {
+        if (from.hasProperty(property))
+            to.setProperty(property, from.property(property));
+        else
+            to.clearProperty(property);
+    }
+}
+
+static QTextImageFormat mathFormat(const QString& latex, bool display, const QTextCharFormat& text = {})
 {
     QTextImageFormat f;
+    copyTextColor(text, f);
     f.setName(mathResourceName(latex, display));
     f.setVerticalAlignment(QTextCharFormat::AlignMiddle);
     f.setToolTip(latex);
@@ -198,8 +211,11 @@ QTextCharFormat NoteTextEdit::outerFormat(const QTextBlock& block, int formulaPo
 
 QTextCharFormat NoteTextEdit::sourceFormat(bool display, QTextCharFormat base) const
 {
-    if (base.isImageFormat() || base.hasProperty(kMathSourceProperty))
-        base = QTextCharFormat();
+    if (base.isImageFormat() || base.hasProperty(kMathSourceProperty)) {
+        QTextCharFormat plain;  // a formula opened for editing keeps its colour
+        copyTextColor(base, plain);
+        base = plain;
+    }
     base.setFontFamilies(QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()});
     QColor tint = palette().color(QPalette::Highlight);
     tint.setAlphaF(0.2);
@@ -376,7 +392,7 @@ void NoteTextEdit::commitMathEdits(bool all)
         if (latex.isEmpty())  // its signs stay, as text (see finishMathSession)
             c.insertText(it->display ? "$$$$" : "$$", outerFormat(c.block(), c.selectionStart() - c.block().position()));
         else
-            c.insertImage(mathFormat(latex, it->display));
+            c.insertImage(mathFormat(latex, it->display, c.charFormat()));
         c.endEditBlock();
         if (p == it->end && !latex.isEmpty()) {
             after = true;
@@ -437,6 +453,7 @@ bool NoteTextEdit::finishMathSession(const QString& latex, QTextCursor* after)
     }
     c.beginEditBlock();
     auto textFormat = outerFormat(c.block(), c.selectionStart() - c.block().position());
+    auto colour = c.charFormat();  // the formula's, or that of the signs it was typed with
     c.removeSelectedText();
     if (latex.isEmpty()) {
         c.insertText(signs, textFormat);
@@ -448,7 +465,7 @@ bool NoteTextEdit::finishMathSession(const QString& latex, QTextCursor* after)
             centred.setAlignment(Qt::AlignHCenter);
             c.setBlockFormat(centred);
         }
-        c.insertImage(mathFormat(latex, session.display));
+        c.insertImage(mathFormat(latex, session.display, colour));
         c.setCharFormat(outerFormat(c.block(), c.positionInBlock() - 1));
     }
     c.endEditBlock();
@@ -470,8 +487,10 @@ void NoteTextEdit::updateMathPreview()
     if (latex.isEmpty()) {
         preview_->setText(tr("Type LaTeX, e.g. \\frac{a}{b}"));
     } else {
-        auto m = renderMath(latex, run->display, QFontInfo(font()).pixelSize() * 1.25,
-                            formulaColor(palette().color(QPalette::Text)), devicePixelRatioF());
+        auto source = c.charFormat();
+        QColor colour = source.hasProperty(QTextFormat::ForegroundBrush) ? source.foreground().color()
+                                                                         : formulaColor(palette().color(QPalette::Text));
+        auto m = renderMath(latex, run->display, QFontInfo(font()).pixelSize() * 1.25, colour, devicePixelRatioF());
         preview_->setPixmap(QPixmap::fromImage(m.image));
         preview_->setToolTip(m.ok ? QString() : m.error);
     }
@@ -529,7 +548,7 @@ bool NoteTextEdit::editMathInDialog(QTextCursor selection)
     if (dlg.latex().isEmpty())
         selection.removeSelectedText();
     else
-        selection.insertImage(mathFormat(dlg.latex(), dlg.isDisplay()));
+        selection.insertImage(mathFormat(dlg.latex(), dlg.isDisplay(), selection.charFormat()));
     return true;
 }
 
@@ -574,8 +593,8 @@ void NoteTextEdit::adaptColors()
         for (auto it = block.begin(); !it.atEnd(); ++it) {
             auto frag = it.fragment();
             auto f = frag.charFormat();
-            if (f.isImageFormat())
-                continue;
+            if (f.isImageFormat() && !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr))
+                continue;  // pictures have no colour; formulas do
             bool hidden = f.hasProperty(kOriginalForegroundProperty);
             if (!hidden && !f.hasProperty(QTextFormat::ForegroundBrush))
                 continue;
@@ -843,6 +862,7 @@ void NoteTextEdit::markdownDocument(const QString& markdown, QTextDocument* out)
 
 void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool display, bool ownLine)
 {
+    QTextCharFormat colour = selection.charFormat();
     QTextCharFormat textFormat = selection.charFormat();
     if (textFormat.isImageFormat() || textFormat.hasProperty(kMathSourceProperty))
         textFormat = QTextCharFormat();
@@ -853,7 +873,7 @@ void NoteTextEdit::commitAs(QTextCursor selection, const QString& latex, bool di
         centred.setAlignment(Qt::AlignHCenter);
         selection.setBlockFormat(centred);
     }
-    selection.insertImage(mathFormat(latex, display));
+    selection.insertImage(mathFormat(latex, display, colour));
     if (display && ownLine) {
         selection.insertBlock();
         QTextBlockFormat normal = selection.blockFormat();

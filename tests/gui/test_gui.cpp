@@ -1701,6 +1701,113 @@ TEST_CASE("notes: the next paragraph is as far below as the next line, opened, p
     }
 }
 
+TEST_CASE("notes: a formula has the colour of the text it is typed in, kept when saved")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<p></p>");
+    QColor green("#00aa00");
+    // where the formula is, and whether it is drawn in green
+    auto formulaIn = [](NoteTextEdit* edit) -> std::optional<QTextFragment> {
+        for (auto block = edit->document()->begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isImageFormat() &&
+                    parseMathResourceName(it.fragment().charFormat().toImageFormat().name(), nullptr, nullptr))
+                    return it.fragment();
+        return std::nullopt;
+    };
+    auto drawnGreen = [](NoteTextEdit* edit, const QTextFragment& formula) {
+        QTextCursor at(edit->document());
+        at.setPosition(formula.position());
+        QRect from = edit->cursorRect(at);
+        at.setPosition(formula.position() + 1);
+        QRect to = edit->cursorRect(at);
+        QImage shot = edit->viewport()->grab().toImage();
+        double dpr = shot.devicePixelRatio();
+        int greenish = 0;
+        for (int x = from.left(); x < to.left(); ++x)
+            for (int y = from.top(); y <= from.bottom(); ++y) {
+                QColor c = shot.pixelColor(int(x * dpr), int(y * dpr));
+                if (c.green() > c.red() + 60 && c.green() > c.blue() + 60)
+                    ++greenish;
+            }
+        return greenish > 5;
+    };
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(note, "key")));
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        edit->setFocus();
+        QApplication::processEvents();
+        edit->setTextColor(green);
+        QTest::keyClicks(edit, "a $x^2+y$ b");
+        QApplication::processEvents();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+        editor.flush();
+    }
+    auto html = jstr(*env.library.item(env.lib, jstr(note, "key")), "note");
+    CHECK(html.find("<span style=\"color: #00aa00\"><span class=\"math\">$x^2+y$</span></span>") != std::string::npos);
+    {
+        NoteEditor editor;  // opened again
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(note, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+    }
+
+    // a formula on a line of its own, too
+    auto own = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>before</p><pre class=\"math\" style=\"color: #00aa00\">$$a+b$$</pre></div>");
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(own, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(formula->charFormat().foreground().color() == green);
+        CHECK(drawnGreen(edit, *formula));
+        edit->moveCursor(QTextCursor::Start);
+        QTest::keyClicks(edit, "x");
+        editor.flush();
+    }
+    CHECK(jstr(*env.library.item(env.lib, jstr(own, "key")), "note").find("<pre class=\"math\" style=\"color: #00aa00\">$$a+b$$</pre>") !=
+          std::string::npos);
+
+    // in dark mode a black formula is shown readable, and still saved black
+    applyAppearance(Appearance::Dark);
+    auto dark = env.library.createNote(
+        env.lib, "<div data-schema-version=\"9\"><p>z <span style=\"color: #000000\"><span class=\"math\">$y$</span></span></p></div>");
+    {
+        NoteEditor editor;
+        editor.resize(600, 300);
+        editor.show();
+        editor.setNote(env.lib, qs(jstr(dark, "key")));
+        QApplication::processEvents();
+        auto* edit = editor.findChild<NoteTextEdit*>();
+        auto formula = formulaIn(edit);
+        REQUIRE(formula);
+        CHECK(!formula->charFormat().hasProperty(QTextFormat::ForegroundBrush));  // the formula colour, readable
+        QTest::keyClicks(edit, "!");
+        editor.flush();
+    }
+    CHECK(jstr(*env.library.item(env.lib, jstr(dark, "key")), "note").find("<span style=\"color: #000000\"><span class=\"math\">$y$</span></span>") !=
+          std::string::npos);
+    applyAppearance(Appearance::System);
+}
+
 TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
 {
     app();

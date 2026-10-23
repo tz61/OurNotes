@@ -36,7 +36,13 @@ private:
     };
     Geometry geometry(QTextDocument* doc, int posInDocument, const QTextFormat& format, qreal dpr);
 
-    QColor color() const { return colorSource_ ? colorSource_() : QColor(Qt::black); }
+    // a formula's own colour (that of the text it was typed in), else the formula colour
+    QColor color(const QTextFormat& format) const
+    {
+        if (format.hasProperty(QTextFormat::ForegroundBrush))
+            return format.brushProperty(QTextFormat::ForegroundBrush).color();
+        return colorSource_ ? colorSource_() : QColor(Qt::black);
+    }
     std::function<QColor()> colorSource_;
 };
 
