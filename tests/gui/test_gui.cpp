@@ -4914,6 +4914,19 @@ TEST_CASE("windows: Ctrl+W (Command-W) closes any window but the main one, where
     QTest::keySequence(&dialog, QKeySequence(QKeySequence::Close));
     CHECK(!dialog.isVisible());
 
+    // macOS's menu bar takes ⌘W before the front window does, and triggers the main
+    // window's Close Tab: that closes the front window then, not a tab
+    QAction* closeTab = nullptr;
+    for (auto* a : window.findChildren<QAction*>())
+        if (a->text() == "Close Tab" && a->shortcut() == QKeySequence("Ctrl+W"))
+            closeTab = a;
+    REQUIRE(closeTab);
+    StorageWindow front(&window);
+    REQUIRE(activate(&front));
+    closeTab->trigger();
+    CHECK(!front.isVisible());
+    CHECK(tabs->count() == 3);
+
     // in the main window it is still Close Tab
     REQUIRE(activate(&window));
     tabs->setCurrentIndex(2);
