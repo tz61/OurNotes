@@ -1622,6 +1622,85 @@ TEST_CASE("notes: text copied from a note pastes as it was shown: font, spaces, 
     }
 }
 
+TEST_CASE("notes: the next paragraph is as far below as the next line, opened, pasted or typed")
+{
+    app();
+    Env env;
+    const QString longText = "A paragraph long enough to take two lines in a narrow note, so that the room "
+                             "between its own lines can be measured against the room between paragraphs.";
+    auto note = env.library.createNote(
+        env.lib, qs("<div data-schema-version=\"9\"><h2>Title</h2><p>" + longText.toStdString() +
+                    "</p><p>One</p><p>Two</p><ul><li>a</li><li>b</li></ul><blockquote><p>Quoted</p></blockquote><p>After</p></div>")
+                     .toStdString());
+    NoteEditor editor;
+    editor.resize(420, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    auto* layout = edit->document()->documentLayout();
+    // from one line's top to the next one's: within a paragraph, and across into the next
+    auto lineTops = [&] {
+        std::vector<double> tops;
+        for (auto block = edit->document()->begin(); block.isValid(); block = block.next()) {
+            double y = layout->blockBoundingRect(block).top();
+            for (int i = 0; i < block.layout()->lineCount(); ++i)
+                tops.push_back(y + block.layout()->lineAt(i).y());
+        }
+        return tops;
+    };
+    auto paragraph = edit->document()->begin().next();
+    REQUIRE(paragraph.text() == longText);
+    REQUIRE(paragraph.layout()->lineCount() >= 2);
+    double line = paragraph.layout()->lineAt(1).y() - paragraph.layout()->lineAt(0).y();
+    auto everyLine = [&](const char* what) {
+        auto tops = lineTops();
+        // past the heading (its line is taller): every step is one line of text
+        for (size_t i = 2; i < tops.size(); ++i) {
+            INFO(std::string(what) << ", line " << i);
+            CHECK(tops[i] - tops[i - 1] == doctest::Approx(line));
+        }
+        return tops.size();
+    };
+    size_t lines = everyLine("as opened");
+    // the heading's own line is no taller than its text
+    auto title = edit->document()->begin();
+    CHECK(layout->blockBoundingRect(title).height() == doctest::Approx(title.layout()->lineAt(0).height()));
+
+    // pasted: from another program's HTML with Qt's 12 px around paragraphs, and Markdown
+    edit->moveCursor(QTextCursor::End);
+    auto* html = new QMimeData;
+    html->setHtml("<p style=\"margin-top:12px; margin-bottom:12px;\">Pasted one</p><p style=\"margin-top:12px; "
+                  "margin-bottom:12px;\">Pasted two</p>");
+    QApplication::clipboard()->setMimeData(html);
+    QTest::keyClick(edit, Qt::Key_Return);
+    edit->paste();
+    auto* markdown = new QMimeData;
+    markdown->setText("# Pasted heading\n\nParagraph.\n\n- one\n- two\n");
+    QApplication::clipboard()->setMimeData(markdown);
+    QTest::keyClick(edit, Qt::Key_Return);
+    edit->paste();
+    QApplication::processEvents();
+    // a heading typed in Markdown, and the line after it
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "## Typed");
+    QTest::keyClick(edit, Qt::Key_Return);
+    QTest::keyClicks(edit, "text");
+    QApplication::processEvents();
+    auto tops = lineTops();
+    REQUIRE(tops.size() > lines + 6);
+    for (auto block = edit->document()->begin(); block.isValid(); block = block.next()) {
+        INFO(block.text().toStdString());
+        CHECK(block.blockFormat().topMargin() == 0);
+        CHECK(block.blockFormat().bottomMargin() == 0);
+        // every block is as high as its lines, with nothing around them
+        double linesHeight = 0;
+        for (int i = 0; i < block.layout()->lineCount(); ++i)
+            linesHeight += block.layout()->lineAt(i).height();
+        CHECK(layout->blockBoundingRect(block).height() == doctest::Approx(linesHeight));
+    }
+}
+
 TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
 {
     app();

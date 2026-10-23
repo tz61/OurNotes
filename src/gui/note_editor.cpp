@@ -101,6 +101,25 @@ static void useNoteFont(QTextCharFormat& f)
     f.clearProperty(QTextFormat::FontFamily);
 }
 
+// No room around paragraphs, headings, lists, quotes or code beyond their lines' own: the
+// next paragraph is as far below as the next line of the same one (Qt puts 12 px above and
+// below each, more for headings). Notes open, and HTML is pasted, with this style sheet;
+// pasted documents are evened out as well, as their own margins win over it.
+static const QString kNoteStyleSheet =
+    "p, ul, ol, li, pre, blockquote, h1, h2, h3, h4, h5, h6 { margin-top: 0px; margin-bottom: 0px; }";
+
+static void noParagraphSpacing(QTextDocument* doc)
+{
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        auto bf = block.blockFormat();
+        if (bf.topMargin() == 0 && bf.bottomMargin() == 0)
+            continue;
+        bf.setTopMargin(0);
+        bf.setBottomMargin(0);
+        QTextCursor(block).setBlockFormat(bf);
+    }
+}
+
 static QTextCharFormat headingCharFormat(QTextCharFormat f, int level)
 {
     f.clearProperty(QTextFormat::FontPointSize);
@@ -1096,6 +1115,7 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     if (markdown_ && !source->hasHtml() && source->hasText() && markdownRe.match(source->text()).hasMatch()) {
         QTextDocument pasted;
         markdownDocument(source->text(), &pasted);
+        noParagraphSpacing(&pasted);
         auto cursor = textCursor();
         bool emptyLine = cursor.block().length() <= 1;
         int at = cursor.position();
@@ -1115,6 +1135,7 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     if (source->hasHtml()) {
         QTextDocument tmp;
         tmp.setHtml(source->html());
+        noParagraphSpacing(&tmp);
         std::vector<QTextFragment> fragments;
         for (auto block = tmp.begin(); block.isValid(); block = block.next())
             for (auto it = block.begin(); !it.atEnd(); ++it)
@@ -1186,6 +1207,7 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
         updateToolbar();
     };
     edit_->document()->setDocumentMargin(10);
+    edit_->document()->setDefaultStyleSheet(kNoteStyleSheet);
     layout->addWidget(toolbar_);
     layout->addWidget(edit_, 1);
     buildFindBar();
