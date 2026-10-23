@@ -21,6 +21,7 @@
 #include <QTabBar>
 #include <QToolBar>
 #include <QListWidget>
+#include <QFormLayout>
 #include <QMenuBar>
 #include <QProxyStyle>
 #include <QRegularExpression>
@@ -2731,6 +2732,51 @@ TEST_CASE("storage window: this computer's disk and libraries, and the sync targ
         CHECK(bar->fraction() > 0);
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         window.grab().save(dir + "/storage-window.png");
+}
+
+TEST_CASE("storage window: the server line has the window's width and shows all of its text, also on macOS")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    SyncTarget target;
+    target.id = "folder1";
+    target.name = "USB stick";
+    target.kind = "local";
+    target.path = pathString(tmp.path / "a folder with a rather long name, so that the line is long");
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("folder1");
+    {
+        Library lib(env.library.dataDir());
+        sync::LocalTransport transport(target.path);
+        REQUIRE(sync::SyncEngine(lib, transport, "folder1").syncAll().errors.empty());
+    }
+    // macOS's style keeps a form's fields at their size hint: a wrapped label stayed
+    // narrow, and lost what did not fit ("ournotesd 0.1.14," and no more)
+    struct MacForms : QProxyStyle {
+        int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget,
+                      QStyleHintReturn* data) const override
+        {
+            return hint == SH_FormLayoutFieldGrowthPolicy ? QFormLayout::FieldsStayAtSizeHint
+                                                          : QProxyStyle::styleHint(hint, option, widget, data);
+        }
+    } style;
+    StorageWindow window;
+    for (auto* form : window.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(&style);
+    window.resize(760, 680);
+    window.show();
+    window.refresh();
+    REQUIRE(QTest::qWaitFor([&] { return !window.isLoading(); }, 10000));
+    QApplication::processEvents();
+    auto* server = window.findChild<QLabel*>("server");
+    REQUIRE(server->text().startsWith("a folder"));
+    CHECK(server->width() > window.width() / 2);
+    CHECK(server->height() >= server->heightForWidth(server->width()));
+    for (auto* form : window.findChildren<QFormLayout*>())
+        if (form->parentWidget())
+            form->parentWidget()->setStyle(nullptr);
 }
 
 TEST_CASE("main window: what another program changes shows at once; its own sync is not taken for that")

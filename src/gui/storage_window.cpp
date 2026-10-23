@@ -89,6 +89,9 @@ StorageWindow::StorageWindow(QWidget* parent) : QDialog(parent)
     localBox_ = new QGroupBox(tr("This computer"), this);
     auto* lv = new QVBoxLayout(localBox_);
     auto* lf = new QFormLayout;
+    // macOS's style keeps fields at their size hint: a wrapped label then stays narrow and
+    // loses the lines that do not fit (the server line showed "ournotesd 0.1.14," only)
+    lf->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     dataDir_ = new QLabel(localBox_);
     dataDir_->setObjectName("dataDir");
     dataDir_->setTextInteractionFlags(Qt::TextBrowserInteraction);
@@ -130,6 +133,7 @@ StorageWindow::StorageWindow(QWidget* parent) : QDialog(parent)
     auto* dv = new QVBoxLayout(targetDetails_);
     dv->setContentsMargins(0, 0, 0, 0);
     auto* tf = new QFormLayout;
+    tf->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     server_ = new QLabel(targetDetails_);
     server_->setObjectName("server");
     server_->setWordWrap(true);
