@@ -3254,6 +3254,36 @@ TEST_CASE("notes: pictures on one line are a row, all as high; one resized resiz
     CHECK(note.shown(pictures[1]).height() == doctest::Approx(260));
 }
 
+TEST_CASE("notes: As wide as the note, clicked again and again: the same row each time")
+{
+    app();
+    // (pictures whose sizes, rounded to whole pixels, are not quite as wide for their height:
+    // the row was made by those, a little wider or narrower each time)
+    for (int width = 900; width <= 960; width += 3) {
+        CAPTURE(width);
+        PictureNote note({width, 600});
+        auto& edit = note.edit;
+        edit.moveCursor(QTextCursor::End);
+        edit.insertPictures({filled(1346, 972, Qt::red), filled(1346, 972, Qt::blue), filled(1346, 972, Qt::green),
+                             filled(1346, 972, Qt::cyan)});
+        QApplication::processEvents();
+        auto pictures = note.pictures();
+        REQUIRE(pictures.size() == 4);
+        edit.pickPicture(pictures[1]);
+        note.click("pictureFit");
+        auto size = note.storedSize(pictures[1]);
+        auto right = note.shown(pictures[3]).right();
+        CHECK(right <= edit.viewport()->width());
+        CHECK(right > edit.viewport()->width() - 30);
+        for (int i = 0; i < 4; ++i) {
+            note.click("pictureFit");
+            CHECK(edit.pickedPicture() == pictures[1]);
+            CHECK(note.storedSize(pictures[1]) == size);
+            CHECK(note.shown(pictures[3]).right() == right);
+        }
+    }
+}
+
 TEST_CASE("notes: a picture joins the row above it, goes on a line of its own, is moved and deleted")
 {
     app();

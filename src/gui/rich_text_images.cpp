@@ -147,8 +147,11 @@ qreal maxPictureHeight(QTextDocument* doc, int pos)
     if (row.empty())  // (one in a line of text)
         row = {pos};
     qreal aspects = 0, gaps = row.size() > 1 ? 2 * kPictureGap * row.size() : 0;
-    for (int p : row)
-        aspects += aspectOf(pictureSize(doc, imageFormatAt(doc, p)));
+    for (int p : row) {  // (as the pictures are, not as their sizes were rounded: the same each time)
+        auto f = imageFormatAt(doc, p);
+        auto natural = naturalPictureSize(doc, f);
+        aspects += aspectOf(natural.isEmpty() ? pictureSize(doc, f) : natural);
+    }
     return std::max<qreal>(16, (availableWidth(doc, pos) - 1 - gaps) / aspects);
 }
 
