@@ -1529,6 +1529,59 @@ TEST_CASE("formulas MicroTeX cannot take do not bring the app down")
             CHECK(!m.image.isNull());
         }
     CHECK(renderMath("-x", false, 16, Qt::black, 1).ok);  // and nothing more before others
+
+    // and on more, found by rendering random formulas and going through its commands: nothing
+    // in a command that needs something, rows and columns that are not there, a command
+    // defined by itself (written out without end), something too big to draw
+    for (QString tex :
+         {R"(\shoveright{ })", R"(\st{ })", R"(\rlap{ })", R"(\c{ })", R"(\k{ })", R"(\mathop{ })", R"(\( \))",
+          R"(\smash{ })", R"({\tiny })", R"(\scalebox{2}{ })", R"(\reflectbox{ })", R"(\resizebox{1cm}{1cm}{ })",
+          R"(\rotatebox{90}{ })", R"({\tt })", R"({\sf })", R"({\sc })", R"(\undertilde{ }x)", R"(\^{ })",
+          R"(\begin{array}{c}\multirow{2}{*}{ }\end{array})", R"(\begin{array}{c}\multirow{2}{*}{x}\end{array})",
+          R"(\left.\begin{matrix}&\multirow{}{}{}^\makeatother\end{matrix}\right.)",
+          R"(\begin{gather} x \\ \\ y \end{gather})", R"(\begin{multline}\end{multline})",
+          R"(\begin{array}{cc} \\ a & \hline \end{array})", R"(\begin{matrix} {a & b} \end{matrix})",
+          R"(\begin{smallmatrix} a & b \\ c & d \end{smallmatrix})", R"(\genfrac{}{}{}{99999999}{a}{b})",
+          R"(\begin{matrix}\multicolumn{-9223372036854775808}{c}{x}\end{matrix})",
+          R"(\longdiv{-9223372036854775808}{-1})", R"(\newcommand{\newcommand}{}\newcommand\)",
+          R"(\newcommand{\ournotesa}[-1]{}\ournotesa)", R"(\newcommand{\ournotesb}{\ournotesb}\ournotesb)",
+          R"(\ournotesc\newcommand{\ournotesc}{\frac{\ournotesc}{b}})", R"(x^\ournotesd\newcommand\ournotesd\ournotesd)",
+          R"(\ournotese\newcommand{\ournotese}{\sqrt{\ournotese}})", R"(\newcolumntype{Q}{QQ}\begin{array}{Q}\end{array})",
+          R"(\sqrt{\scalebox{1e6}x})", R"(\overrightarrow{\scalebox{1e8}x})", R"(\sqrt{\resizebox{1cm}{100000cm}{x}})",
+          R"(\begin{matrix}\scalebox{1e8}x\\\hdotsfor{1}\end{matrix})"})
+        for (bool display : {false, true}) {
+            INFO(tex.toStdString() << (display ? " (display)" : " (inline)"));
+            CHECK(!renderMath(tex, display, 16, Qt::black, 1).image.isNull());
+        }
+    CHECK(!renderMath(R"(\scalebox{1000}{x})", true, 16, Qt::black, 1).ok);  // too big to draw
+}
+
+TEST_CASE("formulas: what was fixed in MicroTeX still draws as before, or better")
+{
+    app();
+    auto render = [](const QString& tex) { return renderMath(tex, true, 16, Qt::black, 1); };
+    // \\ and the commands of a table in a {group} in a cell, and a column's colour
+    CHECK(render(R"(\begin{array}{cc} {\multirow{2}{*}{x}} & y \\ & z \end{array})").ok);
+    auto lines = render(R"(\begin{pmatrix} {a \\ b} & c \end{pmatrix})");
+    CHECK(lines.ok);
+    CHECK(lines.ascent + lines.descent > 1.5 * render("a").image.height());  // two lines
+    auto red = render(R"(\begin{array}{>{\color{red}}c|c} x & y \\ z & w \end{array})").image;
+    int reds = 0;
+    for (int y = 0; y < red.height(); ++y)
+        for (int x = 0; x < red.width(); ++x)
+            if (QColor(red.pixel(x, y)).red() > 150 && qAlpha(red.pixel(x, y)) > 100) ++reds;
+    CHECK(reds > 0);
+    // what comes after a smallmatrix keeps its size; \magnification changes none
+    CHECK(render(R"(\begin{smallmatrix} a \end{smallmatrix}xxxxxxxxxx)").width > render("xxxxxxxxxx").width);
+    CHECK(render(R"(\magnification{5000}x)").width == render("x").width);
+    // gather, multline and align at their own width, not spread over a text's
+    for (QString tex : {R"(\begin{gather} a \\ b \end{gather})", R"(\begin{multline} a + b \\ = c \end{multline})",
+                        R"(\begin{align} a &= b \\ c &= d \end{align})"}) {
+        INFO(tex.toStdString());
+        auto m = render(tex);
+        CHECK(m.ok);
+        CHECK(m.width < 200);
+    }
 }
 
 TEST_CASE("notes: typing $...$ makes a formula, prices stay text")

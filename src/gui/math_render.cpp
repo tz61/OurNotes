@@ -14,6 +14,7 @@
 #include <stdexcept>
 
 #include "core/formula.h"
+#include "fonts/fonts.h"
 #include "latex.h"
 #include "render.h"
 #include "platform/qt/graphic_qt.h"
@@ -66,6 +67,8 @@ bool initialise()
         if (!res.isEmpty()) {
             try {
                 tex::LaTeX::init(res.toStdString());
+                // \magnification, \DeclareMathSizes: every formula after it resized
+                tex::DefaultTeXFont::enableMagnification(false);
                 g_state = 1;
                 qAddPostRoutine(releaseMicroTeX);
             } catch (const std::exception&) {
@@ -203,7 +206,9 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
     } else {
         try {
             // as LaTeX::parse, but an inline formula in text style (not with "\textstyle "
-            // before it, which made MicroTeX crash on some formulas)
+            // before it, which made MicroTeX crash on some formulas), and with no width of
+            // text (a width of 0): gather, multline and align spread over all of it, 100000
+            // pixels then, and were shrunk to a dot to fit in a note
             if (!bracesBalanced(latex))
                 throw std::runtime_error(QObject::tr("A { is not closed, or a } opens nothing").toStdString());
             tex::Formula formula;
@@ -211,8 +216,7 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
             tex::TeXRenderBuilder builder;
             std::unique_ptr<tex::TeXRender> r(builder.setStyle(display ? tex::TexStyle::display : tex::TexStyle::text)
                                                   .setTextSize(float(pixelSize))
-                                                  .setWidth(tex::UnitType::pixel, 100000, tex::Alignment::left)
-                                                  .setIsMaxWidth(true)
+                                                  .setWidth(tex::UnitType::pixel, 0, tex::Alignment::left)
                                                   .setLineSpace(tex::UnitType::pixel, float(pixelSize) / 3.f)
                                                   .setForeground(color.rgba())
                                                   .build(formula));
@@ -221,8 +225,11 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
             // MicroTeX rounds the box down to whole pixels: cut to the box, formulas lost
             // e.g. a subscript's tail. Draw with room around it and keep all the ink.
             int room = int(std::ceil(pixelSize * 0.5)) + 2;
-            QImage canvas(QSize(int(std::ceil((w + 2 * room) * dpr)), int(std::ceil((h + 2 * room) * dpr))),
-                          QImage::Format_ARGB32_Premultiplied);
+            // \scalebox{1e6}{x} and the like: an image of hundreds of megabytes, or none
+            qreal cw = std::ceil((w + 2.0 * room) * dpr), ch = std::ceil((h + 2.0 * room) * dpr);
+            if (cw > 16384 || ch > 16384 || cw * ch > 32.0 * 1024 * 1024)
+                throw std::runtime_error(QObject::tr("The formula is too large to show").toStdString());
+            QImage canvas(QSize(int(cw), int(ch)), QImage::Format_ARGB32_Premultiplied);
             canvas.setDevicePixelRatio(dpr);
             canvas.fill(Qt::transparent);
             {
