@@ -13,9 +13,12 @@
 #include <memory>
 #include <stdexcept>
 
+// latex.h first: MicroTeX's headers include their "common.h" by that name, which MSVC looks
+// for in the folders of the files including them, this one's too, and finds OurNotes'
+// gui/common.h there. latex.h, beside MicroTeX's, has it included first.
+#include "latex.h"
 #include "core/formula.h"
 #include "fonts/fonts.h"
-#include "latex.h"
 #include "render.h"
 #include "platform/qt/graphic_qt.h"
 
