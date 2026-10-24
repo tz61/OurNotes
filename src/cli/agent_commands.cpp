@@ -587,10 +587,19 @@ int cmdAddImage(Library& lib, Args& args)
         throw Error("give the pictures: files, web addresses or data: URIs");
     requireEditable(lib, id);
     int width = (int)numberOption(args, "--width", 0, 1, 10000);
+    int height = (int)numberOption(args, "--height", 0, 1, 10000);
+    bool row = args.flag("--row");  // side by side, as high as each other (as in the app)
     std::string html;
-    for (size_t i = 1; i < args.positionals.size(); ++i)
-        html += "<p><img src=\"" + htmlEscape(args.positionals[i]) + "\"" +
-                (width ? " width=\"" + std::to_string(width) + "\"" : std::string()) + "></p>";
+    for (size_t i = 1; i < args.positionals.size(); ++i) {
+        auto img = "<img src=\"" + htmlEscape(args.positionals[i]) + "\"" +
+                   (width ? " width=\"" + std::to_string(width) + "\"" : std::string()) +
+                   (height ? " height=\"" + std::to_string(height) + "\"" : std::string()) + ">";
+        html += row ? img : "<p>" + img + "</p>";
+    }
+    if (row)
+        html = "<p>" + html + "</p>";
+    if (auto caption = trim(args.option("--caption")); !caption.empty())  // under them
+        html += "<p class=\"caption\">" + htmlEscape(caption) + "</p>";
     ScratchFolder scratch;
     auto pictures = notePictures(html, scratch.path);
     html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);

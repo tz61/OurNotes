@@ -914,4 +914,21 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
     auto [badCode, badOut] = cli.run({"add-note", paper, "![x](" + pathString(cli.dir.path / "gone.png") + ")"});
     CHECK(badCode == 1);
     CHECK(lib.children(mine, paper, "note").size() == 1);  // no note made
+
+    // side by side, as high as each other, with a caption under them (as in the app)
+    CHECK(cli.run({"add-image", note, pathString(figure), pathString(figure), "--row", "--height", "120", "--caption",
+                   "Two <figures>"})
+              .first == 0);
+    std::string keys[2];
+    int n = 0;
+    for (auto& p : lib.children(mine, note, "attachment"))
+        if (before.find(jstr(p, "key")) == npos && n < 2)
+            keys[n++] = jstr(p, "key");
+    REQUIRE(n == 2);
+    html = jstr(*lib.item(mine, note), "note");
+    auto row = [&](const std::string& a, const std::string& b) {
+        auto img = [](const std::string& key) { return "<img data-attachment-key=\"" + key + "\" height=\"120\">"; };
+        return "<p>" + img(a) + img(b) + "</p><p class=\"caption\">Two &lt;figures&gt;</p></div>";
+    };
+    CHECK_MESSAGE((html.find(row(keys[0], keys[1])) != npos || html.find(row(keys[1], keys[0])) != npos), html);
 }

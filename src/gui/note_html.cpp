@@ -16,6 +16,13 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/math_render.h"
+#include "gui/rich_text_images.h"
+
+namespace {
+// what marks a caption's paragraph while the HTML becomes a document (noteHtmlForEditor):
+// a block's user state, which QTextDocument keeps whatever the paragraph begins with
+constexpr int kCaptionState = 0x43415054;
+}
 
 namespace on::gui {
 
@@ -124,6 +131,71 @@ void styleNoteTable(QTextTable* table)
         }
 }
 
+QTextCharFormat captionCharFormat()
+{
+    QTextCharFormat f;
+    f.setForeground(QColor(0x88, 0x88, 0x88));  // (readable on dark and on light)
+    f.setProperty(QTextFormat::FontSizeAdjustment, -1);
+    f.setProperty(kCaptionProperty, true);
+    return f;
+}
+
+void setCaption(QTextBlock block, bool caption)
+{
+    QTextCursor c(block);
+    auto bf = block.blockFormat();
+    if (caption)
+        bf.setProperty(kCaptionProperty, true);
+    else
+        bf.clearProperty(kCaptionProperty);
+    c.setBlockFormat(bf);
+    c.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    auto cf = block.charFormat();
+    if (caption) {
+        cf.merge(captionCharFormat());
+        // smaller and gray; text with a colour of its own keeps it
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            auto add = captionCharFormat();
+            if (f.hasProperty(QTextFormat::ForegroundBrush) || f.hasProperty(kOriginalForegroundProperty))
+                add.clearProperty(QTextFormat::ForegroundBrush);
+            QTextCursor part(c.document());
+            part.setPosition(frag.position());
+            part.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            part.mergeCharFormat(add);
+        }
+    } else {
+        for (int p : {(int)QTextFormat::ForegroundBrush, (int)QTextFormat::FontSizeAdjustment, kCaptionProperty})
+            cf.clearProperty(p);
+        // its text as it was before it was a caption's: its own colour and size kept
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            if (!f.hasProperty(kCaptionProperty))
+                continue;
+            if (f.foreground().color() == captionCharFormat().foreground().color())
+                f.clearProperty(QTextFormat::ForegroundBrush);
+            f.clearProperty(QTextFormat::FontSizeAdjustment);
+            f.clearProperty(kCaptionProperty);
+            QTextCursor part(c.document());
+            part.setPosition(frag.position());
+            part.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            part.setCharFormat(f);
+        }
+    }
+    c.setBlockCharFormat(cf);
+}
+
+void markCaptions(QTextDocument* doc)
+{
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        if (block.userState() == kCaptionState) {
+            block.setUserState(-1);
+            setCaption(block, true);
+        }
+}
+
 void styleNoteTables(QTextDocument* doc)
 {
     std::vector<QTextTable*> tables;
@@ -142,6 +214,30 @@ void styleNoteTables(QTextDocument* doc)
 QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocument* doc)
 {
     QString html = tableHeadersForEditor(mathMarkupToImages(rawHtml));
+    // a caption (<p class="caption">) is marked by a user state, which QTextDocument keeps
+    // (it keeps no class); markCaptions makes it a caption. (An empty one is left out: an
+    // empty paragraph is dropped, and its state would go to the one after it.)
+    static const QRegularExpression caption(
+        R"re(<p\b([^>]*?)\s*\bclass\s*=\s*["']caption["']([^>]*)>(?!\s*(?:<br\s*/?>\s*)*</p>))re",
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression style(R"re(\bstyle\s*=\s*(["'])(.*?)\1)re", QRegularExpression::CaseInsensitiveOption);
+    QString marked;
+    qsizetype done = 0;
+    for (auto it = caption.globalMatch(html); it.hasNext();) {
+        auto m = it.next();
+        QString attrs = m.captured(1) + m.captured(2), state = QString("-qt-user-state: %1").arg(kCaptionState);
+        if (auto s = style.match(attrs); s.hasMatch()) {
+            QString css = s.captured(2).trimmed();
+            if (css.endsWith(';'))
+                css.chop(1);
+            attrs.replace(s.capturedStart(), s.capturedLength(), "style=\"" + (css.isEmpty() ? state : css + "; " + state) + "\"");
+        } else {
+            attrs += " style=\"" + state + "\"";
+        }
+        marked += html.mid(done, m.capturedStart() - done) + "<p" + attrs + ">";
+        done = m.capturedEnd();
+    }
+    html = marked + html.mid(done);
     static const QRegularExpression img(R"re(<img\b([^>]*?)data-attachment-key="([A-Za-z0-9]+)"([^>]*)>)re");
     auto& lib = AppContext::get().library();
     QString out;
@@ -212,9 +308,14 @@ QString displayFormula(const QTextCharFormat& f, const QString& latex)
            "$$</pre>";
 }
 
-QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefault)
+// caption: the fragment is in a caption, whose gray (the text's unless it has a colour of its
+// own) is not saved.
+QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefault, QSizeF size = {}, bool caption = false)
 {
     auto f = frag.charFormat();
+    if (caption && !f.hasProperty(kOriginalForegroundProperty) && f.hasProperty(QTextFormat::ForegroundBrush) &&
+        f.foreground().color() == captionCharFormat().foreground().color())
+        f.clearProperty(QTextFormat::ForegroundBrush);
     if (int kind = f.property(kMathSourceProperty).toInt()) {
         auto latex = mathSourceLatex(frag.text(), kind == 2);
         // an empty one is its signs, as text: what stays when it is left so
@@ -223,10 +324,11 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     if (f.isImageFormat()) {
         auto img = f.toImageFormat();
         QString attrs;
-        if (img.width() > 0)
-            attrs += QString(" width=\"%1\"").arg(qRound(img.width()));
-        if (img.height() > 0)
-            attrs += QString(" height=\"%1\"").arg(qRound(img.height()));
+        qreal w = size.isValid() ? size.width() : img.width(), h = size.isValid() ? size.height() : img.height();
+        if (w > 0)
+            attrs += QString(" width=\"%1\"").arg(qRound(w));
+        if (h > 0)
+            attrs += QString(" height=\"%1\"").arg(qRound(h));
         auto name = img.name();
         QString latex;
         if (parseMathResourceName(name, &latex, nullptr))
@@ -284,9 +386,30 @@ QString blockContent(const QTextBlock& block, Cell cell = Cell::None)
         def.setFontWeight(QFont::Normal);
     if (block.blockFormat().headingLevel() > 0 || cell == Cell::Header)
         def.setFontWeight(QFont::Bold);  // headings are bold by definition
-    for (auto it = block.begin(); !it.atEnd(); ++it)
-        if (it.fragment().isValid())
-            out += fragmentHtml(it.fragment(), def);
+    bool caption = block.blockFormat().hasProperty(kCaptionProperty);
+    // pictures alone on a line: all as high as the row, as they are shown (when all can be
+    // measured: one not downloaded yet keeps the size it has, or has none)
+    auto row = pictureRow(block);
+    qreal height = row.size() > 1 ? rowHeight(block.document(), block) : 0;
+    for (auto it = block.begin(); height > 0 && !it.atEnd(); ++it)
+        if (!pictureKnown(block.document(), it.fragment().charFormat().toImageFormat()))
+            height = 0;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        auto frag = it.fragment();
+        if (!frag.isValid())
+            continue;
+        if (!isPicture(frag.charFormat())) {
+            out += fragmentHtml(frag, def, {}, caption);
+            continue;
+        }
+        QSizeF size;  // (as stored)
+        if (height > 0) {
+            auto own = pictureSize(block.document(), frag.charFormat().toImageFormat());
+            size = QSizeF(height * own.width() / std::max<qreal>(1, own.height()), height);
+        }
+        for (int i = 0; i < frag.length(); ++i)  // (the same picture twice is one fragment)
+            out += fragmentHtml(frag, def, size);
+    }
     return out;
 }
 
@@ -472,7 +595,10 @@ void serializeBlocks(QTextFrame::iterator it, QString& out, Cell cell)
                 align = " style=\"text-align: center\"";
             else if (bf.alignment() & Qt::AlignRight)
                 align = " style=\"text-align: right\"";
-            out += "<p" + align + ">" + content + "</p>";
+            bool caption = bf.hasProperty(kCaptionProperty);
+            if (caption && block.text().trimmed().isEmpty())
+                continue;  // a caption begun and left empty
+            out += "<p" + QString(caption ? " class=\"caption\"" : "") + align + ">" + content + "</p>";
         }
     }
     (void)openList;

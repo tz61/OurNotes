@@ -5,6 +5,8 @@
 
 #include <cstdint>
 
+class QTextBlock;
+class QTextCharFormat;
 class QTextDocument;
 class QTextTable;
 
@@ -14,6 +16,10 @@ namespace on::gui {
 constexpr int kMathSourceProperty = QTextFormat::UserProperty + 11;          // 1 inline / 2 display formula source
 constexpr int kOriginalForegroundProperty = QTextFormat::UserProperty + 12;  // colour hidden for contrast
 constexpr int kHeadingMarkersProperty = QTextFormat::UserProperty + 13;     // block: a heading shown as "## …"
+// A picture's caption: the paragraph under a line of pictures (block), and its text (char:
+// shown smaller and gray, which is not saved). Saved as <p class="caption">; Zotero shows
+// it as a paragraph under the pictures.
+constexpr int kCaptionProperty = QTextFormat::UserProperty + 14;
 
 // Prepare stored note HTML for a QTextDocument: embedded images
 // (<img data-attachment-key="KEY">) become "attachment:KEY" resources.
@@ -28,6 +34,12 @@ QString tableHeadersForEditor(const QString& html);
 // the top of their rows. For a table just made, or one with new rows or columns.
 void styleNoteTable(QTextTable* table);
 void styleNoteTables(QTextDocument* doc);
+// A caption's text: smaller and gray (kCaptionProperty).
+QTextCharFormat captionCharFormat();
+// The block made a caption, or a paragraph again (its text as the paragraph's); and the
+// captions the HTML had (see noteHtmlForEditor) made so, once the document has it.
+void setCaption(QTextBlock block, bool caption);
+void markCaptions(QTextDocument* doc);
 
 // Serialise a QTextDocument to clean note HTML in Zotero's format
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.

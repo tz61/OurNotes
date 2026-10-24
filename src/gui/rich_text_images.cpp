@@ -9,7 +9,9 @@
 #include <QPixmap>
 #include <QRegularExpression>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QTextFrame>
 #include <QTextList>
 #include <QTextTable>
@@ -58,7 +60,85 @@ QFont formatFont(QTextDocument* doc, const QTextFormat& format)
     return format.toCharFormat().font().resolve(doc->defaultFont());
 }
 
+// (from the block's fragments: a cursor would lay the block out, from within its layout)
+QTextImageFormat imageFormatAt(const QTextDocument* doc, int pos)
+{
+    auto block = doc->findBlock(pos);
+    for (auto it = block.begin(); !it.atEnd(); ++it)
+        if (auto frag = it.fragment(); frag.position() <= pos && pos < frag.position() + frag.length())
+            return frag.charFormat().toImageFormat();
+    return {};
+}
+
+qreal aspectOf(const QSizeF& s) { return s.height() > 0 ? s.width() / s.height() : 1; }
+
 } // namespace
+
+bool isPicture(const QTextFormat& format)
+{
+    return format.isImageFormat() && !parseMathResourceName(format.toImageFormat().name(), nullptr, nullptr);
+}
+
+std::vector<int> pictureRow(const QTextBlock& block)
+{
+    std::vector<int> out;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        auto frag = it.fragment();
+        if (!isPicture(frag.charFormat()))
+            return {};
+        for (int i = 0; i < frag.length(); ++i)
+            out.push_back(frag.position() + i);
+    }
+    return out;
+}
+
+QSizeF naturalPictureSize(const QTextDocument* doc, const QTextImageFormat& format)
+{
+    QImage image = imageResource(const_cast<QTextDocument*>(doc), format.name());
+    return image.isNull() ? QSizeF() : QSizeF(image.size()) / image.devicePixelRatio();
+}
+
+bool pictureKnown(const QTextDocument* doc, const QTextImageFormat& format)
+{
+    return (format.width() > 0 && format.height() > 0) || !naturalPictureSize(doc, format).isEmpty();
+}
+
+QSizeF pictureSize(const QTextDocument* doc, const QTextImageFormat& format)
+{
+    QSizeF natural = naturalPictureSize(doc, format);
+    qreal w = format.width(), h = format.height();
+    if (w > 0 && h > 0)
+        return {w, h};
+    if (natural.isEmpty())
+        return {w > 0 ? w : 16, h > 0 ? h : 16};
+    if (w > 0)
+        return {w, w / aspectOf(natural)};
+    if (h > 0)
+        return {h * aspectOf(natural), h};
+    // small, unless it is smaller
+    qreal scale = std::min({1.0, kDefaultPictureBox.width() / natural.width(), kDefaultPictureBox.height() / natural.height()});
+    return natural * scale;
+}
+
+qreal rowHeight(const QTextDocument* doc, const QTextBlock& block)
+{
+    auto row = pictureRow(block);
+    for (int p : row)
+        if (auto f = imageFormatAt(doc, p); pictureKnown(doc, f))
+            return pictureSize(doc, f).height();
+    return row.empty() ? 0 : pictureSize(doc, imageFormatAt(doc, row.front())).height();
+}
+
+qreal maxPictureHeight(QTextDocument* doc, int pos)
+{
+    auto row = pictureRow(doc->findBlock(pos));
+    if (row.empty())  // (one in a line of text)
+        row = {pos};
+    qreal aspects = 0, gaps = row.size() > 1 ? 2 * kPictureGap * row.size() : 0;
+    for (int p : row)
+        aspects += aspectOf(pictureSize(doc, imageFormatAt(doc, p)));
+    return std::max<qreal>(16, (availableWidth(doc, pos) - 1 - gaps) / aspects);
+}
 
 FittedImageHandler* FittedImageHandler::install(QTextDocument* doc, QObject* owner)
 {
@@ -103,16 +183,24 @@ FittedImageHandler::Geometry FittedImageHandler::geometry(QTextDocument* doc, in
             g.top = ascent - m.ascent;  // above the box when the formula is taller
         }
     } else {
-        QImage image = imageResource(doc, img.name());
-        QSizeF natural = image.isNull() ? QSizeF(16, 16) : QSizeF(image.size()) / image.devicePixelRatio();
-        qreal w = img.width(), h = img.height();
-        if (w > 0 && h > 0)
-            natural = QSizeF(w, h);
-        else if (w > 0 && natural.width() > 0)
-            natural = QSizeF(w, natural.height() * w / natural.width());
-        else if (h > 0 && natural.height() > 0)
-            natural = QSizeF(natural.width() * h / natural.height(), h);
-        g.size = natural;
+        g.size = pictureSize(doc, img);
+        // a row (or a picture being resized): as high as the row, and the row as a whole as
+        // wide as the text at most
+        auto block = doc->findBlock(pos);
+        auto row = pictureRow(block);
+        bool resizing = resizing_.height > 0 && resizing_.block == block.blockNumber() && (!row.empty() || resizing_.pos == pos);
+        if (resizing && row.empty())  // one in a line of text
+            g.size = QSizeF(resizing_.height * aspectOf(g.size), resizing_.height);
+        if (row.size() > 1 || (resizing && !row.empty())) {
+            qreal height = resizing ? resizing_.height : rowHeight(doc, block);
+            g.gap = row.size() > 1 ? kPictureGap : 0;
+            qreal widths = 0, gaps = 2 * g.gap * row.size();  // (the gaps stay as wide)
+            for (int p : row)
+                widths += height * aspectOf(pictureSize(doc, imageFormatAt(doc, p)));
+            qreal fit = std::clamp<qreal>((availableWidth(doc, pos) - 1 - gaps) / std::max<qreal>(1, widths), 0.01, 1);
+            g.size = QSizeF(height * aspectOf(g.size) * fit + 2 * g.gap, height * fit);
+            return g;
+        }
     }
     qreal avail = availableWidth(doc, pos);
     if (g.size.width() > avail) {
@@ -146,14 +234,42 @@ void FittedImageHandler::drawObject(QPainter* painter, const QRectF& rect, QText
                            m.image);
     } else {
         QImage image = imageResource(doc, img.name());
+        QRectF at = rect.adjusted(g.gap, 0, -g.gap, 0);
         if (image.isNull()) {
             painter->setPen(QPen(Qt::gray, 1, Qt::DashLine));
-            painter->drawRect(rect.adjusted(0.5, 0.5, -0.5, -0.5));
+            painter->drawRect(at.adjusted(0.5, 0.5, -0.5, -0.5));
         } else {
-            painter->drawImage(rect, image);
+            painter->drawImage(at, image);
         }
     }
     painter->restore();
+}
+
+QRectF FittedImageHandler::pictureRect(QTextDocument* doc, int pos)
+{
+    QTextBlock block = doc->findBlock(pos);
+    doc->documentLayout()->blockBoundingRect(block);  // (laid out)
+    auto* layout = block.layout();
+    if (!layout)
+        return {};
+    int at = pos - block.position();
+    QTextLine line = layout->lineForTextPosition(at);
+    if (!line.isValid())
+        return {};
+    auto format = imageFormatAt(doc, pos);
+    if (!isPicture(format))
+        return {};
+    auto g = geometry(doc, pos, format, qApp->devicePixelRatio());
+    qreal x = layout->position().x() + line.cursorToX(at);
+    qreal baseline = layout->position().y() + line.y() + line.ascent();  // (a picture stands on it)
+    return QRectF(x + g.gap, baseline - g.size.height(), g.size.width() - 2 * g.gap, g.size.height());
+}
+
+void FittedImageHandler::setResizing(QTextDocument* doc, int pos, qreal height)
+{
+    resizing_.block = doc->findBlock(pos).blockNumber();
+    resizing_.pos = pos;
+    resizing_.height = height;
 }
 
 } // namespace on::gui

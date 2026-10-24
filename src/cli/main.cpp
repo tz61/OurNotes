@@ -82,8 +82,9 @@ Notes and attachments:
   edit-note NOTE [TEXT|-] [--append]
                                     replace (or add to) a note's text; ![what](picture.png)
                                     in Markdown puts a picture in (a file, web address, data:)
-  add-image NOTE PICTURE... [--width PX]
-                                    pictures at the end of a note
+  add-image NOTE PICTURE... [--row] [--caption TEXT] [--width PX | --height PX]
+                                    pictures at the end of a note, each on a line of its
+                                    own or side by side (--row), a caption under them
   attach KEY FILE... [--link] [--title T]
                                     files under an item (--link: linked to, not copied)
   attach-url [KEY] URL [--title T] [--collection C]

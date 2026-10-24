@@ -78,6 +78,7 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
         updateMathPreview();
     });
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &NoteTextEdit::updateMathPreview);
+    setUpPictures();
     if (auto* ctx = AppContext::tryGet())
         connect(ctx, &AppContext::appearanceChanged, this, [this] { viewport()->update(); });
 }
@@ -172,7 +173,8 @@ static void applyHeading(QTextCursor cursor, int level)
 // nothing else of `from`, also when hidden for contrast in dark mode (see adaptColors).
 static void copyTextColor(const QTextCharFormat& from, QTextCharFormat& to)
 {
-    for (int property : {int(QTextFormat::ForegroundBrush), kOriginalForegroundProperty}) {
+    // (a caption's gray is the caption's, not the formula's own: kCaptionProperty)
+    for (int property : {int(QTextFormat::ForegroundBrush), kOriginalForegroundProperty, kCaptionProperty}) {
         if (from.hasProperty(property))
             to.setProperty(property, from.property(property));
         else
@@ -615,6 +617,7 @@ void NoteTextEdit::prepareDocument()
             c.setCharFormat(img);
         }
     styleNoteTables(document());
+    markCaptions(document());
     --internal_;
     adaptColors();
 }
@@ -1325,6 +1328,8 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
     bool swallow = std::exchange(swallowDollar_, false);
     if (swallow && e->text() == "$")
         return;  // the second $ of a $$ that one $ already closed
+    if (pictureKey(e) || captionKey(e))
+        return;
     if (markdown_ && !isReadOnly() && e->key() == Qt::Key_Backspace && e->modifiers() == Qt::NoModifier) {
         auto cursor = textCursor();
         int level = cursor.blockFormat().headingLevel();
@@ -1372,6 +1377,7 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         }
     }
     if (e->key() == Qt::Key_V && e->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && !isReadOnly()) {
+        caretForText();  // (a picture picked: under it)
         insertPlainText(QApplication::clipboard()->text());  // as it is, Markdown or not
         return;
     }
@@ -1456,6 +1462,13 @@ bool NoteTextEdit::event(QEvent* e)
             e->accept();
             return true;
         }
+        // a picture picked: copied, cut, deleted here (there is no selection the window knows of)
+        if (pickedPicture() >= 0 && (k->matches(QKeySequence::Copy) || k->matches(QKeySequence::Cut) ||
+                                     k->matches(QKeySequence::Paste) || k->key() == Qt::Key_Delete ||
+                                     k->key() == Qt::Key_Backspace)) {
+            e->accept();
+            return true;
+        }
     }
     return QTextEdit::event(e);
 }
@@ -1463,6 +1476,8 @@ bool NoteTextEdit::event(QEvent* e)
 void NoteTextEdit::focusOutEvent(QFocusEvent* e)
 {
     QTextEdit::focusOutEvent(e);
+    viewport()->update();  // (no picture shown picked)
+    pictureBarTimer_.start();
     if (e->reason() != Qt::PopupFocusReason)
         commitMathEdits(true);
 }
@@ -1470,6 +1485,8 @@ void NoteTextEdit::focusOutEvent(QFocusEvent* e)
 void NoteTextEdit::mousePressEvent(QMouseEvent* e)
 {
     pressPos_ = e->position().toPoint();
+    if (pictureMousePress(e))
+        return;
     QTextEdit::mousePressEvent(e);
 }
 
@@ -1620,6 +1637,10 @@ bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 
 void NoteTextEdit::insertFromMimeData(const QMimeData* source)
 {
+    // a picture picked (the cursor at it, not shown): what is pasted goes under it, as text
+    // typed (from the context menu too)
+    if (int p = pickedPicture(); p >= 0 && textCursor().position() == p && !textCursor().hasSelection() && !isReadOnly())
+        caretForText();
     // Into a formula being typed, text is its LaTeX (without $ signs of its own); into an
     // empty one, just opened with $$, the formula is done at once.
     if (auto run = runAtCursor(); run && source->hasText() && !isReadOnly()) {
@@ -1647,29 +1668,16 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     if (storeImage && source->hasImage() && !fromNote) {
         auto image = qvariant_cast<QImage>(source->imageData());
         if (!image.isNull()) {
-            auto name = storeImage(image);
-            if (!name.isEmpty()) {
-                document()->addResource(QTextDocument::ImageResource, QUrl(name), image);
-                QTextImageFormat fmt;
-                fmt.setName(name);
-                qreal maxWidth = std::max(100.0, viewport()->width() - 40.0);
-                if (image.width() > maxWidth) {
-                    fmt.setWidth(maxWidth);
-                    fmt.setHeight(image.height() * maxWidth / image.width());
-                }
-                textCursor().insertImage(fmt);
-                return;
-            }
+            insertPictures({image});  // (shown small, on a line of its own)
+            return;
         }
     }
-    if (storeImage && source->hasUrls()) {
-        for (auto& url : source->urls()) {
-            if (!url.isLocalFile() || QImageReader::imageFormat(url.toLocalFile()).isEmpty())
-                continue;
-            QMimeData img;
-            img.setImageData(QImage(url.toLocalFile()));
-            insertFromMimeData(&img);
-        }
+    if (storeImage && source->hasUrls()) {  // pictures dropped or pasted together: one row
+        QList<QImage> images;
+        for (auto& url : source->urls())
+            if (url.isLocalFile() && !QImageReader::imageFormat(url.toLocalFile()).isEmpty())
+                images << QImage(url.toLocalFile());
+        insertPictures(images);
         return;
     }
     static const QRegularExpression markdownRe(
@@ -1702,6 +1710,23 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         QTextDocument tmp;
         if (fromNote) {
             tmp.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
+            // pictures alone: on a line of their own, as other pictures pasted; one from
+            // another note (not among this one's) is this note's own copy of it
+            if (auto row = pictureRow(tmp.begin()); tmp.blockCount() == 1 && !row.empty()) {
+                QList<QTextImageFormat> pictures;
+                bool ours = true;
+                for (auto it = tmp.begin().begin(); !it.atEnd(); ++it)
+                    for (int i = 0; i < it.fragment().length(); ++i) {
+                        auto f = it.fragment().charFormat().toImageFormat();
+                        ours = ours && document()->resource(QTextDocument::ImageResource, QUrl(f.name())).isValid();
+                        pictures << f;
+                    }
+                if (!ours && storeImage && source->hasImage())
+                    insertPictures({qvariant_cast<QImage>(source->imageData())});
+                else
+                    placePictures(pictures);
+                return;
+            }
         } else {
             tmp.setHtml(tableHeadersForEditor(mathMarkupToImages(source->html())));
             formulasFromText(&tmp);
@@ -1730,6 +1755,8 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
 
 void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
 {
+    if (pictureMouseRelease(e))
+        return;
     auto href = anchorAt(e->pos());
     if (!href.isEmpty() && (e->modifiers() & Qt::ControlModifier || isReadOnly())) {
         QDesktopServices::openUrl(QUrl(href));
@@ -1748,6 +1775,8 @@ void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
 
 void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
 {
+    if (pictureMouseMove(e))
+        return;
     bool overLink = !anchorAt(e->pos()).isEmpty() && (e->modifiers() & Qt::ControlModifier);
     bool overMath = !isReadOnly() && !mathAt(e->pos()).isNull();
     viewport()->setCursor(overLink || overMath ? Qt::PointingHandCursor : Qt::IBeamCursor);
@@ -1768,6 +1797,20 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     edit_->setAcceptRichText(true);
     edit_->setPlaceholderText(tr("Write a note…"));
     edit_->storeImage = [this](const QImage& img) { return storeImage(img); };
+    edit_->openPicture = [this](const QString& name) {  // in the program the system has for it
+        if (!name.startsWith("attachment:")) {
+            QUrl url(name);
+            if (url.scheme() == "http" || url.scheme() == "https" || url.isLocalFile())
+                QDesktopServices::openUrl(url);
+            return;
+        }
+        auto& lib = AppContext::get().library();
+        if (auto att = lib.item(libraryId_, ss(name.mid(11)))) {
+            auto path = lib.attachmentFile(libraryId_, *att);
+            if (!path.empty())
+                QDesktopServices::openUrl(QUrl::fromLocalFile(qpath(path)));
+        }
+    };
     edit_->setMarkdownShortcuts(true);
     edit_->markdownBlock = [this](const QString& kind) {
         if (kind.startsWith("heading"))

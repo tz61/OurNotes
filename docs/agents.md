@@ -139,8 +139,13 @@ ournotes-cli rename-tag todo later     # tag-color later red
   (`![what it shows](figure.png)`: a PNG, JPEG, GIF or SVG file, a web address or a
   `data:` URI, stored in the note as the app stores a pasted one), and formulas: `$x^2$`
   in a line, `$$...$$` on lines of their own, shown as formulas in the app.
-  `add-image NOTE figure.png [--width 400]` puts pictures at the end of a note; `text
-  NOTE` says where each picture's file is (`[picture: PATH]`), to look at it.
+  `add-image NOTE a.png b.png [--row] [--caption TEXT] [--width PX | --height PX]` puts
+  pictures at the end of a note, each on a line of its own, or side by side with `--row`
+  (a row: the app shows them as high as each other, as wide as the note at most), with a
+  caption under them. Without a size a picture is shown small (within 360 x 240), as a
+  pasted one. In HTML, pictures alone in one `<p>` are a row and a `<p class="caption">`
+  right under them is their caption. `text NOTE` says where each picture's file is
+  (`[picture: PATH]`), to look at it.
 - `trash` moves items to the trash, where the user can look them over. What deletes for
   good (`delete`, `empty-trash`, `delete-collection`, `delete-tag`, `delete-library`)
   asks for `--yes`: use it only when the user asks for exactly that.

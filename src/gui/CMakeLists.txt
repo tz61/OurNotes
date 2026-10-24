@@ -22,6 +22,7 @@ set(OURNOTES_GUI_SOURCES
     metadata_progress.cpp
     note_editor.cpp
     note_html.cpp
+    note_pictures.cpp
     note_tab.cpp
     preferences.cpp
     shift_wheel.cpp

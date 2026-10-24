@@ -9,6 +9,7 @@
 #include <vector>
 
 class QComboBox;
+class QFrame;
 class QListWidget;
 class QLabel;
 class QToolBar;
@@ -57,6 +58,26 @@ public:
     enum class TableEdit { RowAbove, RowBelow, ColumnLeft, ColumnRight, DeleteRow, DeleteColumn, DeleteTable };
     void editTable(const QTextCursor& at, TableEdit edit);
 
+    // Pictures (note_pictures.cpp), as in Feishu or Slack: a click picks one (an outline,
+    // corners to drag, no text cursor), with buttons above it: sizes, a caption, how it is
+    // aligned, beside the pictures above or on its own line, open, delete. Pictures alone on
+    // a line are a row, all as high; one made larger or smaller makes the row so.
+    std::function<void(const QString& name)> openPicture;  // a picture's resource name
+    int pickedPicture() const;  // where the picture picked is, or -1
+    void pickPicture(int pos);
+    QRectF pictureRect(int pos) const;  // where it is drawn, in the viewport
+    enum class PictureSize { Small, Medium, Large, FitWidth, Original };
+    void resizePicture(PictureSize size);  // the picked picture, and its row
+    void addCaption();
+    void alignPictures(Qt::Alignment align);
+    bool joinPreviousRow();  // the picked picture to the end of the row above
+    bool pictureOwnLine();   // the picked picture out of its row (or text), on a line of its own
+    // backwards: the cursor where it was, before it; keepCaption: one it had alone stays, as text
+    void deletePicture(bool backwards = false, bool keepCaption = false);
+    bool movePicture(int from, int to);  // as dragged: from where it is to before `to`
+    // On a line of their own (one row), where the cursor is; the last one picked.
+    void insertPictures(const QList<QImage>& images);
+
 protected:
     QMimeData* createMimeDataFromSelection() const override;
     bool canInsertFromMimeData(const QMimeData* source) const override;
@@ -70,6 +91,12 @@ protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
+    void paintEvent(QPaintEvent* e) override;
+    void resizeEvent(QResizeEvent* e) override;
+    void focusInEvent(QFocusEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent* e) override;
+    void dropEvent(QDropEvent* e) override;
+    void inputMethodEvent(QInputMethodEvent* e) override;  // (text with a picture picked: under it)
 
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
@@ -104,6 +131,38 @@ private:
     void leaveMath(const MathRun& run, bool nextLine);
     QTextCharFormat outerFormat(const QTextBlock& block, int formulaPosInBlock) const;
     void adaptColors();
+
+    // pictures (note_pictures.cpp)
+    void setUpPictures();
+    void unpickPicture();
+    int pictureAt(const QPoint& viewportPos) const;
+    int pictureCornerAt(const QPoint& viewportPos) const;  // of the picked picture: 0..3, or -1
+    bool pictureKey(QKeyEvent* e);    // a key for the picked picture (true: used)
+    bool captionKey(QKeyEvent* e);    // Enter, Backspace, Delete next to pictures and captions
+    void caretForText();  // where text typed with a picture picked goes: on a line under it
+    bool pictureMousePress(QMouseEvent* e);
+    bool pictureMouseMove(QMouseEvent* e);
+    bool pictureMouseRelease(QMouseEvent* e);
+    void startPictureDrag();
+    void copyPicture(bool cut);
+    void setPictureHeight(int pos, qreal height);  // its own, or its row's
+    QTextCursor newLineAfterPictures();  // below the picked picture's line (and caption)
+    void placePictures(const QList<QTextImageFormat>& pictures);  // (see insertPictures)
+    void placePictureBar();
+    QTextCursor picked_;  // the picture picked, selected
+    QFrame* pictureBar_ = nullptr;
+    QTimer pictureBarTimer_;
+    struct {
+        int corner = -1;  // 0 top left, 1 top right, 2 bottom left, 3 bottom right
+        QPoint start;
+        QRectF rect;
+        qreal height = 0;
+    } resizing_;
+    int pressedPicture_ = -1;
+    QPoint pressedAt_;
+    QTextCursor dragged_;  // the picture being dragged
+    int caretWidth_ = 1;
+    int picking_ = 0;
 
     FittedImageHandler* images_ = nullptr;
     QLabel* preview_ = nullptr;
