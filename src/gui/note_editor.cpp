@@ -33,6 +33,7 @@
 #include <QWheelEvent>
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "core/hash.h"
@@ -79,10 +80,6 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &NoteTextEdit::updateMathPreview);
     if (auto* ctx = AppContext::tryGet())
         connect(ctx, &AppContext::appearanceChanged, this, [this] { viewport()->update(); });
-    baselineTimer_.setSingleShot(true);
-    baselineTimer_.setInterval(0);
-    connect(&baselineTimer_, &QTimer::timeout, this, &NoteTextEdit::alignTableBaselines);
-    connect(document(), &QTextDocument::contentsChanged, &baselineTimer_, qOverload<>(&QTimer::start));
 }
 
 void NoteTextEdit::changeEvent(QEvent* e)
@@ -92,14 +89,6 @@ void NoteTextEdit::changeEvent(QEvent* e)
         adaptColors();
         viewport()->update();
     }
-    if (e->type() == QEvent::FontChange)  // the text size: lines of other heights
-        baselineTimer_.start();
-}
-
-void NoteTextEdit::resizeEvent(QResizeEvent* e)
-{
-    QTextEdit::resizeEvent(e);
-    baselineTimer_.start();  // lines wrapped elsewhere
 }
 
 // Back to the note's own font: the format names no family. An empty family list is not
@@ -866,10 +855,12 @@ void boldCell(QTextTableCell cell)
 }
 
 // The cells of `row` (just added) aligned as those of the row above or below, and bold in
-// the header row.
+// the header row. A new first row under the header is aligned as the body under it (a <th>
+// from Zotero or the web is centred by default, the cells of its column are not).
 void likeTheirColumn(QTextTable* table, int row)
 {
-    int other = row > 0 ? row - 1 : row + 1;
+    int header = table->format().headerRowCount();
+    int other = row == 0 || (row == header && row + 1 < table->rows()) ? row + 1 : row - 1;
     for (int c = 0; c < table->columns(); ++c) {
         if (other < table->rows())
             alignCell(table->cellAt(row, c),
@@ -882,22 +873,71 @@ void likeTheirColumn(QTextTable* table, int row)
 void likeTheirRow(QTextTable* table, int column)
 {
     for (int r = 0; r < table->rows(); ++r) {
-        alignCell(table->cellAt(r, column), Qt::AlignLeft);
+        auto cell = table->cellAt(r, column);
+        if (cell.row() != r || cell.column() != column)
+            continue;  // a cell spanning over the new column: as it was
+        alignCell(cell, Qt::AlignLeft);
         if (r < table->format().headerRowCount())
-            boldCell(table->cellAt(r, column));
+            boldCell(cell);
     }
 }
 
-// The whole table away; the lines before and after it stay lines of their own.
+// The whole table away; the lines before and after it stay lines of their own, each with
+// its own format (Qt joins them, as the first).
 void removeTable(QTextTable* table)
 {
     auto* doc = table->document();
     int at = table->firstPosition() - 1;  // where it begins
+    QTextBlock next = doc->findBlock(table->lastPosition() + 1);  // the line after it
+    QTextBlockFormat nextFormat = next.blockFormat();
+    QTextCharFormat nextChars = next.charFormat();
+    nextChars.clearProperty(QTextFormat::ObjectIndex);  // (that of the table's end)
+    nextChars.clearProperty(QTextFormat::ObjectType);
     table->removeRows(0, table->rows());
     QTextCursor c(doc);
     c.setPosition(std::min(at, doc->characterCount() - 1));
     if (!c.atBlockStart() && !c.atBlockEnd())
-        c.insertBlock();
+        c.insertBlock(nextFormat, nextChars);
+    else if (c.atBlockStart())
+        c.setBlockCharFormat(nextChars);
+}
+
+// A Markdown table's row as it is in the document, cell by cell (split as markdownTableCells
+// splits its text): each cell's text with its formulas, links and formats.
+std::vector<QTextDocumentFragment> rowCells(QTextDocument* doc, const QTextBlock& block)
+{
+    QString text = block.text();
+    int b = 0, e = int(text.size());
+    while (b < e && text[b].isSpace())
+        ++b;
+    while (e > b && text[e - 1].isSpace())
+        --e;
+    if (b < e && text[b] == '|')
+        ++b;
+    if (e > b && text[e - 1] == '|' && !(e - 2 >= b && text[e - 2] == '\\'))
+        --e;
+    std::vector<QTextDocumentFragment> cells;
+    auto add = [&](int from, int to) {
+        while (from < to && text[from].isSpace())
+            ++from;
+        while (to > from && text[to - 1].isSpace())
+            --to;
+        QTextCursor c(doc);
+        c.setPosition(block.position() + from);
+        c.setPosition(block.position() + to, QTextCursor::KeepAnchor);
+        cells.push_back(c.selection());
+    };
+    int start = b;
+    for (int i = b; i < e; ++i) {
+        if (text[i] == '\\' && i + 1 < e && text[i + 1] == '|')
+            ++i;  // \| is a | in the cell
+        else if (text[i] == '|') {
+            add(start, i);
+            start = i + 1;
+        }
+    }
+    add(start, e);
+    return cells;
 }
 
 bool rowEmpty(QTextTable* table, int row)
@@ -910,21 +950,39 @@ bool rowEmpty(QTextTable* table, int row)
     return true;
 }
 
-QTextTable* newTable(QTextCursor& at, const std::vector<QString>& header, const std::string& aligns)
+// A table with a header row (its cells' content as given, \| as |) and an empty row.
+QTextTable* newTable(QTextCursor& at, const std::vector<QTextDocumentFragment>& header, const std::string& aligns)
 {
     QTextTableFormat tf;
     tf.setHeaderRowCount(1);
     int columns = int(aligns.size());
     auto* table = at.insertTable(2, columns, tf);
     styleNoteTable(table);
+    auto* doc = table->document();
     for (int c = 0; c < columns; ++c) {
+        if (c < (int)header.size() && !header[c].isEmpty()) {
+            table->cellAt(0, c).firstCursorPosition().insertFragment(header[c]);
+            for (auto found = doc->find("\\|", table->cellAt(0, c).firstCursorPosition());
+                 !found.isNull() && found.selectionEnd() <= table->cellAt(0, c).lastPosition();
+                 found = doc->find("\\|", found)) {
+                QTextCursor slash(doc);
+                slash.setPosition(found.selectionStart());
+                slash.deleteChar();
+            }
+        }
         for (int r = 0; r < 2; ++r)
             alignCell(table->cellAt(r, c), cellAlignment(aligns[c]));
         boldCell(table->cellAt(0, c));
-        if (c < (int)header.size() && !header[c].isEmpty()) {
-            auto cursor = table->cellAt(0, c).firstCursorPosition();
-            cursor.insertText(header[c]);
-        }
+    }
+    // the line Qt makes after the table is one of its own when empty, not a copy of the
+    // line the table was put after (a heading, a list item)
+    QTextCursor after(doc);
+    after.setPosition(table->lastPosition() + 1);
+    if (after.block().length() <= 1) {
+        if (auto* list = after.block().textList())
+            list->remove(after.block());
+        after.setBlockFormat(QTextBlockFormat());
+        after.setBlockCharFormat(QTextCharFormat());
     }
     return table;
 }
@@ -942,9 +1000,9 @@ bool NoteTextEdit::convertTypedTable()
     auto cells = markdownTableCells(ss(above.text()));
     if (aligns.empty() || aligns.size() != cells.size())
         return false;
-    std::vector<QString> header;
-    for (auto& c : cells)
-        header.push_back(qs(c));
+    auto header = rowCells(document(), above);  // with the formulas and links typed in it
+    if (header.size() != aligns.size())
+        return false;
     QTextCursor c(document());  // one step: Ctrl+Z gives back the two lines
     c.beginEditBlock();
     // the table right after the line before, if there is one (and it is not a table's):
@@ -962,13 +1020,37 @@ bool NoteTextEdit::convertTypedTable()
     return true;
 }
 
-void NoteTextEdit::insertTable(int columns)
+void NoteTextEdit::insertTable(const QTextCursor& at, int columns)
 {
-    auto c = textCursor();
+    if (at.currentTable() || isReadOnly())
+        return;  // (no tables in tables from here)
+    auto block = at.block();
+    QTextCursor c(document());
     c.beginEditBlock();
-    if (c.block().length() > 1)  // a table of its own, not in a line of text
-        c.insertBlock();
+    if (block.length() > 1) {
+        c.setPosition(block.position() + block.length() - 1);  // after its line, which stays above it
+    } else if (auto before = block.previous(); before.isValid() && before.length() > 1 && !QTextCursor(before).currentTable()) {
+        c.setPosition(before.position() + before.length() - 1);  // an empty line: after the text before it
+        c.setPosition(block.position(), QTextCursor::KeepAnchor);
+        c.removeSelectedText();
+    } else {
+        c.setPosition(block.position());  // in the empty line (at the top, after a table)
+    }
     auto* table = newTable(c, {}, std::string(std::max(1, columns), 'l'));
+    // Qt puts an empty line after the table, the rest of the line it was put after: the line
+    // after that takes its place, as it was (not a table's: a line stays between two tables)
+    QTextCursor after(document());
+    after.setPosition(table->lastPosition() + 1);
+    if (auto next = after.block().next(); after.block().length() <= 1 && next.isValid() && !QTextCursor(next).currentTable()) {
+        auto format = next.blockFormat();
+        auto chars = next.charFormat();
+        auto* list = next.textList();
+        after.deleteChar();
+        after.setBlockFormat(format);
+        after.setBlockCharFormat(chars);
+        if (list && after.block().textList() != list)
+            list->add(after.block());
+    }
     c.endEditBlock();
     setTextCursor(table->cellAt(0, 0).firstCursorPosition());
 }
@@ -987,14 +1069,24 @@ bool NoteTextEdit::tableKey(QKeyEvent* e)
         edit.beginEditBlock();
         table->appendRows(1);
         likeTheirColumn(table, table->rows() - 1);
+        styleNoteTable(table);
         edit.endEditBlock();
+    };
+    // the next or previous cell in reading order (a span's cell where it begins)
+    auto step = [&](int direction) -> std::optional<std::pair<int, int>> {
+        int columns = table->columns(), cells = table->rows() * columns;
+        for (int i = row * columns + column + direction; i >= 0 && i < cells; i += direction) {
+            int r = i / columns, c = i % columns;
+            auto at = table->cellAt(r, c);
+            if (at.row() == r && at.column() == c && !(r == row && c == column))
+                return std::pair(r, c);
+        }
+        return std::nullopt;
     };
     bool enter = (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && e->modifiers() == Qt::NoModifier;
     if (e->key() == Qt::Key_Tab && e->modifiers() == Qt::NoModifier) {
-        if (column + cell.columnSpan() < table->columns()) {
-            moveTo(row, column + cell.columnSpan());
-        } else if (row + cell.rowSpan() < table->rows()) {
-            moveTo(row + cell.rowSpan(), 0);
+        if (auto next = step(1)) {
+            moveTo(next->first, next->second);
         } else {
             addRow();
             moveTo(table->rows() - 1, 0);
@@ -1002,10 +1094,8 @@ bool NoteTextEdit::tableKey(QKeyEvent* e)
         return true;
     }
     if (e->key() == Qt::Key_Backtab) {
-        if (column > 0)
-            moveTo(row, column - 1);
-        else if (row > 0)
-            moveTo(row - 1, table->columns() - 1);
+        if (auto previous = step(-1))
+            moveTo(previous->first, previous->second);
         return true;
     }
     if (!enter)
@@ -1060,8 +1150,8 @@ void NoteTextEdit::editTable(const QTextCursor& at, TableEdit edit)
         likeTheirRow(table, column);
         break;
     case TableEdit::ColumnRight:
-        table->insertColumns(column + 1, 1);
-        likeTheirRow(table, column + 1);
+        table->insertColumns(column + cell.columnSpan(), 1);  // after the whole cell, not into its span
+        likeTheirRow(table, column + cell.columnSpan());
         break;
     case TableEdit::DeleteRow:
         if (table->rows() - header > 1 && row >= header)
@@ -1079,86 +1169,9 @@ void NoteTextEdit::editTable(const QTextCursor& at, TableEdit edit)
         removeTable(table);
         break;
     }
+    if (edit != TableEdit::DeleteTable && edit != TableEdit::DeleteRow && edit != TableEdit::DeleteColumn)
+        styleNoteTable(table);  // the new cells
     c.endEditBlock();
-}
-
-// A cell's content is moved down (more room above it in the cell, not saved) so that its
-// first line's baseline is as low as the lowest of its row's: a formula that makes one cell's
-// first line taller no longer leaves the text of the others above the text beside it. (Qt
-// has no such vertical alignment for cells, and leaves out a cell's first top margin.)
-void NoteTextEdit::alignTableBaselines()
-{
-    std::vector<QTextTable*> tables;
-    std::function<void(QTextFrame*)> collect = [&](QTextFrame* frame) {
-        for (auto* child : frame->childFrames()) {
-            if (auto* t = qobject_cast<QTextTable*>(child))
-                tables.push_back(t);
-            collect(child);
-        }
-    };
-    collect(document()->rootFrame());
-    if (tables.empty())
-        return;
-    auto* layout = document()->documentLayout();
-    struct Move {
-        QTextTableCell cell;
-        qreal padding;  // the table's
-        qreal extra;    // room above that
-    };
-    std::vector<Move> moves;
-    for (auto* table : tables) {
-        qreal padding = table->format().cellPadding();
-        for (int r = 0; r < table->rows(); ++r) {
-            std::vector<std::pair<Move, qreal>> cells;  // as now, and the baseline without the extra room
-            for (int c = 0; c < table->columns(); ++c) {
-                auto cell = table->cellAt(r, c);
-                if (cell.row() != r || cell.column() != c)
-                    continue;  // a span's
-                auto block = cell.firstCursorPosition().block();
-                QRectF rect = layout->blockBoundingRect(block);  // (lays it out)
-                auto* lines = block.layout();
-                if (!lines || lines->lineCount() == 0)
-                    continue;
-                auto first = lines->lineAt(0);
-                auto f = cell.format().toTableCellFormat();
-                qreal extra = f.hasProperty(QTextFormat::TableCellTopPadding) ? f.topPadding() - padding : 0;
-                cells.push_back({{cell, padding, extra}, rect.top() + first.y() + first.ascent() - extra});
-            }
-            qreal lowest = 0;
-            for (auto& c : cells)
-                lowest = std::max(lowest, c.second);
-            for (auto& [move, baseline] : cells) {
-                qreal want = std::round(lowest - baseline);
-                if (std::abs(want - move.extra) >= 0.5)
-                    moves.push_back({move.cell, move.padding, want});
-            }
-        }
-    }
-    if (moves.empty())
-        return;
-    // Part of the edit that made it necessary, so undo and redo take it along; opened, with
-    // nothing to undo, no step of its own.
-    auto* doc = document();
-    bool fresh = doc->availableUndoSteps() == 0 && doc->availableRedoSteps() == 0;
-    ++internal_;
-    if (fresh)
-        doc->setUndoRedoEnabled(false);
-    QTextCursor c(doc);
-    if (!fresh)
-        c.joinPreviousEditBlock();
-    for (auto& m : moves) {
-        auto f = m.cell.format().toTableCellFormat();
-        if (m.extra > 0)
-            f.setTopPadding(m.padding + m.extra);
-        else
-            f.clearProperty(QTextFormat::TableCellTopPadding);  // the table's padding again
-        m.cell.setFormat(f);
-    }
-    if (!fresh)
-        c.endEditBlock();
-    if (fresh)
-        doc->setUndoRedoEnabled(true);
-    --internal_;
 }
 
 // Backspace at the start of a heading shows its "## " before the text, as typed: the level
@@ -1325,6 +1338,10 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         redo();
         return;
     }
+    if (int display = formulaKey(e); display >= 0) {
+        insertMath(display == 1);
+        return;
+    }
     if (findRequested && e->matches(QKeySequence::Find)) {
         findRequested();
         return;
@@ -1414,6 +1431,19 @@ void NoteTextEdit::leaveMath(const MathRun& run, bool nextLine)
     setTextCursor(cursor);
 }
 
+// Ctrl+M (inline) and Ctrl+Shift+M (displayed) start a formula here, before any shortcut of
+// the window's (File > Import has Ctrl+Shift+M: neither ran). 0, 1, or -1 for other keys.
+int NoteTextEdit::formulaKey(const QKeyEvent* e) const
+{
+    if (isReadOnly() || e->key() != Qt::Key_M)
+        return -1;
+    if (e->modifiers() == Qt::ControlModifier)
+        return 0;
+    if (e->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier))
+        return 1;
+    return -1;
+}
+
 // Ctrl+Y redoes (only Ctrl+Shift+Z is standard on Linux); claimed here so a
 // surrounding shortcut does not take it.
 bool NoteTextEdit::event(QEvent* e)
@@ -1422,7 +1452,7 @@ bool NoteTextEdit::event(QEvent* e)
         auto* k = static_cast<QKeyEvent*>(e);
         // the note's, not the window's (zoom applies to the PDF there)
         if ((k->key() == Qt::Key_Y && k->modifiers() == Qt::ControlModifier) || zoomKey(k) != -2 ||
-            (findRequested && k->matches(QKeySequence::Find))) {
+            (findRequested && k->matches(QKeySequence::Find)) || formulaKey(k) >= 0) {
             e->accept();
             return true;
         }
@@ -1480,8 +1510,8 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
             add(tr("Delete Row"), TableEdit::DeleteRow, !header);
             add(tr("Delete Column"), TableEdit::DeleteColumn);
             add(tr("Delete Table"), TableEdit::DeleteTable);
-        } else {
-            menu->addAction(tr("Insert Table"), this, [this] { insertTable(); });
+        } else if (!textCursor().currentTable()) {
+            menu->addAction(tr("Insert Table"), this, [this, at] { insertTable(at); });
         }
     }
     menu->exec(e->globalPos());
@@ -1511,6 +1541,19 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
     }
     QTextDocument copy;
     QTextCursor(&copy).insertFragment(cursor.selection());
+    if (cursor.hasComplexSelection() && cursor.currentTable()) {
+        // cells of a table: a header row only if the header row is among them
+        int row0, rows, col0, cols;
+        cursor.selectedTableCells(&row0, &rows, &col0, &cols);
+        int header = std::clamp(cursor.currentTable()->format().headerRowCount() - row0, 0, rows);
+        for (auto* frame : copy.rootFrame()->childFrames())
+            if (auto* table = qobject_cast<QTextTable*>(frame)) {
+                auto tf = table->format();
+                tf.setHeaderRowCount(header);
+                table->setFormat(tf);
+            }
+        data->setData(kNoteFragmentMime, QTextDocumentFragment(&copy).toHtml().toUtf8());
+    }
     auto lineOf = [](const QTextBlock& block, bool fromStart) {
         QString line;
         // a heading copied from its start is "## …" in text, by its level, as in Markdown
@@ -1757,6 +1800,8 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
         a->setShortcutContext(Qt::WidgetWithChildrenShortcut);
         addAction(a);  // its shortcut works in the text too, not just on the toolbar
         connect(a, &QAction::triggered, this, [this, apply](bool on) {
+            if (edit_->isReadOnly())
+                return;
             QTextCharFormat f;
             apply(f, on);
             edit_->mergeCurrentCharFormat(f);
@@ -1889,6 +1934,15 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
 }
 
 NoteEditor::~NoteEditor() { flush(); }
+
+// Hidden (another tab shown): what was typed is saved at once, so the same note open in the
+// tab shown now (a note's tab, the item pane, a PDF's notes) has it before anything is typed
+// there - two editors saving their own copies lost the text of one.
+void NoteEditor::hideEvent(QHideEvent* e)
+{
+    flush();
+    QWidget::hideEvent(e);
+}
 
 QSize NoteEditor::minimumSizeHint() const
 {
@@ -2095,6 +2149,8 @@ void NoteEditor::load(bool force)
     bool editable = AppContext::get().editable(libraryId_);
     edit_->setReadOnly(!editable);
     toolbar_->setEnabled(editable);
+    for (auto* a : actions())  // the shortcuts too (bold, a formula, a link): none for a note that can't change
+        a->setEnabled(editable);
     setEnabled(true);
 }
 
@@ -2214,6 +2270,8 @@ void NoteEditor::toggleQuote()
 
 void NoteEditor::insertLink()
 {
+    if (edit_->isReadOnly())
+        return;
     auto cursor = edit_->textCursor();
     bool ok = false;
     auto current = cursor.charFormat().anchorHref();

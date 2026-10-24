@@ -24,7 +24,8 @@ QString mathMarkupToImages(const QString& html);
 // A table's first row of <th> cells in a <thead>, which QTextDocument takes for a header
 // row (QTextTableFormat::headerRowCount); written back as <th> (documentToNoteHtml).
 QString tableHeadersForEditor(const QString& html);
-// How tables look in a note: lines around the cells, some room in them.
+// How tables look in a note: lines around the cells, some room in them, their contents at
+// the top of their rows. For a table just made, or one with new rows or columns.
 void styleNoteTable(QTextTable* table);
 void styleNoteTables(QTextDocument* doc);
 

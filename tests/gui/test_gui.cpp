@@ -1697,6 +1697,9 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
     CHECK(bubble->isVisible());
     CHECK(!bubble->isEditing());
+    // and takes no keys: they are the page's
+    CHECK(bubble->editor()->focusPolicy() == Qt::NoFocus);
+    CHECK(!bubble->editor()->hasFocus());
 }
 
 // A format whose font families are an empty list is not the note's font: Qt then picks a
@@ -2511,8 +2514,9 @@ TEST_CASE("notes: a table's cells line up on their first lines, formulas or not;
     editor.flush();
     CHECK(jstr(*env.library.item(env.lib, jstr(note, "key")), "note").find("margin") == std::string::npos);
 
-    // a formula typed into a cell of the last row: the others come down with it; undone,
-    // back up
+    // a formula typed into a cell of the last row leaves the row's text where it was; undo
+    // and redo go through it as through any edit (nothing else is done to the note)
+    auto before = baselines(2);
     QTextCursor c(doc);
     c.setPosition(table->cellAt(2, 1).lastPosition());
     edit->setTextCursor(c);
@@ -2522,12 +2526,17 @@ TEST_CASE("notes: a table's cells line up on their first lines, formulas or not;
     QApplication::processEvents();
     REQUIRE(countMath(doc) == 3);
     CHECK(even(2));
-    auto before = baselines(2);
-    while (countMath(doc) == 3)
+    CHECK(std::abs(baselines(2)[0] - before[0]) <= 1.0);
+    for (int i = 0; i < 20 && countMath(doc) == 3; ++i) {
         QTest::keyClick(edit, Qt::Key_Z, Qt::ControlModifier);
-    QApplication::processEvents();
-    CHECK(even(2));
-    CHECK(baselines(2)[0] < before[0]);  // up again
+        QApplication::processEvents();
+    }
+    CHECK(countMath(doc) == 2);
+    for (int i = 0; i < 20 && countMath(doc) == 2; ++i) {
+        QTest::keyClick(edit, Qt::Key_Y, Qt::ControlModifier);
+        QApplication::processEvents();
+    }
+    CHECK(countMath(doc) == 3);
 
     // \\ in an inline formula is a space: the formula is one line, as tall as without it
     auto oneLine = renderMath("alpha", false, 16, Qt::black, 1);
@@ -2580,6 +2589,335 @@ TEST_CASE("notes: Markdown and web tables pasted in are tables, with a header ro
     CHECK(html.find("<td>1</td><td align=\"center\"><strong>2</strong></td>") != std::string::npos);
     CHECK(html.find("<th align=\"center\">Name</th>") != std::string::npos);
     CHECK(html.find("<td>Zotero</td>") != std::string::npos);
+}
+
+TEST_CASE("notes: tables keep what is in them and around them, edited, deleted, copied or saved")
+{
+    app();
+    Env env;
+    constexpr auto npos = std::string::npos;
+    auto noteKey = [&](const char* html) { return qs(jstr(env.library.createNote(env.lib, html), "key")); };
+    auto stored = [&](const QString& key) { return jstr(*env.library.item(env.lib, ss(key)), "note"); };
+    auto firstTable = [](QTextDocument* doc) {
+        QTextTable* t = nullptr;
+        for (auto* f : doc->rootFrame()->childFrames())
+            t = t ? t : qobject_cast<QTextTable*>(f);
+        return t;
+    };
+    auto cellText = [](QTextTable* t, int r, int c) {
+        auto cell = t->cellAt(r, c);
+        QTextCursor cur = cell.firstCursorPosition();
+        cur.setPosition(cell.lastCursorPosition().position(), QTextCursor::KeepAnchor);
+        return cur.selectedText();
+    };
+    auto alignOf = [](QTextTable* t, int r, int c) {
+        return t->cellAt(r, c).firstCursorPosition().blockFormat().alignment() & (Qt::AlignLeft | Qt::AlignRight | Qt::AlignHCenter);
+    };
+    struct Open {
+        NoteEditor editor;
+        NoteTextEdit* edit = nullptr;
+        QTextDocument* doc = nullptr;
+    };
+    auto open = [&](const QString& key) {
+        auto o = std::make_unique<Open>();
+        o->editor.resize(700, 500);
+        o->editor.show();
+        o->editor.setNote(env.lib, key);
+        o->edit = o->editor.findChild<NoteTextEdit*>();
+        o->doc = o->edit->document();
+        o->edit->setFocus();
+        return o;
+    };
+    // opened, a letter typed at its end, saved
+    auto typeAndSave = [&](const QString& key, const char* letter) {
+        auto o = open(key);
+        o->edit->moveCursor(QTextCursor::End);
+        QTest::keyClicks(o->edit, letter);
+        o->editor.flush();
+        return stored(key);
+    };
+
+    SUBCASE("a header typed with a formula and a link keeps them")
+    {
+        auto key = noteKey("<p></p>");
+        auto o = open(key);
+        QTest::keyClicks(o->edit, "| n | $T(n)$ | [paper](https://arxiv.org/abs/1) |");
+        QTest::keyClick(o->edit, Qt::Key_Return);
+        QTest::keyClicks(o->edit, "|---|---|---|");
+        QTest::keyClick(o->edit, Qt::Key_Return);
+        auto* t = o->edit->textCursor().currentTable();
+        REQUIRE(t);
+        CHECK(t->columns() == 3);
+        o->editor.flush();
+        auto html = stored(key);
+        INFO(html);
+        CHECK(html.find("$T(n)$</span></th>") != npos);
+        CHECK(html.find("href=\"https://arxiv.org/abs/1\"") != npos);
+    }
+
+    SUBCASE("Delete Table leaves the lines around it as they were")
+    {
+        for (auto [html, gone, kept] : std::vector<std::tuple<const char*, const char*, const char*>>{
+                 {"<h2>Results</h2><table><tr><th>a</th></tr><tr><td>1</td></tr></table><p>after</p>", "<h2>after", "<p>after</p>"},
+                 {"<ul><li>item</li></ul><table><tr><th>a</th></tr><tr><td>1</td></tr></table><p>after</p>", "after</li>", "<p>after</p>"},
+                 {"<p>Intro</p><table><tr><th>a</th></tr><tr><td>1</td></tr></table><h2>Next</h2>", "<strong>Next", "<h2>Next</h2>"}}) {
+            auto key = noteKey(html);
+            auto o = open(key);
+            auto* t = firstTable(o->doc);
+            REQUIRE(t);
+            QTextCursor in(o->doc);
+            in.setPosition(t->cellAt(1, 0).firstPosition());
+            o->edit->editTable(in, NoteTextEdit::TableEdit::DeleteTable);
+            REQUIRE(!firstTable(o->doc));
+            o->editor.flush();
+            INFO(stored(key));
+            CHECK(stored(key).find(gone) == npos);
+            CHECK(stored(key).find(kept) != npos);
+        }
+    }
+
+    SUBCASE("a table in a cell, saved again and again, gains no lines around it")
+    {
+        auto key = noteKey("<table><tr><td>text<table><tr><td>in</td></tr></table>tail</td></tr></table><p>end</p>");
+        auto first = typeAndSave(key, "x"), second = typeAndSave(key, "y");
+        INFO(first << "\n" << second);
+        for (auto& html : {first, second})
+            CHECK(html.find("text<table><tr><td>in</td></tr></table>tail") != npos);
+    }
+
+    SUBCASE("header cells of every header row stay header cells")
+    {
+        auto key = noteKey("<table><thead><tr><th>Model</th><th colspan=\"2\">Accuracy</th></tr><tr><th></th><th>top-1</th>"
+                           "<th>top-5</th></tr></thead><tbody><tr><td>A</td><td>1</td><td>2</td></tr></tbody></table><p>end</p>");
+        auto first = typeAndSave(key, "x"), second = typeAndSave(key, "y");
+        for (auto& html : {first, second}) {
+            INFO(html);
+            CHECK(html.find("top-1</th>") != npos);
+            CHECK(html.find("top-5</th>") != npos);
+            CHECK(html.find("<td>A</td>") != npos);
+        }
+    }
+
+    SUBCASE("lists, headings and formulas of their own in a cell are kept")
+    {
+        auto key = noteKey("<table><tr><th>h</th></tr><tr><td><ul><li>one</li><li>two</li></ul><h2>Sub</h2>"
+                           "<pre class=\"math\">$$x^2$$</pre></td></tr></table><p>end</p>");
+        auto html = typeAndSave(key, "x");
+        INFO(html);
+        CHECK(html.find("one<br>two") == npos);
+        CHECK(html.find("<ul>") != npos);
+        CHECK(html.find("<h2>Sub</h2>") != npos);
+        CHECK(html.find("<pre class=\"math\">$$x^2$$</pre>") != npos);
+    }
+
+    SUBCASE("Insert Table puts a table on a line of its own, where it was asked for")
+    {
+        for (auto [html, place, around] : std::vector<std::tuple<const char*, int, std::pair<const char*, const char*>>>{
+                 {"<p>Hello</p><p>World</p>", 5, {"<p>Hello</p><table>", "</table><p>World</p>"}},
+                 {"<p>Hello</p><p>World</p>", 2, {"<p>Hello</p><table>", "</table><p>World</p>"}},
+                 {"<p>Hello</p><p>World</p>", -1, {"<p>Hello</p><table>", "</table><p>World</p>"}},  // an empty line
+                 {"<p>Hello</p><h2>World</h2>", 5, {"<p>Hello</p><table>", "</table><h2>World</h2>"}},
+                 {"<p>Hello</p><ul><li>World</li></ul>", 5, {"<p>Hello</p><table>", "</table><ul><li>World</li></ul>"}},
+                 {"<h2>Hello</h2><p>World</p>", 5, {"<h2>Hello</h2><table>", "</table><p>World</p>"}},
+                 {"<p>Hello</p>", 5, {"<p>Hello</p><table>", "</table></div>"}}}) {
+            auto key = noteKey(html);
+            auto o = open(key);
+            QTextCursor at(o->doc);
+            at.setPosition(std::max(place, 5));
+            if (place < 0) {  // Enter after "Hello": the table goes into the line made
+                o->edit->setTextCursor(at);
+                QTest::keyClick(o->edit, Qt::Key_Return);
+                at = o->edit->textCursor();
+                REQUIRE(at.block().length() == 1);
+            }
+            o->edit->insertTable(at, 2);
+            auto* t = o->edit->textCursor().currentTable();
+            REQUIRE(t);
+            QTest::keyClicks(o->edit, "c");
+            o->editor.flush();
+            auto saved = stored(key);
+            INFO(html << " at " << place << ": " << saved);
+            CHECK(saved.find(around.first) != npos);
+            CHECK(saved.find(around.second) != npos);
+            // in a cell: no table in it
+            o->edit->insertTable(o->edit->textCursor(), 2);
+            CHECK(o->edit->textCursor().currentTable() == t);
+            CHECK(t->childFrames().empty());
+        }
+    }
+
+    SUBCASE("Tab and Shift+Tab go through every cell, beside a cell two rows high too")
+    {
+        auto o = open(noteKey("<table><tr><td>a</td><td rowspan=\"2\">span</td></tr><tr><td>b</td></tr>"
+                              "<tr><td>c</td><td>d</td></tr></table><p>end</p>"));
+        auto* t = firstTable(o->doc);
+        REQUIRE(t);
+        auto at = [&] {
+            auto cell = t->cellAt(o->edit->textCursor());
+            return std::pair(cell.row(), cell.column());
+        };
+        o->edit->setTextCursor(t->cellAt(0, 1).firstCursorPosition());
+        QTest::keyClick(o->edit, Qt::Key_Tab);
+        CHECK(at() == std::pair(1, 0));  // b
+        QTest::keyClick(o->edit, Qt::Key_Tab);
+        CHECK(at() == std::pair(2, 0));  // c
+        QTest::keyClick(o->edit, Qt::Key_Backtab);
+        CHECK(at() == std::pair(1, 0));  // b
+        QTest::keyClick(o->edit, Qt::Key_Backtab);
+        CHECK(at() == std::pair(0, 1));  // span
+    }
+
+    SUBCASE("Insert Column Right of a cell two columns wide: after it, the cell as it was")
+    {
+        auto o = open(noteKey("<table><tr><th colspan=\"2\" align=\"center\">Wide</th><th>c</th></tr>"
+                              "<tr><td>1</td><td>2</td><td>3</td></tr></table><p>end</p>"));
+        auto* t = firstTable(o->doc);
+        REQUIRE(t);
+        auto align = alignOf(t, 0, 0);
+        QTextCursor in(o->doc);
+        in.setPosition(t->cellAt(0, 0).firstPosition());
+        o->edit->editTable(in, NoteTextEdit::TableEdit::ColumnRight);
+        REQUIRE(t->columns() == 4);
+        CHECK(t->cellAt(0, 0).columnSpan() == 2);
+        CHECK(alignOf(t, 0, 0) == align);
+        CHECK(cellText(t, 1, 1) == "2");
+        CHECK(cellText(t, 1, 2) == "");
+        CHECK(cellText(t, 1, 3) == "3");
+    }
+
+    SUBCASE("body rows copied are body rows where they are pasted")
+    {
+        auto o = open(noteKey("<table><tr><th>x</th><th>y</th></tr><tr><td>a</td><td>b</td></tr>"
+                              "<tr><td>c</td><td>d</td></tr></table><p>end</p>"));
+        auto* t = firstTable(o->doc);
+        REQUIRE(t);
+        QTextCursor cells(o->doc);
+        cells.setPosition(t->cellAt(1, 0).firstPosition());
+        cells.setPosition(t->cellAt(2, 1).firstPosition(), QTextCursor::KeepAnchor);
+        REQUIRE(cells.hasComplexSelection());
+        o->edit->setTextCursor(cells);
+        o->edit->copy();
+        NoteTextEdit other;
+        other.resize(500, 300);
+        other.show();
+        other.paste();
+        auto* pasted = firstTable(other.document());
+        REQUIRE(pasted);
+        CHECK(pasted->rows() == 2);
+        CHECK(pasted->format().headerRowCount() == 0);
+        CHECK(cellText(pasted, 0, 0) == "a");
+        CHECK(pasted->cellAt(0, 0).firstCursorPosition().charFormat().fontWeight() != QFont::Bold);
+    }
+
+    SUBCASE("a row put next to the header row is aligned as the body rows")
+    {
+        auto key = noteKey("<table><tr><th>x</th><th>y</th></tr><tr><td>a</td><td>b</td></tr></table><p>end</p>");
+        auto o = open(key);
+        auto* t = firstTable(o->doc);
+        REQUIRE(t);
+        auto body = alignOf(t, 1, 0);
+        REQUIRE(body != alignOf(t, 0, 0));  // the header row is centred
+        QTextCursor inHeader(o->doc);
+        inHeader.setPosition(t->cellAt(0, 0).firstPosition());
+        o->edit->editTable(inHeader, NoteTextEdit::TableEdit::RowBelow);
+        REQUIRE(t->rows() == 3);
+        CHECK(alignOf(t, 1, 0) == body);
+        QTextCursor inBody(o->doc);
+        inBody.setPosition(t->cellAt(1, 0).firstPosition());
+        o->edit->editTable(inBody, NoteTextEdit::TableEdit::RowAbove);
+        REQUIRE(t->rows() == 4);
+        CHECK(alignOf(t, 1, 0) == body);
+        o->editor.flush();
+        INFO(stored(key));
+        CHECK(stored(key).find("<td align=\"center\">") == npos);
+    }
+}
+
+TEST_CASE("notes: a hidden editor saves at once; a read-only note takes no shortcuts; Ctrl+Shift+M is a formula")
+{
+    app();
+    Env env;
+    auto stored = [&](const QString& key) { return jstr(*env.library.item(env.lib, ss(key)), "note"); };
+
+    // typed in a note's tab, then another tab shown: saved then, before an editor of the same
+    // note elsewhere can save what it had over it
+    auto key = qs(jstr(env.library.createNote(env.lib, "<p>Start</p>"), "key"));
+    {
+        NoteEditor editor;
+        editor.show();
+        editor.setNote(env.lib, key);
+        auto* text = editor.findChild<NoteTextEdit*>();
+        text->setFocus();
+        text->moveCursor(QTextCursor::End);
+        QTest::keyClicks(text, " AAA");
+        CHECK(stored(key).find("Start AAA") == std::string::npos);  // not yet: saved a moment later
+        editor.hide();
+        CHECK(stored(key).find("Start AAA") != std::string::npos);
+    }
+
+    // in a library one can't edit, keys change nothing
+    {
+        auto readOnly = qs(jstr(env.library.createNote(env.lib, "<p>Group note</p>"), "key"));
+        auto before = stored(readOnly);
+        env.library.setLibraryEditable(env.lib, false);
+        NoteEditor editor;
+        editor.show();
+        editor.setNote(env.lib, readOnly);
+        auto* text = editor.findChild<NoteTextEdit*>();
+        text->setFocus();
+        text->selectAll();
+        for (auto k : {Qt::Key_B, Qt::Key_I, Qt::Key_U, Qt::Key_M})
+            QTest::keyClick(text, k, Qt::ControlModifier);
+        QTest::keyClick(text, Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
+        CHECK(text->toPlainText() == "Group note");
+        CHECK(text->document()->begin().begin().fragment().charFormat().fontWeight() != QFont::Bold);
+        editor.flush();
+        CHECK(stored(readOnly) == before);
+        env.library.setLibraryEditable(env.lib, true);
+    }
+
+    // Ctrl+Shift+M starts a display formula, even where the window has it for something else
+    // (File > Import...)
+    {
+        QWidget window;
+        auto* text = new NoteTextEdit(&window);
+        text->resize(400, 300);
+        int imports = 0;
+        auto* import = new QAction("Import", &window);
+        import->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+        window.addAction(import);
+        QObject::connect(import, &QAction::triggered, [&] { ++imports; });
+        window.resize(400, 300);
+        window.show();
+        window.activateWindow();
+        REQUIRE(QTest::qWaitForWindowActive(&window));
+        text->setFocus();
+        QTest::keyClick(text, Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
+        CHECK(imports == 0);
+        CHECK(text->toPlainText().contains("$$"));
+    }
+}
+
+TEST_CASE("main window: File > New Note from a note's tab shows the new note in the library")
+{
+    app();
+    Env env;
+    auto note = qs(jstr(env.library.createNote(env.lib, "<p>Reading list</p>"), "key"));
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    window.openNote(env.lib, note);
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    REQUIRE(tabs->currentIndex() == 1);
+    QAction* newNote = nullptr;
+    for (auto* a : window.findChildren<QAction*>())
+        if (a->text() == "New Note" && a->shortcut() == QKeySequence("Ctrl+Shift+O"))
+            newNote = a;
+    REQUIRE(newNote);
+    newNote->trigger();
+    QApplication::processEvents();
+    CHECK(tabs->currentIndex() == 0);
 }
 
 TEST_CASE("notes: wide images are scaled to fit without horizontal scrolling")

@@ -321,8 +321,10 @@ void MainWindow::buildActions()
     // --- menus ----------------------------------------------------------------------------
     auto* file = menuBar()->addMenu(tr("&File"));
     file->addAction(icon("new-item"), tr("New Item"), this, [this] { library_->newItem("journalArticle"); });
-    file->addAction(icon("new-note"), tr("New Note"), QKeySequence("Ctrl+Shift+O"), this,
-                    [this] { library_->newNote(false); });
+    file->addAction(icon("new-note"), tr("New Note"), QKeySequence("Ctrl+Shift+O"), this, [this] {
+        tabs_->setCurrentIndex(0);  // made in the library, where it is shown (not behind a tab)
+        library_->newNote(false);
+    });
     file->addAction(icon("new-collection"), tr("New Collection…"), QKeySequence("Ctrl+Shift+N"), this,
                     [this] { library_->newCollection(); });
     file->addAction(tr("New Library…"), this, &MainWindow::newLibrary);

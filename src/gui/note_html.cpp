@@ -10,6 +10,7 @@
 #include <QUrl>
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "gui/app_context.h"
@@ -59,20 +60,39 @@ QString mathMarkupToImages(const QString& html)
 
 QString tableHeadersForEditor(const QString& html)
 {
-    static const QRegularExpression firstRow(
-        R"re((<table\b[^>]*>\s*)(<tbody\b[^>]*>\s*)?(<tr\b[^>]*>((?:(?!</tr>)[\s\S])*)</tr>))re",
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression th(R"re(<th\b)re", QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression td(R"re(<td\b)re", QRegularExpression::CaseInsensitiveOption);
+    constexpr auto ci = QRegularExpression::CaseInsensitiveOption;
+    constexpr auto here = QRegularExpression::AnchorAtOffsetMatchOption;
+    static const QRegularExpression table(R"re(<table\b[^>]*>)re", ci);
+    // what may come before the rows: room, a caption, column groups
+    static const QRegularExpression before(R"re((?:\s+|<caption\b[\s\S]*?</caption\s*>|<colgroup\b[\s\S]*?</colgroup\s*>|<col\b[^>]*>)+)re", ci);
+    static const QRegularExpression body(R"re(<tbody\b[^>]*>\s*)re", ci);
+    static const QRegularExpression row(R"re(<tr\b[^>]*>((?:(?!</tr\s*>)[\s\S])*)</tr\s*>\s*)re", ci);
+    static const QRegularExpression th(R"re(<th\b)re", ci), td(R"re(<td\b)re", ci);
     QString out;
     qsizetype last = 0;
-    for (auto it = firstRow.globalMatch(html); it.hasNext();) {
+    for (auto it = table.globalMatch(html); it.hasNext();) {
         auto m = it.next();
-        if (!m.captured(4).contains(th) || m.captured(4).contains(td))
+        qsizetype at = m.capturedEnd();
+        if (auto b = before.match(html, at, QRegularExpression::NormalMatch, here); b.hasMatch())
+            at = b.capturedEnd();
+        qsizetype head = at;  // where the <thead> goes
+        QString tbody;
+        if (auto b = body.match(html, at, QRegularExpression::NormalMatch, here); b.hasMatch()) {
+            tbody = b.captured(0);
+            at = b.capturedEnd();
+        }
+        QString rows;  // its first rows of header cells only
+        for (;;) {
+            auto r = row.match(html, at, QRegularExpression::NormalMatch, here);
+            if (!r.hasMatch() || !r.captured(1).contains(th) || r.captured(1).contains(td))
+                break;
+            rows += r.captured(0);
+            at = r.capturedEnd();
+        }
+        if (rows.isEmpty())
             continue;
-        out += html.mid(last, m.capturedStart() - last);
-        out += m.captured(1) + "<thead>" + m.captured(3) + "</thead>" + m.captured(2);
-        last = m.capturedEnd();
+        out += html.mid(last, head - last) + "<thead>" + rows + "</thead>" + tbody;
+        last = at;
     }
     return out + html.mid(last);
 }
@@ -91,6 +111,17 @@ void styleNoteTable(QTextTable* table)
     want.setBottomMargin(4);
     if (want != f)
         table->setFormat(want);
+    // each cell's content at the top of its row, as Zotero shows it (and as it is saved: a
+    // table from a spreadsheet had its cells at the bottom)
+    for (int r = 0; r < table->rows(); ++r)
+        for (int c = 0; c < table->columns(); ++c) {
+            auto cell = table->cellAt(r, c);
+            auto cf = cell.format().toTableCellFormat();
+            if (cell.row() != r || cell.column() != c || !cf.hasProperty(QTextFormat::TextVerticalAlignment))
+                continue;  // (a span's, or as it should be)
+            cf.clearProperty(QTextFormat::TextVerticalAlignment);
+            cell.setFormat(cf);
+        }
 }
 
 void styleNoteTables(QTextDocument* doc)
@@ -240,12 +271,18 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     return open + text + close;
 }
 
-// header: in a table's header cell (bold, as a heading is)
-QString blockContent(const QTextBlock& block, bool header = false)
+// Where a block is, for the weight its text has unless it is marked bold: a heading's and a
+// header cell's text is bold by definition; another cell's is not (Qt reads a <th> as bold
+// text, which a cell not in the header row keeps as <strong>).
+enum class Cell { None, Header, Body };
+
+QString blockContent(const QTextBlock& block, Cell cell = Cell::None)
 {
     QString out;
     auto def = block.charFormat();
-    if (block.blockFormat().headingLevel() > 0 || header)
+    if (cell == Cell::Body)
+        def.setFontWeight(QFont::Normal);
+    if (block.blockFormat().headingLevel() > 0 || cell == Cell::Header)
         def.setFontWeight(QFont::Bold);  // headings are bold by definition
     for (auto it = block.begin(); !it.atEnd(); ++it)
         if (it.fragment().isValid())
@@ -253,7 +290,41 @@ QString blockContent(const QTextBlock& block, bool header = false)
     return out;
 }
 
-void serializeFrame(QTextFrame* frame, QString& out);
+// A paragraph holding only a display formula (rendered, or being edited): as Zotero keeps it.
+std::optional<QString> displayFormulaHtml(const QTextBlock& block)
+{
+    if (auto first = block.begin(); !first.atEnd() && first.fragment().charFormat().property(kMathSourceProperty).toInt() == 2 &&
+                                    first.fragment().length() == block.length() - 1 &&
+                                    !mathSourceLatex(first.fragment().text(), true).isEmpty())
+        return displayFormula(first.fragment().charFormat(), mathSourceLatex(first.fragment().text(), true));
+    if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
+        auto f = block.begin().fragment().charFormat();
+        QString latex;
+        bool display = false;
+        if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display) && display)
+            return displayFormula(f, latex);
+    }
+    return std::nullopt;
+}
+
+void serializeBlocks(QTextFrame::iterator it, QString& out, Cell cell = Cell::None);
+
+// A cell whose blocks are all plain paragraphs: written as their text, lines apart, as Zotero
+// writes such a cell too; anything else (a list, a heading, a quote, code, a formula on a
+// line of its own) is written as the blocks it is.
+bool plainCell(const QTextTableCell& cell)
+{
+    for (auto it = cell.begin(); !it.atEnd(); ++it) {
+        auto block = it.currentBlock();
+        if (it.currentFrame() || !block.isValid())
+            continue;
+        auto bf = block.blockFormat();
+        if (block.textList() || bf.headingLevel() > 0 || bf.nonBreakableLines() || bf.leftMargin() >= 20 ||
+            bf.hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth) || displayFormulaHtml(block))
+            return false;
+    }
+    return true;
+}
 
 // The header row's cells are <th>, and say how they are aligned (a <th> is centred unless
 // it says otherwise); other cells say so when centred or to the right.
@@ -274,25 +345,34 @@ void serializeTable(QTextTable* table, QString& out)
                 attrs += QString(" rowspan=\"%1\"").arg(cell.rowSpan());
             if (cell.columnSpan() > 1)
                 attrs += QString(" colspan=\"%1\"").arg(cell.columnSpan());
+            bool plain = plainCell(cell);
             auto align = cell.firstCursorPosition().blockFormat().alignment();
-            if (align & Qt::AlignHCenter)
+            if (!plain)
+                ;  // each of its paragraphs says how it is aligned (on the cell, all would take it)
+            else if (align & Qt::AlignHCenter)
                 attrs += " align=\"center\"";
             else if (align & Qt::AlignRight)
                 attrs += " align=\"right\"";
             else if (header)
                 attrs += " align=\"left\"";
             out += "<" + tag + attrs + ">";
-            QStringList parts;
-            for (auto it = cell.begin(); !it.atEnd(); ++it) {
-                if (auto* inner = qobject_cast<QTextTable*>(it.currentFrame())) {  // a table in the cell
-                    QString nested;
-                    serializeTable(inner, nested);
-                    parts << nested;
-                } else if (it.currentBlock().isValid()) {
-                    parts << blockContent(it.currentBlock(), header);
+            auto kind = header ? Cell::Header : Cell::Body;
+            if (plain) {
+                bool afterText = false;  // <br> only between two lines of text: a table breaks the line itself
+                for (auto it = cell.begin(); !it.atEnd(); ++it) {
+                    if (auto* inner = qobject_cast<QTextTable*>(it.currentFrame())) {  // a table in the cell
+                        serializeTable(inner, out);
+                        afterText = false;
+                    } else if (it.currentBlock().isValid()) {
+                        if (afterText)
+                            out += "<br>";
+                        out += blockContent(it.currentBlock(), kind);
+                        afterText = true;
+                    }
                 }
+            } else {
+                serializeBlocks(cell.begin(), out, kind);
             }
-            out += parts.join("<br>");
             out += "</" + tag + ">";
         }
         out += "</tr>";
@@ -300,7 +380,7 @@ void serializeTable(QTextTable* table, QString& out)
     out += "</table>";
 }
 
-void serializeFrame(QTextFrame* frame, QString& out)
+void serializeBlocks(QTextFrame::iterator it, QString& out, Cell cell)
 {
     QTextList* openList = nullptr;
     QList<QTextList*> listStack;
@@ -317,7 +397,7 @@ void serializeFrame(QTextFrame* frame, QString& out)
                        : "</ul>";
         }
     };
-    for (auto it = frame->begin(); !it.atEnd(); ++it) {
+    for (; !it.atEnd(); ++it) {
         if (auto* child = it.currentFrame()) {
             closeLists(0);
             if (inQuote) {
@@ -327,7 +407,7 @@ void serializeFrame(QTextFrame* frame, QString& out)
             if (auto* table = qobject_cast<QTextTable*>(child))
                 serializeTable(table, out);
             else
-                serializeFrame(child, out);
+                serializeBlocks(child->begin(), out, cell);
             continue;
         }
         auto block = it.currentBlock();
@@ -362,29 +442,17 @@ void serializeFrame(QTextFrame* frame, QString& out)
                 out += ordered ? "<ol>" : "<ul>";
                 listStack << list;
             }
-            out += "<li>" + blockContent(block);
+            out += "<li>" + blockContent(block, cell);
             openList = list;
             continue;
         }
         closeLists(0);
         openList = nullptr;
-        // a paragraph holding only a display formula (rendered, or being edited)
-        if (auto first = block.begin(); !first.atEnd() && first.fragment().charFormat().property(kMathSourceProperty).toInt() == 2 &&
-                                        first.fragment().length() == block.length() - 1 &&
-                                        !mathSourceLatex(first.fragment().text(), true).isEmpty()) {
-            out += displayFormula(first.fragment().charFormat(), mathSourceLatex(first.fragment().text(), true));
+        if (auto formula = displayFormulaHtml(block)) {
+            out += *formula;
             continue;
         }
-        if (block.text() == QString(QChar::ObjectReplacementCharacter)) {
-            auto f = block.begin().fragment().charFormat();
-            QString latex;
-            bool display = false;
-            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), &latex, &display) && display) {
-                out += displayFormula(f, latex);
-                continue;
-            }
-        }
-        auto content = blockContent(block);
+        auto content = blockContent(block, cell);
         if (bf.headingLevel() > 0) {
             auto tag = QString("h%1").arg(std::min(6, bf.headingLevel()));
             out += "<" + tag + ">" + content + "</" + tag + ">";
@@ -420,7 +488,7 @@ void serializeFrame(QTextFrame* frame, QString& out)
 QString documentToNoteHtml(const QTextDocument* doc)
 {
     QString body;
-    serializeFrame(doc->rootFrame(), body);
+    serializeBlocks(doc->rootFrame()->begin(), body);
     // drop trailing empty paragraphs
     while (body.endsWith("<p></p>"))
         body.chop(7);

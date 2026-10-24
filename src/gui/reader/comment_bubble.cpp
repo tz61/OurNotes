@@ -62,6 +62,7 @@ void CommentBubble::preview(const QString& key, const QString& comment, const QR
     load(key, comment);
     text_->setReadOnly(true);
     text_->setTextInteractionFlags(Qt::NoTextInteraction);
+    text_->setFocusPolicy(Qt::NoFocus);  // a click on a comment only shown leaves the keys on the page
     text_->viewport()->setCursor(Qt::PointingHandCursor);
     setToolTip(tr("Click to edit"));
     fit();
@@ -78,6 +79,7 @@ void CommentBubble::edit(const QString& key, const QString& comment, const QRect
     editing_ = true;
     text_->setReadOnly(false);
     text_->setTextInteractionFlags(Qt::TextEditorInteraction);
+    text_->setFocusPolicy(Qt::StrongFocus);
     text_->viewport()->setCursor(Qt::IBeamCursor);
     setToolTip({});
     fit();
@@ -172,8 +174,12 @@ void CommentBubble::keyPressEvent(QKeyEvent* e)
             view->setFocus();  // back to the PDF
         return;
     }
-    // what the comment had no use for stays here: on the page, Ctrl+Space turned it, and
-    // Ctrl+Shift+Backspace deleted the very annotation being commented
+    if (!editing_) {
+        QFrame::keyPressEvent(e);  // a comment only shown: the keys are the page's
+        return;
+    }
+    // what the comment being typed had no use for stays here: on the page, Ctrl+Space
+    // turned it, and Ctrl+Shift+Backspace deleted the very annotation being commented
     e->accept();
 }
 

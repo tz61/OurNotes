@@ -51,14 +51,11 @@ public:
     // True while the editor adjusts the document itself (not a user edit).
     bool isInternalEdit() const { return internal_ > 0; }
 
-    // Tables: one with a header row and an empty row, `columns` wide, at the cursor; and
-    // what the context menu does to the table at `at`.
-    void insertTable(int columns = 2);
+    // Tables: one with a header row and an empty row, `columns` wide, at `at` (after its
+    // line, or in it when it is empty); and what the context menu does to the table at `at`.
+    void insertTable(const QTextCursor& at, int columns = 2);
     enum class TableEdit { RowAbove, RowBelow, ColumnLeft, ColumnRight, DeleteRow, DeleteColumn, DeleteTable };
     void editTable(const QTextCursor& at, TableEdit edit);
-    // The cells of a table's row line up on their first lines' baselines, as text does in a
-    // line (Qt only aligns cells at their tops): done after every change and resize.
-    void alignTableBaselines();
 
 protected:
     QMimeData* createMimeDataFromSelection() const override;
@@ -72,11 +69,11 @@ protected:
     void focusOutEvent(QFocusEvent* e) override;
     void contextMenuEvent(QContextMenuEvent* e) override;
     void changeEvent(QEvent* e) override;
-    void resizeEvent(QResizeEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
 
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
+    int formulaKey(const QKeyEvent* e) const;
     bool convertTypedMarkdown(const QString& typed);
     bool convertTypedTable();       // Enter after a table's header and delimiter rows
     bool tableKey(QKeyEvent* e);    // Tab, Shift+Tab, Enter in a table
@@ -109,7 +106,6 @@ private:
     void adaptColors();
 
     FittedImageHandler* images_ = nullptr;
-    QTimer baselineTimer_;  // alignTableBaselines, once the document is laid out again
     QLabel* preview_ = nullptr;
     QPoint pressPos_;
     int internal_ = 0;
@@ -161,6 +157,7 @@ signals:
 
 protected:
     void keyPressEvent(QKeyEvent* e) override;  // Esc in the note: the find bar closed first
+    void hideEvent(QHideEvent* e) override;
 
 private:
     // force = false: a change notification, which is skipped when it is this editor's

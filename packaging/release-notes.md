@@ -16,7 +16,9 @@ choose *System Settings → Privacy & Security → Open Anyway*, or run
 
 **Linux:** the packages use the system's OpenSSL 3 (`libssl3`, present on Ubuntu 22.04,
 Debian 12, Fedora 36 and newer). With fcitx5 (`QT_IM_MODULE=fcitx`), typing through the input
-method needs the `ibus` package installed: OurNotes reaches fcitx5 through Qt's IBus plugin.
+method needs the `ibus` package installed: OurNotes reaches fcitx5 through Qt's IBus plugin,
+so fcitx5 must be running when OurNotes starts (if typing through it does nothing, restart
+OurNotes).
 
 **Browser extension:** saves the page you are reading, with its PDF, to the running
 OurNotes. Unzip it into a folder you keep, open `chrome://extensions`, turn on *Developer

@@ -7,11 +7,15 @@
 #include <QImage>
 #include <QPainter>
 #include <QPixmap>
+#include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextFrame>
 #include <QTextList>
+#include <QTextTable>
 #include <QUrl>
+
+#include <algorithm>
 
 #include "gui/math_render.h"
 
@@ -75,13 +79,29 @@ FittedImageHandler::Geometry FittedImageHandler::geometry(QTextDocument* doc, in
         auto m = renderMath(latex, display, QFontInfo(font).pixelSize() * 1.2, color(format), dpr);
         // Qt centres AlignMiddle objects on half the x-height; pad the box so that
         // the formula's own baseline lands on the text baseline.
-        qreal halfX = QFontMetricsF(font).xHeight() / 2;
+        QFontMetricsF metrics(font);
+        qreal halfX = metrics.xHeight() / 2;
         qreal over = m.ascent - m.descent - halfX;
         qreal padTop = over < 0 ? -over : 0, padBottom = over > 0 ? over : 0;
         if (img.verticalAlignment() != QTextCharFormat::AlignMiddle)
             padTop = padBottom = 0;
         g.size = QSizeF(m.width, m.ascent + m.descent + padTop + padBottom);
         g.top = padTop;
+        // In a table, the cells' first lines line up on their text at the top of their row:
+        // a formula reaches no higher above the line than the text does, so as not to push
+        // its cell's text below the others'. What it has above that goes into the cell's
+        // room at the top (the padding); only a taller formula makes its line taller.
+        auto* table = qobject_cast<QTextTable*>(doc->frameAt(pos));  // (not a cursor: it would lay out)
+        if (table && img.verticalAlignment() == QTextCharFormat::AlignMiddle) {
+            qreal room = table->format().cellPadding();
+            qreal ascent = std::max(m.descent + halfX, m.ascent - room);
+            // with no text in its paragraph to hold the line up, as high as text would be
+            static const QRegularExpression text(QString("[^\\s") + QChar::ObjectReplacementCharacter + "]");
+            if (!doc->findBlock(pos).text().contains(text))
+                ascent = std::max(ascent, metrics.ascent());
+            g.size.setHeight(2 * ascent - halfX);  // as tall above the baseline as that, at AlignMiddle
+            g.top = ascent - m.ascent;  // above the box when the formula is taller
+        }
     } else {
         QImage image = imageResource(doc, img.name());
         QSizeF natural = image.isNull() ? QSizeF(16, 16) : QSizeF(image.size()) / image.devicePixelRatio();
