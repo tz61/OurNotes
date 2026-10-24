@@ -98,6 +98,18 @@ QSizeF naturalPictureSize(const QTextDocument* doc, const QTextImageFormat& form
     return image.isNull() ? QSizeF() : QSizeF(image.size()) / image.devicePixelRatio();
 }
 
+QTextCharFormat textFormatOf(QTextCharFormat format)
+{
+    const auto properties = format.properties();
+    for (auto it = properties.begin(); it != properties.end(); ++it)
+        if (it.key() >= QTextFormat::ImageName && it.key() < QTextFormat::ImageName + 0x100)
+            format.clearProperty(it.key());
+    for (int property : {int(QTextFormat::ObjectType), int(QTextFormat::ObjectIndex), int(QTextFormat::TextVerticalAlignment),
+                         int(QTextFormat::TextToolTip)})
+        format.clearProperty(property);
+    return format;
+}
+
 bool pictureKnown(const QTextDocument* doc, const QTextImageFormat& format)
 {
     return (format.width() > 0 && format.height() > 0) || !naturalPictureSize(doc, format).isEmpty();
@@ -248,7 +260,9 @@ void FittedImageHandler::drawObject(QPainter* painter, const QRectF& rect, QText
 QRectF FittedImageHandler::pictureRect(QTextDocument* doc, int pos)
 {
     QTextBlock block = doc->findBlock(pos);
-    doc->documentLayout()->blockBoundingRect(block);  // (laid out)
+    // (laid out; where the block is in the note, in a table's cell too: its layout's
+    // position is the cell's)
+    auto origin = doc->documentLayout()->blockBoundingRect(block).topLeft();
     auto* layout = block.layout();
     if (!layout)
         return {};
@@ -260,8 +274,15 @@ QRectF FittedImageHandler::pictureRect(QTextDocument* doc, int pos)
     if (!isPicture(format))
         return {};
     auto g = geometry(doc, pos, format, qApp->devicePixelRatio());
-    qreal x = layout->position().x() + line.cursorToX(at);
-    qreal baseline = layout->position().y() + line.y() + line.ascent();  // (a picture stands on it)
+    // its left: where the cursor is before it or after it, the lesser (right to left, after
+    // it is its left); were they not as far apart as it is wide (text both ways around it),
+    // by the way its paragraph goes
+    qreal x0 = line.cursorToX(at), x1 = line.cursorToX(at + 1);
+    qreal left = std::abs(std::abs(x1 - x0) - g.size.width()) < 1 ? std::min(x0, x1)
+                 : block.textDirection() == Qt::RightToLeft ? x0 - g.size.width()
+                                                            : x0;
+    qreal x = origin.x() + left;
+    qreal baseline = origin.y() + line.y() + line.ascent();  // (a picture stands on it)
     return QRectF(x + g.gap, baseline - g.size.height(), g.size.width() - 2 * g.gap, g.size.height());
 }
 

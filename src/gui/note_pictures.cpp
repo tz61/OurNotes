@@ -1,5 +1,6 @@
-// Pictures in notes, as in Feishu or Slack: shown small unless made larger; a click picks
-// one (an outline and four corners, no text cursor next to it), with buttons above it.
+// Pictures in notes, as in Feishu or Slack: shown small unless made larger; a click on one
+// picks it (an outline and four corners, no text cursor), with buttons above it; a click
+// beside one (or on its left or right edge) puts the cursor there, where pictures pasted go.
 // Pictures alone on a line are a row, all as high; making one larger or smaller makes the
 // row so, as wide as the text at most. A caption is the paragraph under a line of pictures.
 // (In a table's cell, one line when saved, pictures stay where they are put.)
@@ -10,16 +11,21 @@
 #include <QDrag>
 #include <QDropEvent>
 #include <QFrame>
+#include <QGuiApplication>
+#include <QHash>
+#include <QInputMethod>
 #include <QInputMethodEvent>
 #include <QMimeData>
 #include <QPainter>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTextLayout>
 #include <QTextList>
 #include <QTextTable>
 #include <QToolButton>
 
 #include <algorithm>
+#include <optional>
 
 #include "gui/icons.h"
 #include "gui/note_editor.h"
@@ -30,7 +36,10 @@ namespace on::gui {
 
 namespace {
 
-constexpr qreal kCorner = 8;               // a corner's square
+constexpr qreal kCorner = 8;               // a corner's square (taken a pixel larger, no more:
+constexpr qreal kCornerHit = kCorner / 2 + 1;  // beside it the cursor goes there)
+constexpr qreal kEdge = 10;                // a picture's left and right edge (at most a quarter
+                                           // of it): a click there puts the cursor beside it
 constexpr qreal kLeastHeight = 24;         // the smallest a picture is made
 constexpr QSizeF kSmall = kDefaultPictureBox;  // the sizes of the buttons: a picture within
 constexpr QSizeF kMedium(540, 360);           // it, a row as high
@@ -61,6 +70,23 @@ bool isPictureAt(QTextDocument* doc, int pos)
 {
     return pos >= 0 && pos < doc->characterCount() - 1 && doc->characterAt(pos) == QChar::ObjectReplacementCharacter &&
            isPicture(formatAt(doc, pos));
+}
+
+// Whether a key types text, as an editor takes it (QInputControl::isAcceptableInput): what
+// is printable (with Alt or AltGr too), a formatting mark, private use, an emoji's two
+// halves; not a shortcut with Ctrl.
+bool typesText(const QKeyEvent* e)
+{
+    if (e->text().isEmpty())
+        return false;
+    QChar c = e->text().at(0);
+    if (c.category() == QChar::Other_Format)
+        return true;
+    auto mods = e->modifiers();  // (as Qt has them: Ctrl and the keypad's key types its text)
+    if (mods == Qt::ControlModifier || mods == (Qt::ControlModifier | Qt::ShiftModifier))
+        return false;
+    return c.isPrint() || c.category() == QChar::Other_PrivateUse ||
+           (c.isHighSurrogate() && e->text().size() > 1 && e->text().at(1).isLowSurrogate());
 }
 
 // Whether two blocks are in the same place: one cell of a table, or no table. Lines are
@@ -113,6 +139,16 @@ QTextImageFormat sized(QTextDocument* doc, QTextImageFormat f, qreal height)
     f.setWidth(std::round(height * aspectOf(doc, f)));
     f.setHeight(std::round(height));
     return f;
+}
+
+// The height of a line of pictures, by the first of them there is to measure; 0 if none
+// (not downloaded yet: their height is not known).
+qreal knownRowHeight(QTextDocument* doc, const QTextBlock& block)
+{
+    for (int p : pictureRow(block))
+        if (auto f = formatAt(doc, p); pictureKnown(doc, f))
+            return pictureSize(doc, f).height();
+    return 0;
 }
 
 // The pictures of a row made as large as they are shown, and saved: all as high as the row.
@@ -208,19 +244,28 @@ void NoteTextEdit::setUpPictures()
     auto later = [this] { pictureBarTimer_.start(); };
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, later);
     connect(document(), &QTextDocument::contentsChanged, this, later);
-    // the cursor in a line of pictures: one of them picked instead (the one after it, or the
-    // last), so no text cursor stands there as high as they are
+    // the cursor moved (beside a picture, say): none picked any more; an input method's
+    // text composed at pictures no longer where it was moved to (written, dropped, undone)
     connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
+        if (!composeTo_.isNull() && textCursor().block() != composeTo_.block())
+            endComposing();
         if (picking_)
             return;
-        auto c = textCursor();
-        auto row = c.hasSelection() || !dragged_.isNull() ? std::vector<int>{} : pictureRow(c.block());
-        if (row.empty()) {
-            unpickPicture();
-            return;
-        }
-        int p = c.position();
-        pickPicture(std::find(row.begin(), row.end(), p) != row.end() ? p : row.back());
+        unpickPicture();
+        updateCaret();
+    });
+    connect(this, &QTextEdit::selectionChanged, this, [this] {
+        if (!picking_)
+            updateCaret();
+    });
+    connect(document(), &QTextDocument::contentsChanged, this, [this] {
+        if (!picking_)
+            updateCaret();  // (its line a line of pictures now, or no more)
+    });
+    caretBlink_.setInterval(std::max(100, QApplication::cursorFlashTime() / 2));
+    connect(&caretBlink_, &QTimer::timeout, this, [this] {
+        caretShown_ = !caretShown_;
+        viewport()->update(staleCaret().united(rowCaretRect()).adjusted(-2, -2, 2, 2));
     });
 
     pictureBar_ = new QFrame(viewport());
@@ -288,7 +333,7 @@ void NoteTextEdit::pickPicture(int pos)
     caret.setPosition(pos);
     setTextCursor(caret);
     --picking_;
-    setCursorWidth(0);
+    updateCaret();
     viewport()->update();
     pictureBarTimer_.start();
 }
@@ -298,9 +343,51 @@ void NoteTextEdit::unpickPicture()
     if (picked_.isNull())
         return;
     picked_ = QTextCursor();
-    setCursorWidth(caretWidth_);
+    updateCaret();
     viewport()->update();
     pictureBarTimer_.start();
+}
+
+void NoteTextEdit::updateCaret()
+{
+    auto c = textCursor();
+    rowCaret_ = picked_.isNull() && !isReadOnly() && !pictureRow(c.block()).empty();
+    int width = !picked_.isNull() || rowCaret_ || dropAt_ >= 0 ? 0 : caretWidth_;
+    if (cursorWidth() != width)
+        setCursorWidth(width);
+    caretShown_ = true;  // (moved: shown at once)
+    if (rowCaret_ && hasFocus() && QApplication::cursorFlashTime() > 0)
+        caretBlink_.start();
+    else
+        caretBlink_.stop();
+    if (!drawnCaret_.isNull())
+        viewport()->update(staleCaret().adjusted(-2, -2, 2, 2));
+    if (rowCaret_)
+        viewport()->update(rowCaretRect().adjusted(-2, -2, 2, 2));
+}
+
+QRect NoteTextEdit::staleCaret() const
+{
+    return drawnCaret_.translated(caretScroll_ - QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value()));
+}
+
+QRect NoteTextEdit::rowCaretRect() const
+{
+    // where Qt has it, but clear of the pictures beside it, and as high as text, standing on
+    // the line as they do
+    auto c = textCursor();
+    int pos = c.position();
+    auto line = cursorRect(c);
+    QRectF before = pos > c.block().position() && isPictureAt(document(), pos - 1) ? pictureRect(pos - 1) : QRectF();
+    QRectF after = pos < c.block().position() + c.block().length() - 1 && isPictureAt(document(), pos) ? pictureRect(pos) : QRectF();
+    qreal x = line.left();
+    for (auto& r : {before, after})  // (on its left or right: right to left, the one before is right)
+        if (!r.isNull() && x > r.left() - 3 && x < r.right() + 2)
+            x = x - r.left() < r.right() - x ? r.left() - 3 : r.right() + 2;
+    // (a rect's bottom is under its last row of pixels)
+    int foot = !after.isNull() ? qRound(after.bottom()) - 1 : !before.isNull() ? qRound(before.bottom()) - 1 : line.bottom();
+    int height = std::min(line.height(), QFontMetrics(document()->defaultFont()).height());
+    return QRect(qRound(x), foot - height + 1, std::max(1, caretWidth_), height);
 }
 
 QRectF NoteTextEdit::pictureRect(int pos) const
@@ -309,12 +396,23 @@ QRectF NoteTextEdit::pictureRect(int pos) const
     return r.translated(-horizontalScrollBar()->value(), -verticalScrollBar()->value());
 }
 
-int NoteTextEdit::pictureAt(const QPoint& viewportPos) const
+int NoteTextEdit::pictureAt(const QPoint& viewportPos, int* edge) const
 {
+    if (edge)
+        *edge = 0;
     int p = cursorForPosition(viewportPos).position();
-    for (int at : {p, p - 1})
-        if (isPictureAt(document(), at) && pictureRect(at).contains(viewportPos))
-            return at;
+    for (int at : {p, p - 1}) {
+        if (!isPictureAt(document(), at))
+            continue;
+        auto r = pictureRect(at);
+        if (!r.contains(viewportPos))
+            continue;
+        if (edge) {
+            qreal zone = std::min<qreal>(kEdge, r.width() / 4);
+            *edge = viewportPos.x() < r.left() + zone ? -1 : viewportPos.x() > r.right() - zone ? 1 : 0;
+        }
+        return at;
+    }
     return -1;
 }
 
@@ -326,13 +424,14 @@ int NoteTextEdit::pictureCornerAt(const QPoint& viewportPos) const
     auto r = pictureRect(p);
     QPointF corners[] = {r.topLeft(), r.topRight(), r.bottomLeft(), r.bottomRight()};
     for (int i = 0; i < 4; ++i)
-        if (std::abs(viewportPos.x() - corners[i].x()) <= kCorner && std::abs(viewportPos.y() - corners[i].y()) <= kCorner)
+        if (std::abs(viewportPos.x() - corners[i].x()) <= kCornerHit && std::abs(viewportPos.y() - corners[i].y()) <= kCornerHit)
             return i;
     return -1;
 }
 
 void NoteTextEdit::placePictureBar()
 {
+    updateCaret();  // (after the edit, an undo or a scroll: the cursor as it is now)
     int p = pickedPicture();
     if (picked_.isNull() == false && p < 0)  // (taken away: an undo, say)
         unpickPicture();
@@ -427,6 +526,26 @@ void NoteTextEdit::paintEvent(QPaintEvent* e)
 {
     QTextEdit::paintEvent(e);
     QPainter p(viewport());
+    // the cursor in a line of pictures (see updateCaret); where something dragged would go
+    drawnCaret_ = QRect();
+    if (rowCaret_ && caretShown_ && hasFocus() && !isReadOnly() && dropAt_ < 0) {
+        drawnCaret_ = rowCaretRect();
+        caretScroll_ = QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value());
+        p.fillRect(drawnCaret_, palette().color(QPalette::Text));
+    }
+    if (dropAt_ >= 0 && dropLine_ != 0) {  // on a line of its own: a bar across, under or above
+        auto block = document()->findBlock(dropBlock_);
+        auto r = document()->documentLayout()->blockBoundingRect(block).translated(-horizontalScrollBar()->value(),
+                                                                                  -verticalScrollBar()->value());
+        qreal y = dropLine_ < 0 ? r.top() : r.bottom();
+        p.fillRect(QRectF(r.left(), y - 1, std::max<qreal>(40, viewport()->width() - 2 * r.left()), 2),
+                   palette().color(QPalette::Highlight));
+    } else if (dropAt_ >= 0) {
+        QTextCursor at(document());
+        at.setPosition(std::min(dropAt_, document()->characterCount() - 1));
+        auto r = cursorRect(at);
+        p.fillRect(QRect(r.left() - 1, r.top(), 2, r.height()), palette().color(QPalette::Highlight));
+    }
     // an empty caption: what goes there
     auto cursor = textCursor();
     if (hasFocus() && !isReadOnly() && isCaption(cursor.block()) && cursor.block().length() <= 1) {
@@ -466,6 +585,7 @@ void NoteTextEdit::resizeEvent(QResizeEvent* e)
 void NoteTextEdit::focusInEvent(QFocusEvent* e)
 {
     QTextEdit::focusInEvent(e);
+    updateCaret();
     viewport()->update();
     pictureBarTimer_.start();
 }
@@ -477,17 +597,24 @@ bool NoteTextEdit::pictureMousePress(QMouseEvent* e)
     if (e->button() != Qt::LeftButton)
         return false;
     auto pos = e->position().toPoint();
-    if (int corner = pictureCornerAt(pos); corner >= 0) {
+    bool shift = e->modifiers() & Qt::ShiftModifier;
+    finishComposing();  // (first: written, it moves the pictures after it)
+    if (int corner = pictureCornerAt(pos); corner >= 0 && !shift) {
         resizing_.corner = corner;
+        resizing_.at = pickedPicture();
         resizing_.start = pos;
         resizing_.rect = pictureRect(pickedPicture());
         resizing_.height = resizing_.rect.height();
         pictureBar_->hide();
         return true;
     }
-    int hit = pictureAt(pos);
-    if (hit < 0)
+    int edge = 0, hit = pictureAt(pos, &edge);
+    if (hit < 0 || shift || (edge != 0 && !isReadOnly())) {
+        // beside pictures, on one's edge (Qt puts the cursor on the side of its half there),
+        // or a selection to there: as in text
+        unpickPicture();  // (the cursor may go where it is already, before the one picked)
         return false;
+    }
     setFocus(Qt::MouseFocusReason);
     pickPicture(hit);
     pressedPicture_ = hit;
@@ -528,8 +655,8 @@ bool NoteTextEdit::pictureMouseMove(QMouseEvent* e)
         viewport()->setCursor(c == 0 || c == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
         return true;
     }
-    if (pictureAt(pos) >= 0) {
-        viewport()->setCursor(Qt::ArrowCursor);
+    if (int edge = 0; pictureAt(pos, &edge) >= 0) {  // (its edges: the cursor goes beside it)
+        viewport()->setCursor(edge != 0 && !isReadOnly() ? Qt::IBeamCursor : Qt::ArrowCursor);
         viewport()->setToolTip({});
         return true;
     }
@@ -542,11 +669,13 @@ bool NoteTextEdit::pictureMouseRelease(QMouseEvent*)
         int p = pickedPicture();
         resizing_.corner = -1;
         images_->setResizing(document(), -1, 0);
+        if (int at = std::min(resizing_.at, document()->characterCount() - 1); at >= 0) {  // (shown as stored again)
+            auto block = document()->findBlock(at);
+            document()->markContentsDirty(block.position(), block.length());
+        }
         if (p >= 0) {
             if (std::abs(resizing_.height - resizing_.rect.height()) >= 0.5)  // (else nothing to undo)
                 setPictureHeight(p, resizing_.height);
-            else
-                document()->markContentsDirty(p, 1);
             pickPicture(p);
         }
         return true;
@@ -560,11 +689,24 @@ bool NoteTextEdit::pictureMouseRelease(QMouseEvent*)
 
 void NoteTextEdit::mouseDoubleClickEvent(QMouseEvent* e)
 {
-    if (int p = pictureAt(e->position().toPoint()); p >= 0) {
+    finishComposing();
+    int edge = 0;
+    int p = pictureAt(e->position().toPoint(), &edge);
+    if (p >= 0 && (edge == 0 || isReadOnly())) {
         if (openPicture)
             openPicture(formatAt(document(), p).name());
         return;
     }
+    if (p >= 0) {  // on its edge: as one click there (the cursor beside it)
+        unpickPicture();
+        QMouseEvent press(QEvent::MouseButtonPress, e->position(), e->scenePosition(), e->globalPosition(), e->button(),
+                          e->buttons(), e->modifiers(), e->pointingDevice());
+        QTextEdit::mousePressEvent(&press);
+        return;
+    }
+    // beside pictures, in their line: the cursor stays there (a picture is no word to select)
+    if (!pictureRow(cursorForPosition(e->position().toPoint()).block()).empty())
+        return;
     QTextEdit::mouseDoubleClickEvent(e);
 }
 
@@ -592,10 +734,61 @@ void NoteTextEdit::startPictureDrag()
         drag->setPixmap(QPixmap::fromImage(image.scaled(160, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
     drag->exec(Qt::MoveAction | Qt::CopyAction, Qt::MoveAction);
     dragged_ = QTextCursor();
+    if (dropAt_ >= 0) {  // (let go elsewhere, or not at all)
+        dropAt_ = -1;
+        dropLine_ = 0;
+        updateCaret();
+        viewport()->update();
+    }
+}
+
+void NoteTextEdit::dragEnterEvent(QDragEnterEvent* e)
+{
+    dropPictures_ = picturesOnly(e->mimeData());  // (once: a note's copy is read to know)
+    QTextEdit::dragEnterEvent(e);
+}
+
+void NoteTextEdit::dragMoveEvent(QDragMoveEvent* e)
+{
+    QTextEdit::dragMoveEvent(e);
+    int at = e->isAccepted() ? cursorForPosition(e->position().toPoint()).position() : -1;
+    // where it goes, as it is put there: pictures into a caption on a line under it; text at
+    // pictures on a line of its own (above them from their line's start, else under them)
+    int line = 0, block = -1;
+    if (at >= 0) {
+        auto there = document()->findBlock(at);
+        if (dropPictures_ && isCaption(there)) {
+            line = 1;
+            block = there.position();
+        } else if (!dropPictures_ && !pictureRow(there).empty() && !inTable(there)) {
+            bool above = at == there.position();
+            auto caption = captionOf(there);
+            line = above ? -1 : 1;
+            block = (above || !caption.isValid() ? there : caption).position();
+        }
+    }
+    if (at == dropAt_ && line == dropLine_ && block == dropBlock_)
+        return;
+    dropAt_ = at;
+    dropLine_ = line;
+    dropBlock_ = block;
+    updateCaret();  // (the text's own marker hidden: it is no wider than the cursor)
+    viewport()->update();
+}
+
+void NoteTextEdit::dragLeaveEvent(QDragLeaveEvent* e)
+{
+    QTextEdit::dragLeaveEvent(e);
+    dropAt_ = -1;
+    dropLine_ = 0;
+    updateCaret();
+    viewport()->update();
 }
 
 void NoteTextEdit::dropEvent(QDropEvent* e)
 {
+    dropAt_ = -1;
+    dropLine_ = 0;
     if (!dragged_.isNull() && e->source() == this) {
         QDragLeaveEvent leave;  // (the text's own drop: its marker where it would go gone)
         QTextEdit::dragLeaveEvent(&leave);
@@ -603,9 +796,35 @@ void NoteTextEdit::dropEvent(QDropEvent* e)
         movePicture(dragged_.selectionStart(), to);
         e->setDropAction(Qt::MoveAction);
         e->accept();
-        return;
+    } else {
+        unpickPicture();  // (let go right before the one picked: there, not after it)
+        QTextEdit::dropEvent(e);
     }
-    QTextEdit::dropEvent(e);
+    updateCaret();
+    viewport()->update();
+}
+
+void NoteTextEdit::finishComposing()
+{
+    auto block = textCursor().block();
+    if (!block.layout() || block.layout()->preeditAreaText().isEmpty())
+        return;
+    QGuiApplication::inputMethod()->commit();
+    block = textCursor().block();
+    if (block.layout() && !block.layout()->preeditAreaText().isEmpty()) {  // (no input method to write it:
+        block.layout()->setPreeditArea(-1, QString());                     // dropped, as Qt does)
+        block.layout()->clearFormats();
+        document()->markContentsDirty(block.position(), block.length());
+    }
+    endComposing();
+}
+
+void NoteTextEdit::endComposing()
+{
+    composeTo_ = QTextCursor();
+    composeLine_ = QTextCursor();
+    composeSteps_ = -1;
+    composeShift_ = 0;
 }
 
 // --- the keys -----------------------------------------------------------------------------------
@@ -616,19 +835,19 @@ bool NoteTextEdit::pictureKey(QKeyEvent* e)
     if (p < 0)
         return false;
     auto block = document()->findBlock(p);
-    auto row = pictureRow(block);
-    int i = int(std::find(row.begin(), row.end(), p) - row.begin());
-    bool inRow = i < int(row.size());
+    bool inRow = !pictureRow(block).empty(), table = inTable(block);
     auto mods = e->modifiers() & ~Qt::KeypadModifier;
     auto caretAt = [this](int pos) {
         QTextCursor c(document());
         c.setPosition(pos);
-        setTextCursor(c);  // (into a line of pictures: one of them is picked)
+        setTextCursor(c);
     };
     if (e == QKeySequence::Copy || e == QKeySequence::Cut) {
         copyPicture(e == QKeySequence::Cut && !isReadOnly());
         return true;
     }
+    if (e == QKeySequence::Undo || e == QKeySequence::Redo)
+        return false;  // (Alt+Backspace is Undo on some keyboards)
     // (with Ctrl or Alt too: the picture, not a word and the line before it)
     bool erase = e->key() == Qt::Key_Backspace || e->key() == Qt::Key_Delete;
     if (isReadOnly())
@@ -637,93 +856,234 @@ bool NoteTextEdit::pictureKey(QKeyEvent* e)
         deletePicture(e->key() == Qt::Key_Backspace);
         return true;
     }
-    // text (with Alt or AltGr too, as an editor takes it): on a line under the pictures;
-    // what is pasted goes there too (insertFromMimeData)
-    if (!e->text().isEmpty() && (e->text().at(0).isPrint() || e->text().at(0).category() == QChar::Other_Format) &&
-        mods != Qt::ControlModifier && mods != (Qt::ControlModifier | Qt::ShiftModifier)) {
-        caretForText();
+    if (typesText(e)) {  // on a line under its row (after it, in a line of text); what is
+                         // pasted goes there too (insertFromMimeData), pictures beside it
+        typeAside();
         return false;  // (typed there)
     }
     if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {  // (with any modifier)
-        if (!inRow) {
+        if (!inRow || table) {  // in a line of text or a cell: the line breaks after it, as usual
             caretAt(p + 1);
-            return false;  // (and the line breaks there, as usual)
+            return false;
         }
-        setTextCursor(newLineAfterPictures());
+        setTextCursor(newLineAfter(block));
         return true;
     }
     if ((e->key() == Qt::Key_Tab && mods == Qt::NoModifier) || (e->key() == Qt::Key_Backtab && mods == Qt::ShiftModifier))
-        return inRow;
+        return inRow && !table;  // (in a cell: to the next one, as usual)
     if (mods != Qt::NoModifier)  // (Shift and an arrow: a selection from it, as in text)
         return false;
-    switch (e->key()) {
+    switch (e->key()) {  // no longer picked: the cursor beside it, or where the key takes it
     case Qt::Key_Left:
-        if (inRow && i > 0) {
-            pickPicture(row[i - 1]);
-        } else if (inRow && block.previous().isValid()) {
-            caretAt(block.position() - 1);
-        } else if (!inRow) {
-            unpickPicture();  // (the cursor is there already: it does not move)
-            caretAt(p);
-        }
+        unpickPicture();  // (before it, where the cursor is already: it does not move)
+        caretAt(p);
         return true;
     case Qt::Key_Right:
-        if (inRow && i + 1 < int(row.size()))
-            pickPicture(row[i + 1]);
-        else if (inRow && block.next().isValid())
-            caretAt(block.next().position());
-        else if (!inRow)
-            caretAt(p + 1);
+    case Qt::Key_Escape:
+        caretAt(p + 1);
         return true;
-    case Qt::Key_Up:
-        if (!inRow)
-            return false;
-        if (block.previous().isValid())
-            caretAt(block.position() - 1);
+    case Qt::Key_Home:
+    case Qt::Key_End:
+        unpickPicture();  // (from before it, as usual: the start or end of the line shown)
+        return false;
+    default:
+        return false;  // (Up, Down, Page Up, Page Down: from before it, as usual)
+    }
+}
+
+// The cursor in a line of pictures, beside them: what is typed goes on a line of its own
+// (above them from the line's start, else under them); Enter breaks the line there (at its
+// start a line above, at its end one under, past their caption); Backspace and Delete pick
+// the picture before or after it (at the line's start or end: an empty line next to it
+// goes, pictures there are picked, text is not joined to them); Tab does nothing. (In a
+// table's cell, the cell's line: as in text.)
+bool NoteTextEdit::rowKey(QKeyEvent* e)
+{
+    if (isReadOnly() || pickedPicture() >= 0)
+        return false;
+    auto c = textCursor();
+    auto block = c.block();
+    if (c.hasSelection() || pictureRow(block).empty() || inTable(block))
+        return false;
+    if (typesText(e)) {
+        typeAside();
+        return false;  // (typed there)
+    }
+    if (e == QKeySequence::Cut || e == QKeySequence::Copy || e == QKeySequence::Paste || e == QKeySequence::Undo ||
+        e == QKeySequence::Redo)
+        return false;
+    bool atStart = c.atBlockStart(), atEnd = c.atBlockEnd();
+    switch (e->key()) {
+    case Qt::Key_Return:
+    case Qt::Key_Enter:  // (Shift+Enter too: a line break among them would end the row)
+        if (atEnd) {
+            setTextCursor(newLineAfter(block));
+        } else if (atStart) {  // a line above; the cursor stays at the start of the pictures
+            QTextCursor back(document());
+            back.setPosition(newLineBefore(block).position() + 1);
+            setTextCursor(back);
+        } else {  // the row in two (its caption under the second)
+            c.beginEditBlock();
+            c.insertBlock(block.blockFormat(), block.charFormat());
+            c.endEditBlock();
+            setTextCursor(c);
+        }
         return true;
-    case Qt::Key_Down:
-        if (!inRow)
-            return false;
-        if (block.next().isValid())
-            caretAt(block.next().position());
+    case Qt::Key_Backspace:
+        if (!atStart) {
+            pickPicture(c.position() - 1);
+        } else if (auto prev = block.previous(); sameCell(prev, block)) {
+            if (prev.length() <= 1) {
+                c.beginEditBlock();
+                removeEmptyBlock(prev);
+                c.endEditBlock();
+            } else if (auto above = pictureRow(prev); !above.empty()) {
+                pickPicture(above.back());
+            } else {
+                QTextCursor end(document());
+                end.setPosition(prev.position() + prev.length() - 1);
+                setTextCursor(end);
+            }
+        }
+        return true;
+    case Qt::Key_Delete:
+        if (!atEnd) {
+            pickPicture(c.position());
+        } else if (auto next = block.next(); sameCell(next, block)) {
+            if (next.length() <= 1) {
+                c.beginEditBlock();
+                removeEmptyBlock(next);
+                c.endEditBlock();
+            } else if (auto below = pictureRow(next); !below.empty()) {
+                pickPicture(below.front());
+            }
+        }
+        return true;
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:
         return true;
     default:
         return false;
     }
 }
 
-void NoteTextEdit::caretForText()
+void NoteTextEdit::typeAside()
 {
-    int p = pickedPicture();
-    if (p < 0)
-        return;
-    if (!pictureRow(document()->findBlock(p)).empty()) {
-        setTextCursor(newLineAfterPictures());
-        return;
+    // the line made as its own step (laid out, so the view can follow), the text typed joined
+    // to it: one step to undo (ended by keyPressEvent)
+    if (caretForText()) {
+        typingStep_ = textCursor();
+        typingStep_.joinPreviousEditBlock();
     }
-    QTextCursor c(document());  // (one in a line of text: after it)
-    c.setPosition(p + 1);
-    setTextCursor(c);
+}
+
+bool NoteTextEdit::caretForText()
+{
+    auto c = textCursor();
+    if (c.hasSelection())
+        return false;
+    // a format set for what is typed next (bold, say: not the format there) goes with it;
+    // read now (a cursor moved by an edit forgets it)
+    QTextCursor there(document());
+    there.setPosition(c.position());
+    std::optional<QTextCharFormat> pending;
+    if (c.charFormat() != there.charFormat())
+        pending = textFormatOf(c.charFormat());
+    int lines = document()->blockCount();
+    QTextCursor to;
+    if (int p = pickedPicture(); p >= 0 && c.position() == p) {
+        auto block = document()->findBlock(p);
+        if (pictureRow(block).empty() || inTable(block)) {  // in a line of text, or a cell: after it
+            to = QTextCursor(document());
+            to.setPosition(p + 1);
+        } else {
+            to = emptyLineAt(block, false);
+        }
+    } else if (auto block = c.block(); !pictureRow(block).empty() && !inTable(block)) {
+        to = emptyLineAt(block, c.atBlockStart());
+    } else {
+        return false;
+    }
+    bool made = document()->blockCount() > lines;
+    if (pending)
+        to.setCharFormat(*pending);
+    setTextCursor(to);
+    return made;
 }
 
 void NoteTextEdit::inputMethodEvent(QInputMethodEvent* e)
 {
-    if (!isReadOnly() && (!e->commitString().isEmpty() || !e->preeditString().isEmpty()))
-        caretForText();
-    QTextEdit::inputMethodEvent(e);
+    bool composing = !e->preeditString().isEmpty(), writing = !e->commitString().isEmpty();
+    // what is composed no longer shown where it was moved to (the note opened again, an undo):
+    // that composition over
+    if (!composeTo_.isNull() && (textCursor().block() != composeTo_.block() || !textCursor().block().layout() ||
+                                 textCursor().block().layout()->preeditAreaText().isEmpty()))
+        endComposing();
+    if (!isReadOnly() && (composing || writing) && composeTo_.isNull()) {
+        int from = textCursor().position();  // (a number: a cursor would move with the line made)
+        bool made = caretForText();  // (at pictures: on a line of its own)
+        if (made || textCursor().position() != from) {
+            composeTo_ = textCursor();
+            // (moved within its line, past a picture there: what it replaces is that far back)
+            composeShift_ = made ? 0 : textCursor().position() - from;
+            if (made) {
+                composeLine_ = textCursor();
+                composeSteps_ = document()->availableUndoSteps();
+            }
+        }
+    }
+    // the line made for it, the last step still: what is written joins that step
+    bool ours = !composeLine_.isNull() && document()->availableUndoSteps() == composeSteps_;
+    QTextCursor step;
+    if (writing && ours) {
+        step = textCursor();
+        step.joinPreviousEditBlock();
+    }
+    // text it replaces before the cursor (as the input method had it): where that is from the
+    // cursor now, and not past the start of the line it was moved to (joined to the pictures)
+    int start = e->replacementStart(), length = e->replacementLength();
+    if (!composeTo_.isNull() && (start != 0 || length != 0)) {
+        start -= composeShift_;
+        int inLine = textCursor().positionInBlock();
+        if (start < -inLine) {
+            length = std::max(0, length - (-inLine - start));
+            start = -inLine;
+        }
+        QInputMethodEvent within(e->preeditString(), e->attributes());
+        within.setCommitString(e->commitString(), start, length);
+        QTextEdit::inputMethodEvent(&within);
+    } else {
+        QTextEdit::inputMethodEvent(e);
+    }
+    if (!step.isNull()) {
+        step.endEditBlock();
+        ensureCursorVisible();  // (laid out only now: its line as high as what was written)
+    }
+    if (!writing && !composing && ours && textCursor().block() == composeLine_.block() && composeLine_.block().length() <= 1) {
+        // given up: the line made for it gone (its own step, the last), the cursor back
+        undo();
+        document()->clearUndoRedoStacks(QTextDocument::RedoStack);  // (nothing to redo: it was never asked for)
+    }
+    if (writing || !composing)
+        endComposing();
 }
 
 // Next to pictures and in captions: Enter ends a caption (a paragraph after it, not another
 // caption); Backspace and Delete pick a picture rather than join a line with its row.
 bool NoteTextEdit::captionKey(QKeyEvent* e)
 {
-    if (isReadOnly() || (e->modifiers() & ~Qt::KeypadModifier) != Qt::NoModifier)
+    auto mods = e->modifiers() & ~Qt::KeypadModifier;
+    // Backspace and Delete with Ctrl, Alt or Shift too (a word deleted would be the line's
+    // end, joining the line to the pictures); Enter with any but Shift (a line break in it)
+    bool erase = (e->key() == Qt::Key_Backspace || e->key() == Qt::Key_Delete) && !e->matches(QKeySequence::Undo) &&
+                 !e->matches(QKeySequence::Redo) && !e->matches(QKeySequence::Cut);
+    bool enter = (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && !(mods & Qt::ShiftModifier);
+    if (isReadOnly() || (mods != Qt::NoModifier && !erase && !enter))
         return false;
     auto c = textCursor();
     if (c.hasSelection())
         return false;
     auto block = c.block();
-    bool enter = e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter;
     if (enter && isCaption(block)) {
         // a paragraph after it: what is after the cursor, as a paragraph's text; at its start,
         // under the whole caption (else it would go, and its text be a paragraph)
@@ -738,7 +1098,7 @@ bool NoteTextEdit::captionKey(QKeyEvent* e)
         setTextCursor(c);
         return true;
     }
-    if (e->key() == Qt::Key_Backspace && c.atBlockStart() && sameCell(block.previous(), block)) {
+    if (erase && e->key() == Qt::Key_Backspace && c.atBlockStart() && sameCell(block.previous(), block)) {
         // at the start of a caption, or of a line under pictures
         auto row = pictureRow(block.previous());
         if (row.empty())
@@ -752,7 +1112,7 @@ bool NoteTextEdit::captionKey(QKeyEvent* e)
             pickPicture(row.back());
         return true;
     }
-    if (e->key() == Qt::Key_Delete && c.atBlockEnd() && sameCell(block.next(), block) && pictureRow(block).empty()) {
+    if (erase && e->key() == Qt::Key_Delete && c.atBlockEnd() && sameCell(block.next(), block) && pictureRow(block).empty()) {
         auto row = pictureRow(block.next());
         if (row.empty())
             return false;
@@ -792,20 +1152,39 @@ void NoteTextEdit::copyPicture(bool cut)
 
 // --- what the buttons do ---------------------------------------------------------------------
 
-QTextCursor NoteTextEdit::newLineAfterPictures()
+QTextCursor NoteTextEdit::newLineAfter(const QTextBlock& row)
 {
-    int p = pickedPicture();
+    auto caption = captionOf(row);
+    auto after = caption.isValid() ? caption : row;
     QTextCursor c(document());
-    if (p < 0)
-        return textCursor();
-    auto block = document()->findBlock(p);
-    auto caption = captionOf(block);
-    auto after = caption.isValid() ? caption : block;
     c.setPosition(after.position() + after.length() - 1);
     c.beginEditBlock();
-    c.insertBlock(textAfter(block.blockFormat()), QTextCharFormat());
+    c.insertBlock(textAfter(row.blockFormat()), QTextCharFormat());
     c.endEditBlock();
     return c;
+}
+
+QTextCursor NoteTextEdit::newLineBefore(const QTextBlock& row)
+{
+    auto format = row.blockFormat();
+    QTextCursor c(document());
+    c.setPosition(row.position());
+    c.beginEditBlock();
+    c.insertBlock(format, row.charFormat());  // (the pictures a line down)
+    c.movePosition(QTextCursor::PreviousBlock);
+    c.setBlockFormat(textAfter(format));
+    c.setBlockCharFormat(QTextCharFormat());
+    c.endEditBlock();
+    return c;
+}
+
+QTextCursor NoteTextEdit::emptyLineAt(const QTextBlock& row, bool above)
+{
+    auto caption = captionOf(row);
+    auto next = above ? row.previous() : (caption.isValid() ? caption : row).next();
+    if (sameCell(next, row) && next.length() <= 1 && !isCaption(next))
+        return QTextCursor(next);
+    return above ? newLineBefore(row) : newLineAfter(row);
 }
 
 void NoteTextEdit::setPictureHeight(int pos, qreal height)
@@ -897,6 +1276,8 @@ bool NoteTextEdit::joinPreviousRow()
     if (!target.isValid())
         return false;
     auto f = formatAt(document(), p);
+    if (qreal height = knownRowHeight(document(), target); height > 0)  // (as high as they are)
+        f = sized(document(), f, height);
     QTextCursor c(document());
     c.setPosition(p);
     c.beginEditBlock();
@@ -980,6 +1361,10 @@ void NoteTextEdit::deletePicture(bool backwards, bool keepCaption)
             c.removeSelectedText();
         }
         removeEmptyBlock(document()->findBlock(p));  // (the line left of the two)
+        // (the note's only lines: the empty one left may have the caption's format)
+        if (auto left = document()->findBlock(std::min(p, document()->characterCount() - 1));
+            isCaption(left) && left.length() <= 1)
+            setCaption(left, false);
     }
     c.endEditBlock();
     if (!empty && row.size() > 1) {  // the one after it, or else before it
@@ -1008,7 +1393,17 @@ bool NoteTextEdit::movePicture(int from, int to)
         pickPicture(from);
         return false;
     }
+    if (auto there = document()->findBlock(to); isCaption(there)) {
+        if (there == captionOf(source)) {  // (onto its own caption: where it is)
+            pickPicture(from);
+            return false;
+        }
+        to = there.position() + there.length() - 1;  // (into a caption: under it, kept whole)
+    }
     auto f = formatAt(document(), from);
+    if (auto there = document()->findBlock(to); there != source)
+        if (qreal height = knownRowHeight(document(), there); height > 0)  // (into a row: as high as it)
+            f = sized(document(), f, height);
     QTextCursor dest(document());  // (moves with what is taken out before it)
     dest.setPosition(to);
     QTextCursor c(document());
@@ -1026,6 +1421,41 @@ bool NoteTextEdit::movePicture(int from, int to)
     c.endEditBlock();
     pickPicture(dest.position() - 1);
     return true;
+}
+
+void NoteTextEdit::adoptPictures(QTextDocument* pasted, const QMimeData* source)
+{
+    if (!storeImage || isReadOnly())
+        return;
+    std::vector<std::pair<int, QTextImageFormat>> foreign;
+    for (auto block = pasted->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat().toImageFormat();
+            if (!isPicture(f) || document()->resource(QTextDocument::ImageResource, QUrl(f.name())).isValid())
+                continue;  // (a formula; or this note's)
+            for (int i = 0; i < frag.length(); ++i)
+                foreign.push_back({frag.position() + i, f});
+        }
+    QHash<QString, QString> copies;  // (the same picture twice: one copy)
+    for (auto& [pos, f] : foreign) {
+        auto name = copies.value(f.name());
+        if (name.isEmpty()) {
+            QImage image = loadPicture ? loadPicture(f.name()) : QImage();
+            if (image.isNull() && foreign.size() == 1 && source->hasImage())  // (one copied: its image is there too)
+                image = qvariant_cast<QImage>(source->imageData());
+            if (image.isNull() || (name = storeImage(image)).isEmpty())
+                continue;  // (not to be had: as it was)
+            document()->addResource(QTextDocument::ImageResource, QUrl(name), image);
+            copies.insert(f.name(), name);
+        }
+        auto own = f;
+        own.setName(name);
+        QTextCursor c(pasted);
+        c.setPosition(pos);
+        c.setPosition(pos + 1, QTextCursor::KeepAnchor);
+        c.setCharFormat(own);
+    }
 }
 
 void NoteTextEdit::insertPictures(const QList<QImage>& images)
@@ -1055,18 +1485,31 @@ void NoteTextEdit::placePictures(const QList<QTextImageFormat>& pictures)
 {
     if (pictures.isEmpty() || isReadOnly())
         return;
+    if (auto run = runAtCursor())  // (a formula being typed: done first, not split by them)
+        leaveMath(*run, false);
     auto step = textCursor();  // (one step to undo, back to here)
     step.beginEditBlock();
-    // one picked (the cursor at it): under its line, as text typed; else where the cursor is
-    // (where they were dropped, say: the cursor is put there without a word)
+    // where the cursor is: right after the one picked, in its line; into a line of pictures
+    // where it is in it; else on a line of their own there (dropped: where the cursor was put
+    // for the drop, without a word)
     auto c = textCursor();
-    if (int p = pickedPicture(); p >= 0 && c.position() == p && !c.hasSelection()) {
-        caretForText();
-        c = textCursor();
-    }
+    if (int p = pickedPicture(); p >= 0 && c.position() == p && !c.hasSelection())
+        c.setPosition(p + 1);
     if (c.hasSelection())
         c.removeSelectedText();
-    insertPictureLine(c, pictures);
+    if (isCaption(c.block()))  // (into a caption: under it, kept whole)
+        c.movePosition(QTextCursor::EndOfBlock);
+    // as high as the line of pictures they go into (else as the first of them): the line
+    // stays as high as it was
+    auto sizedPictures = pictures;
+    qreal height = knownRowHeight(document(), c.block());
+    for (auto& f : pictures)
+        if (height <= 0 && pictures.size() > 1 && pictureKnown(document(), f))
+            height = pictureSize(document(), f).height();
+    if (height > 0)
+        for (auto& f : sizedPictures)
+            f = sized(document(), f, height);
+    insertPictureLine(c, sizedPictures);
     evenRow(document(), c.block());
     step.endEditBlock();
     pickPicture(c.position() - 1);

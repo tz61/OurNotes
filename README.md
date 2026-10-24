@@ -52,13 +52,16 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   formula; pasting into a formula just opened makes it at once; one left empty keeps its
   `$` signs, and putting the cursor between them opens it again. Rendered with MicroTeX in the text colour (or a colour
   set in Preferences; `\textcolor{red}{…}` for single formulas) and stored like
-  Zotero's math. Pictures pasted or dropped in are shown small, on a line of their own;
-  a click picks one (an outline, no text cursor beside it), with buttons to make it
-  small, medium, large, as wide as the note or as large as it is, to add a caption under
-  it, to align it, to put it beside the pictures above (or drag it there) or back on a
-  line of its own, and to open or delete it; its corners drag it larger or smaller.
+  Zotero's math. Pictures pasted or dropped in are shown small: into text, on a line of
+  their own; into a line of pictures, where the cursor is (a click beside them, between
+  them or on a picture's left or right edge puts it there), or right after the one picked.
+  A click on a picture picks it (an outline, no text cursor beside it), with buttons to
+  make it small, medium, large, as wide as the note or as large as it is, to add a caption
+  under it, to align it, to put it beside the pictures above (or drag it there) or back on
+  a line of its own, and to open or delete it; its corners drag it larger or smaller.
   Pictures on one line are a row, all as high: resizing one resizes the row, which is
-  never wider than the note. Selecting a paper shows its
+  never wider than the note; text typed beside them goes on a line of its own, and Enter
+  between two breaks the row. Selecting a paper shows its
   notes in a tab next to Info; a note filed under no item opens in a tab of its own
   (double-click or Enter), the note alone, as a PDF opens. Markdown typed or pasted becomes formatting (`# `, `- `,
   `1. `, `> `, `**bold**`, `*italic*`, `` `code` ``, `[text](url)`; Ctrl+Z gives back the

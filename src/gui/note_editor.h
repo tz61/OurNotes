@@ -58,11 +58,15 @@ public:
     enum class TableEdit { RowAbove, RowBelow, ColumnLeft, ColumnRight, DeleteRow, DeleteColumn, DeleteTable };
     void editTable(const QTextCursor& at, TableEdit edit);
 
-    // Pictures (note_pictures.cpp), as in Feishu or Slack: a click picks one (an outline,
-    // corners to drag, no text cursor), with buttons above it: sizes, a caption, how it is
-    // aligned, beside the pictures above or on its own line, open, delete. Pictures alone on
-    // a line are a row, all as high; one made larger or smaller makes the row so.
+    // Pictures (note_pictures.cpp), as in Feishu or Slack: a click on one picks it (an
+    // outline, corners to drag, no text cursor), with buttons above it: sizes, a caption, how
+    // it is aligned, beside the pictures above or on its own line, open, delete; a click
+    // beside one puts the cursor there. Pictures alone on a line are a row, all as high; one
+    // made larger or smaller makes the row so.
     std::function<void(const QString& name)> openPicture;  // a picture's resource name
+    // A picture of another note, pasted from it, by its resource name ("attachment:KEY"):
+    // this note keeps a copy of its own (storeImage).
+    std::function<QImage(const QString& name)> loadPicture;
     int pickedPicture() const;  // where the picture picked is, or -1
     void pickPicture(int pos);
     QRectF pictureRect(int pos) const;  // where it is drawn, in the viewport
@@ -75,7 +79,8 @@ public:
     // backwards: the cursor where it was, before it; keepCaption: one it had alone stays, as text
     void deletePicture(bool backwards = false, bool keepCaption = false);
     bool movePicture(int from, int to);  // as dragged: from where it is to before `to`
-    // On a line of their own (one row), where the cursor is; the last one picked.
+    // Where the cursor is: into a line of pictures there (right after one picked), else on a
+    // line of their own (one row); the last one picked.
     void insertPictures(const QList<QImage>& images);
 
 protected:
@@ -95,8 +100,11 @@ protected:
     void resizeEvent(QResizeEvent* e) override;
     void focusInEvent(QFocusEvent* e) override;
     void mouseDoubleClickEvent(QMouseEvent* e) override;
+    void dragEnterEvent(QDragEnterEvent* e) override;
+    void dragMoveEvent(QDragMoveEvent* e) override;
+    void dragLeaveEvent(QDragLeaveEvent* e) override;
     void dropEvent(QDropEvent* e) override;
-    void inputMethodEvent(QInputMethodEvent* e) override;  // (text with a picture picked: under it)
+    void inputMethodEvent(QInputMethodEvent* e) override;  // (text at pictures: on a line of its own)
 
 private:
     int zoomKey(const QKeyEvent* e) const;  // what zoomBy gets, or -2 for other keys
@@ -135,19 +143,40 @@ private:
     // pictures (note_pictures.cpp)
     void setUpPictures();
     void unpickPicture();
-    int pictureAt(const QPoint& viewportPos) const;
+    // The picture at a point; edge: -1 or 1 on its left or right edge (where a click puts the
+    // cursor beside it), else 0.
+    int pictureAt(const QPoint& viewportPos, int* edge = nullptr) const;
     int pictureCornerAt(const QPoint& viewportPos) const;  // of the picked picture: 0..3, or -1
     bool pictureKey(QKeyEvent* e);    // a key for the picked picture (true: used)
+    bool rowKey(QKeyEvent* e);        // a key with the cursor in a line of pictures
+    // Where text typed (or pasted) at pictures goes: on a line of its own under them (above
+    // them, from the start of their line); after one picked in a line of text. A format set
+    // for what is typed next (bold, say) goes with it. True when it made a line (a step to
+    // undo, which what is then written joins).
+    bool caretForText();
+    void typeAside();  // caretForText for a key typed: its line and it one step (typingStep_)
     bool captionKey(QKeyEvent* e);    // Enter, Backspace, Delete next to pictures and captions
-    void caretForText();  // where text typed with a picture picked goes: on a line under it
+    // The cursor in a line of pictures: drawn here, as high as text (Qt's is as high as they
+    // are), blinking; Qt's hidden then, and while one is picked or something dragged over.
+    void updateCaret();
+    QRect rowCaretRect() const;
+    QRect staleCaret() const;  // where the drawn cursor was, now (the note scrolled since)
+    void finishComposing();    // an input method's text, before a click Qt does not see
+    void endComposing();       // (see composeTo_)
+    // Pictures of another note in what is pasted (not among this note's): this note's own
+    // copies of them, else they stayed that note's, and were shown blank here.
+    void adoptPictures(QTextDocument* pasted, const QMimeData* source);
     bool pictureMousePress(QMouseEvent* e);
     bool pictureMouseMove(QMouseEvent* e);
     bool pictureMouseRelease(QMouseEvent* e);
     void startPictureDrag();
     void copyPicture(bool cut);
     void setPictureHeight(int pos, qreal height);  // its own, or its row's
-    QTextCursor newLineAfterPictures();  // below the picked picture's line (and caption)
+    QTextCursor newLineAfter(const QTextBlock& row);   // under a line of pictures (and its caption)
+    QTextCursor newLineBefore(const QTextBlock& row);  // above it
+    QTextCursor emptyLineAt(const QTextBlock& row, bool above);  // an empty one there, else a new one
     void placePictures(const QList<QTextImageFormat>& pictures);  // (see insertPictures)
+    bool picturesOnly(const QMimeData* source) const;  // put as pictures (insertFromMimeData)
     void placePictureBar();
     QTextCursor picked_;  // the picture picked, selected
     QFrame* pictureBar_ = nullptr;
@@ -157,12 +186,28 @@ private:
         QPoint start;
         QRectF rect;
         qreal height = 0;
+        int at = -1;  // the picture's place (its line laid out again at the end)
     } resizing_;
     int pressedPicture_ = -1;
     QPoint pressedAt_;
     QTextCursor dragged_;  // the picture being dragged
     int caretWidth_ = 1;
     int picking_ = 0;
+    bool rowCaret_ = false;  // the cursor in a line of pictures, drawn by paintEvent
+    bool caretShown_ = true;  // (blinking)
+    QRect drawnCaret_;
+    QPoint caretScroll_;  // (the scroll bars' values when it was drawn)
+    QTextCursor typingStep_;  // text typed at pictures: its new line and it, one step to undo
+    // an input method's text at pictures: where the cursor was moved to for it, the line
+    // made for it (gone again if nothing is written, while it is the last step to undo:
+    // composeSteps_), how far it was moved in its line (what it replaces is that far back)
+    QTextCursor composeTo_, composeLine_;
+    int composeSteps_ = -1, composeShift_ = 0;
+    QTimer caretBlink_;
+    int dropAt_ = -1;  // where what is dragged over the note would go
+    // (a line of its own made there: under the block at dropBlock_, or above it: 1, -1)
+    int dropLine_ = 0, dropBlock_ = -1;
+    bool dropPictures_ = false;  // (what is dragged is put as pictures)
 
     FittedImageHandler* images_ = nullptr;
     QLabel* preview_ = nullptr;
@@ -180,6 +225,7 @@ private:
         int start = 0, length = 0;  // what it replaces, in the document of that time
         bool display = false;
         QString original;
+        bool joinLine = false;  // a line made for it at pictures: its step joined to that one
     } session_;
 };
 

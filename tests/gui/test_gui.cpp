@@ -33,6 +33,7 @@
 #include <QTreeWidget>
 
 #include <array>
+#include <fstream>
 #include <future>
 #include <sstream>
 #include <httplib.h>
@@ -3024,6 +3025,17 @@ bool near(const QColor& a, const QColor& b, int tolerance = 60)
     return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < tolerance;
 }
 
+// Whether something as dark as text (the text cursor) is drawn in an area of the note.
+bool inked(NoteTextEdit& edit, const QRect& area)
+{
+    auto shot = edit.viewport()->grab().toImage();
+    for (int y = std::max(0, area.top()); y <= std::min(shot.height() - 1, area.bottom()); ++y)
+        for (int x = std::max(0, area.left()); x <= std::min(shot.width() - 1, area.right()); ++x)
+            if (auto c = shot.pixelColor(x, y); c.red() + c.green() + c.blue() < 150)
+                return true;
+    return false;
+}
+
 const QColor kCaptionGray(0x88, 0x88, 0x88);
 
 } // namespace
@@ -3085,12 +3097,18 @@ TEST_CASE("notes: a picture pasted is small, on a line of its own; a click picks
     CHECK(edit.pickedPicture() == at);
     CHECK(edit.cursorWidth() == 0);
     CHECK(bar->isVisible());
-    // so does the cursor going into its line
+    // the cursor going into its line: beside it, drawn as high as text (Qt's, as high as the
+    // picture, hidden), the picture not picked
     note.caretAt(2);
     CHECK(edit.pickedPicture() == -1);
     note.key(Qt::Key_Down);
-    CHECK(edit.pickedPicture() == at);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == at);
     CHECK(edit.cursorWidth() == 0);
+    CHECK(!bar->isVisible());
+    r = note.shown(at);
+    CHECK(inked(edit, QRect(int(r.left()) - 4, int(r.bottom()) - 8, 4, 8)));
+    CHECK(!inked(edit, QRect(int(r.left()) - 4, int(r.top()), 4, int(r.height() / 2))));
 
     // a small one is not made larger
     edit.moveCursor(QTextCursor::End);
@@ -3238,7 +3256,8 @@ TEST_CASE("notes: a picture joins the row above it, goes on a line of its own, i
     auto& edit = note.edit;
     edit.moveCursor(QTextCursor::End);
     edit.insertPictures({filled(300, 200, Qt::red)});
-    edit.insertPictures({filled(200, 200, Qt::green)});  // (one picked: on a line under it)
+    note.key(Qt::Key_Return);  // (a line under it)
+    edit.insertPictures({filled(200, 200, Qt::green)});
     QApplication::processEvents();
     CHECK(note.lines() == QStringList{"Text", "#", "#"});
     auto pictures = note.pictures();
@@ -3294,7 +3313,7 @@ TEST_CASE("notes: a picture joins the row above it, goes on a line of its own, i
     CHECK(edit.pickedPicture() == -1);
 }
 
-TEST_CASE("notes: keys with a picture picked: arrows go through the row, Enter and typing go under it")
+TEST_CASE("notes: keys with a picture picked: arrows put the cursor beside it, Enter and typing go under it")
 {
     app();
     PictureNote note({800, 600}, "<p>Before</p><p>After</p>");
@@ -3305,28 +3324,40 @@ TEST_CASE("notes: keys with a picture picked: arrows go through the row, Enter a
     CHECK(note.lines() == QStringList{"Before", "##", "After"});
     auto pictures = note.pictures();
     CHECK(edit.pickedPicture() == pictures[1]);
+    // Left: the cursor before it, no longer picked; on from there as in text
     note.key(Qt::Key_Left);
-    CHECK(edit.pickedPicture() == pictures[0]);
-    note.key(Qt::Key_Left);  // out of the row: the end of the line above
     CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == pictures[1]);
+    CHECK(edit.cursorWidth() == 0);  // (in their line: drawn as high as text)
+    note.key(Qt::Key_Left);
+    CHECK(edit.textCursor().position() == pictures[0]);
+    note.key(Qt::Key_Left);  // out of the row: the end of the line above
     CHECK(edit.textCursor().position() == 6);
     CHECK(edit.cursorWidth() > 0);
-    note.key(Qt::Key_Right);  // in again
-    CHECK(edit.pickedPicture() == pictures[0]);
     note.key(Qt::Key_Right);
-    CHECK(edit.pickedPicture() == pictures[1]);
-    note.key(Qt::Key_Right);  // out: the start of the line under it
+    CHECK(edit.textCursor().position() == pictures[0]);
     CHECK(edit.pickedPicture() == -1);
+    // Right: the cursor after it; End: at the end of their line; Esc: after it
+    edit.pickPicture(pictures[0]);
+    note.key(Qt::Key_Right);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == pictures[1]);
+    edit.pickPicture(pictures[0]);
+    note.key(Qt::Key_End);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == pictures[1] + 1);
+    edit.pickPicture(pictures[0]);
+    note.key(Qt::Key_Escape);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == pictures[0] + 1);
+    note.caretAt(pictures[1] + 1);
+    note.key(Qt::Key_Right);
     CHECK(edit.textCursor().block().text() == "After");
-    CHECK(edit.textCursor().atBlockStart());
     note.key(Qt::Key_Up);
-    CHECK(edit.pickedPicture() >= 0);
-    note.key(Qt::Key_Tab);  // (nothing)
-    CHECK(note.lines() == QStringList{"Before", "##", "After"});
-    CHECK(edit.pickedPicture() >= 0);
-    note.key(Qt::Key_Down);
+    CHECK(edit.textCursor().block() == note.doc()->findBlock(pictures[0]));
     CHECK(edit.pickedPicture() == -1);
-    CHECK(edit.textCursor().block().text() == "After");
+    note.key(Qt::Key_Tab);  // (nothing among them)
+    CHECK(note.lines() == QStringList{"Before", "##", "After"});
 
     // Enter: a new line under the row
     edit.pickPicture(pictures[1]);
@@ -3357,7 +3388,7 @@ TEST_CASE("notes: keys with a picture picked: arrows go through the row, Enter a
     CHECK(note.lines() == QStringList{"Before", "##", "y", "x", "After"});
     CHECK(edit.pickedPicture() == pictures[0]);
 
-    // copied, cut, and pasted under the row
+    // copied, cut, and pasted beside the one picked, in its line
     note.key(Qt::Key_C, Qt::ControlModifier);
     auto* copied = QApplication::clipboard()->mimeData();
     REQUIRE(copied->hasImage());
@@ -3368,17 +3399,17 @@ TEST_CASE("notes: keys with a picture picked: arrows go through the row, Enter a
     pictures = note.pictures();
     CHECK(edit.pickedPicture() == pictures[0]);  // the one left
     note.key(Qt::Key_V, Qt::ControlModifier);
-    CHECK(note.lines() == QStringList{"Before", "#", "#", "y", "x", "After"});
+    CHECK(note.lines() == QStringList{"Before", "##", "y", "x", "After"});
     pictures = note.pictures();
-    CHECK(note.format(pictures[1]).name() == "test:1");
+    CHECK(note.format(pictures[1]).name() == "test:1");  // (after it)
     CHECK(edit.pickedPicture() == pictures[1]);
     // pasted into text: on a line of its own there
     note.caretAt(note.doc()->lastBlock().position() + 2);  // "Af|ter"
     note.key(Qt::Key_V, Qt::ControlModifier);
-    CHECK(note.lines() == QStringList{"Before", "#", "#", "y", "x", "Af", "#", "ter"});
+    CHECK(note.lines() == QStringList{"Before", "##", "y", "x", "Af", "#", "ter"});
     // Backspace deletes it, and its line; the cursor where it was, after "Af"
     note.key(Qt::Key_Backspace);
-    CHECK(note.lines() == QStringList{"Before", "#", "#", "y", "x", "Af", "ter"});
+    CHECK(note.lines() == QStringList{"Before", "##", "y", "x", "Af", "ter"});
     CHECK(edit.textCursor().block().text() == "Af");
     CHECK(edit.textCursor().atBlockEnd());
     // Shift and an arrow with one picked: a selection, as in text
@@ -3491,20 +3522,33 @@ TEST_CASE("notes: undoing what was done to a picture leaves the note where it wa
     auto& edit = note.edit;
     edit.moveCursor(QTextCursor::End);
     edit.insertPictures({filled(300, 200, Qt::red)});
+    note.key(Qt::Key_Return);  // (a line under it)
     edit.insertPictures({filled(200, 200, Qt::blue)});
     QApplication::processEvents();
     auto bottom = [&] { return edit.verticalScrollBar()->value() > edit.verticalScrollBar()->maximum() / 2; };
     REQUIRE(bottom());
-    for (auto* name : {"pictureMedium", "pictureJoin", "pictureOwnLine", "pictureCenter", "pictureDelete"}) {
+    for (auto* name : {"pictureMedium", "pictureJoin", "pictureCenter", "pictureDelete"}) {
         edit.pickPicture(note.pictures().back());
         QApplication::processEvents();
+        REQUIRE(note.button(name)->isVisible());
         note.click(name);
         CHECK_MESSAGE(bottom(), name);
         edit.undo();
         QApplication::processEvents();
         CHECK_MESSAGE(bottom(), name);
         CHECK_MESSAGE(edit.textCursor().blockNumber() > 70, name);
+        REQUIRE(note.pictures().size() == 2);
     }
+    // out of a row onto a line of its own
+    edit.pickPicture(note.pictures().back());
+    note.click("pictureJoin");
+    edit.pickPicture(note.pictures().back());
+    note.click("pictureOwnLine");
+    CHECK(bottom());
+    edit.undo();
+    QApplication::processEvents();
+    CHECK(bottom());
+    CHECK(edit.textCursor().blockNumber() > 70);
 }
 
 TEST_CASE("notes: a picture's buttons wrap in a narrow note; one in a line of text gets a line of its own")
@@ -3591,8 +3635,8 @@ TEST_CASE("notes: a picture copied is pasted as the same picture in its note, as
     one.edit.insertPictures({filled(300, 200, Qt::red)});
     QApplication::processEvents();
     one.key(Qt::Key_C, Qt::ControlModifier);
-    one.key(Qt::Key_V, Qt::ControlModifier);  // (under it)
-    CHECK(one.lines() == QStringList{"Text", "#", "#"});
+    one.key(Qt::Key_V, Qt::ControlModifier);  // (beside it)
+    CHECK(one.lines() == QStringList{"Text", "##"});
     CHECK(one.format(one.pictures().at(1)).name() == "test:1");
     CHECK(one.stored == 1);
 
@@ -3865,9 +3909,13 @@ TEST_CASE("notes: rows: joined pictures as high as the row; a picture not there 
     auto& edit = note.edit;
     edit.moveCursor(QTextCursor::End);
     edit.insertPictures({filled(300, 200, Qt::red)});
+    note.key(Qt::Key_Return);  // (a line under it)
     edit.insertPictures({filled(100, 100, Qt::blue)});
     QApplication::processEvents();
+    REQUIRE(note.lines() == QStringList{"Text", "#", "#"});
+    REQUIRE(note.button("pictureJoin")->isVisible());
     note.click("pictureJoin");
+    REQUIRE(note.lines() == QStringList{"Text", "##"});
     auto pictures = note.pictures();
     REQUIRE(pictures.size() == 2);
     CHECK(note.storedSize(pictures[1]) == QSizeF(200, 200));  // (as it is shown, and saved)
@@ -3921,6 +3969,1070 @@ TEST_CASE("notes: a very wide picture in a narrow note is resized without going 
     QApplication::processEvents();
     CHECK(note.shown(at).right() <= edit.viewport()->width());
     CHECK(note.storedSize(at).height() <= 16.5);  // (as high as fits, below the least otherwise)
+}
+
+TEST_CASE("notes: a click beside pictures puts the cursor there, as high as text; pictures pasted go there, in their line")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    auto* picture = new QMimeData;
+    picture->setImageData(filled(100, 200, Qt::green));
+    QApplication::clipboard()->setMimeData(picture);
+    auto names = [&] {
+        QStringList out;
+        for (int p : note.pictures())
+            out << note.format(p).name();
+        return out;
+    };
+    auto click = [&](QPointF at) {
+        QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, at.toPoint());
+        QApplication::processEvents();
+    };
+    auto shown = [&](int i) { return note.shown(note.pictures().at(i)); };
+
+    // right of them, in their line: the cursor after the last, none picked, drawn as high as
+    // text at the line's foot (Qt's, as high as they are, hidden)
+    auto b = shown(1);
+    click({b.right() + 60, b.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(1) + 1);
+    CHECK(edit.cursorWidth() == 0);
+    CHECK(inked(edit, QRect(int(b.right()) + 1, int(b.bottom()) - 8, 6, 8)));
+    CHECK(!inked(edit, QRect(int(b.right()) + 1, int(b.top()), 6, int(b.height() / 2))));
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        edit.grab().save(dir + "/note-picture-caret.png");
+    // pasted there: in their line, after them, as high
+    edit.paste();
+    QApplication::processEvents();
+    CHECK(note.lines() == QStringList{"Text", "###"});
+    CHECK(names() == QStringList{"test:1", "test:2", "test:3"});
+    CHECK(edit.pickedPicture() == note.pictures().at(2));
+    CHECK(shown(2).height() == doctest::Approx(shown(0).height()));
+
+    // at their left (on the first one's left edge): the cursor before it
+    auto a = shown(0);
+    click({a.left() + 2, a.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(0));
+    CHECK(inked(edit, QRect(int(a.left()) - 6, int(a.bottom()) - 8, 6, 8)));
+    edit.paste();
+    QApplication::processEvents();
+    CHECK(names() == QStringList{"test:4", "test:1", "test:2", "test:3"});
+
+    // between two: in the gap, or on the edge of one next to it
+    auto left = shown(1), right = shown(2);  // test:1, test:2
+    click({(left.right() + right.left()) / 2, left.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(2));
+    edit.paste();
+    QApplication::processEvents();
+    CHECK(names() == QStringList{"test:4", "test:1", "test:5", "test:2", "test:3"});
+    right = shown(3);  // test:2
+    click({right.right() - 2, right.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(3) + 1);
+    // the mouse there: a text cursor; over the middle of one, an arrow, and a click picks it
+    QTest::mouseMove(edit.viewport(), QPoint(int(right.right()) - 2, int(right.center().y())));
+    CHECK(edit.viewport()->cursor().shape() == Qt::IBeamCursor);
+    QTest::mouseMove(edit.viewport(), right.center().toPoint());
+    CHECK(edit.viewport()->cursor().shape() == Qt::ArrowCursor);
+    click(right.center());
+    CHECK(edit.pickedPicture() == note.pictures().at(3));
+    // with one picked, a picture pasted goes right after it
+    edit.paste();
+    QApplication::processEvents();
+    CHECK(names() == QStringList{"test:4", "test:1", "test:5", "test:2", "test:6", "test:3"});
+    // all as high, on one line, no wider than the note
+    for (int i = 0; i < 6; ++i) {
+        CHECK(shown(i).height() == doctest::Approx(shown(0).height()));
+        CHECK(shown(i).top() == doctest::Approx(shown(0).top()));
+    }
+    CHECK(shown(5).right() <= edit.viewport()->width());
+
+    // in the gap right before the one picked (where the cursor is, not shown): no longer picked
+    left = shown(2), right = shown(3);
+    edit.pickPicture(note.pictures().at(3));
+    click({(left.right() + right.left()) / 2, right.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(3));
+
+    // a centred line: left of its pictures, the cursor at its start
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:1"), filled(300, 200, Qt::red));
+    edit.setHtml("<p>Text</p><p style=\"text-align: center\"><img src=\"test:1\" width=\"150\" height=\"100\"></p>");
+    QApplication::processEvents();
+    a = shown(0);
+    REQUIRE(a.left() > 40);
+    click({a.left() - 20, a.center().y()});
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(0));
+    // a double click beside it: the cursor stays, nothing selected
+    QTest::mouseDClick(edit.viewport(), Qt::LeftButton, {}, QPoint(int(a.left()) - 20, int(a.center().y())));
+    CHECK(!edit.textCursor().hasSelection());
+    CHECK(edit.textCursor().position() == note.pictures().at(0));
+}
+
+TEST_CASE("notes: keys beside pictures: text goes on a line of its own, Enter breaks their line, Backspace picks")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue), filled(100, 200, Qt::green)});
+    QApplication::processEvents();
+    auto at = [&](int pos) {
+        note.caretAt(0);  // (from elsewhere: the cursor may be at the one picked already)
+        note.caretAt(pos);
+        REQUIRE(edit.pickedPicture() == -1);
+    };
+    auto pictures = [&] { return note.pictures(); };
+    // typed at the end of their line: on a line under it; at its start: above it; between
+    // two: under it
+    at(pictures()[2] + 1);
+    note.type("under");
+    CHECK(note.lines() == QStringList{"Text", "###", "under"});
+    at(pictures()[0]);
+    note.type("over");
+    CHECK(note.lines() == QStringList{"Text", "over", "###", "under"});
+    at(pictures()[1]);
+    QInputMethodEvent typed;  // (an input method's too)
+    typed.setCommitString(QString::fromUtf8("中"));
+    QApplication::sendEvent(&edit, &typed);
+    CHECK(note.lines() == QStringList{"Text", "over", "###", QString::fromUtf8("中"), "under"});
+    // pasted text too (from the context menu, say)
+    auto* words = new QMimeData;
+    words->setText("pasted");
+    QApplication::clipboard()->setMimeData(words);
+    at(pictures()[2] + 1);
+    edit.paste();
+    CHECK(note.lines() == QStringList{"Text", "over", "###", "pasted", QString::fromUtf8("中"), "under"});
+
+    // Enter between two: their line in two, the cursor at the second's start
+    at(pictures()[1]);
+    note.key(Qt::Key_Return);
+    CHECK(note.lines() == QStringList{"Text", "over", "#", "##", "pasted", QString::fromUtf8("中"), "under"});
+    CHECK(edit.textCursor().position() == pictures()[1]);
+    // Backspace at the second's start: the last of the first picked (the lines not joined)
+    note.key(Qt::Key_Backspace);
+    CHECK(edit.pickedPicture() == pictures()[0]);
+    CHECK(note.lines().mid(2, 2) == QStringList{"#", "##"});
+    // Enter at its start: a line above it, the cursor still there; what is typed goes on it
+    at(pictures()[1]);
+    note.key(Qt::Key_Return);
+    CHECK(note.lines().mid(2, 3) == QStringList{"#", "", "##"});
+    CHECK(edit.textCursor().position() == pictures()[1]);
+    note.type("between");
+    CHECK(note.lines().mid(2, 3) == QStringList{"#", "between", "##"});
+    // Enter at its end: a line under it
+    at(pictures()[2] + 1);
+    note.key(Qt::Key_Return);
+    CHECK(note.lines().mid(4, 2) == QStringList{"##", ""});
+    edit.undo();
+    CHECK(note.lines().mid(4, 2) == QStringList{"##", "pasted"});
+
+    // Backspace beside one: it picked; again: deleted
+    at(pictures()[2] + 1);
+    note.key(Qt::Key_Backspace);
+    CHECK(edit.pickedPicture() == pictures()[2]);
+    note.key(Qt::Key_Backspace);
+    CHECK(note.lines().mid(2, 3) == QStringList{"#", "between", "#"});
+    // Delete beside one: the one after it picked
+    at(pictures()[1]);
+    note.key(Qt::Key_Delete);
+    CHECK(edit.pickedPicture() == pictures()[1]);
+    // at the end of a line of them, Delete: text under it not joined to it; an empty line goes
+    at(pictures()[0] + 1);
+    note.key(Qt::Key_Delete);
+    CHECK(note.lines().mid(2, 2) == QStringList{"#", "between"});
+    note.key(Qt::Key_Return);
+    CHECK(note.lines().mid(2, 3) == QStringList{"#", "", "between"});
+    at(pictures()[0] + 1);
+    note.key(Qt::Key_Delete);
+    CHECK(note.lines().mid(2, 2) == QStringList{"#", "between"});
+    CHECK(edit.textCursor().position() == pictures()[0] + 1);
+    // at the start of a line of them, Backspace: an empty line above goes; text above: the
+    // cursor to its end (not joined)
+    at(pictures()[0]);
+    note.key(Qt::Key_Backspace);
+    CHECK(note.lines().mid(1, 2) == QStringList{"over", "#"});
+    CHECK(edit.textCursor().block().text() == "over");
+    CHECK(edit.textCursor().atBlockEnd());
+    at(pictures()[0]);
+    note.key(Qt::Key_Return);
+    at(pictures()[0]);
+    note.key(Qt::Key_Backspace);
+    CHECK(note.lines().mid(1, 2) == QStringList{"over", "#"});
+    CHECK(edit.textCursor().position() == pictures()[0]);
+    // Tab among them: nothing
+    note.key(Qt::Key_Tab);
+    CHECK(note.lines().mid(1, 2) == QStringList{"over", "#"});
+}
+
+TEST_CASE("notes: what is dragged over a note is marked where it would go")
+{
+    app();
+    TempDir dir;
+    filled(100, 80, Qt::green).save(qpath(dir.path / "drop.png"));
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::yellow)});
+    note.caretAt(0);  // (none picked: no outline)
+    auto pictures = note.pictures();
+    auto a = note.shown(pictures[0]), b = note.shown(pictures[1]);
+    QPoint gap(int((a.right() + b.left()) / 2), int(a.center().y()));
+    auto accent = edit.palette().color(QPalette::Highlight);
+    auto marked = [&] {
+        auto shot = edit.viewport()->grab().toImage();
+        for (int x = int(a.right()); x <= int(b.left()); ++x)
+            if (near(shot.pixelColor(x, gap.y()), accent))
+                return true;
+        return false;
+    };
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(qpath(dir.path / "drop.png"))});
+    QDragEnterEvent enter(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &enter);
+    QDragMoveEvent move(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &move);
+    QApplication::processEvents();
+    CHECK(marked());
+    CHECK(edit.cursorWidth() == 0);  // (the text's own mark hidden)
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        edit.grab().save(dir + "/note-picture-drop.png");
+    QDragLeaveEvent leave;
+    QApplication::sendEvent(edit.viewport(), &leave);
+    QApplication::processEvents();
+    CHECK(!marked());
+    // dropped there: between them
+    QApplication::sendEvent(edit.viewport(), &enter);
+    QApplication::sendEvent(edit.viewport(), &move);
+    QDropEvent drop(QPointF(gap), Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &drop);
+    QApplication::processEvents();
+    CHECK(note.lines() == QStringList{"Text", "###"});
+    CHECK(note.format(note.pictures().at(1)).name() == "test:3");
+}
+
+TEST_CASE("notes: dropped right before the picture picked, a picture goes there; Home and End go by the line shown")
+{
+    app();
+    TempDir dir;
+    filled(100, 80, Qt::green).save(qpath(dir.path / "drop.png"));
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::yellow)});
+    QApplication::processEvents();
+    auto pictures = note.pictures();
+    auto a = note.shown(pictures[0]), b = note.shown(pictures[1]);
+    edit.pickPicture(pictures[1]);
+    QPoint gap(int((a.right() + b.left()) / 2), int(a.center().y()));
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(qpath(dir.path / "drop.png"))});
+    QDragEnterEvent enter(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &enter);
+    QDragMoveEvent move(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &move);
+    QDropEvent drop(QPointF(gap), Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &drop);
+    QApplication::processEvents();
+    QStringList names;
+    for (int p : note.pictures())
+        names << note.format(p).name();
+    CHECK(names == QStringList{"test:1", "test:3", "test:2"});
+
+    // one picked in a long line of text, shown on two: Home and End, that line's start and end
+    edit.setHtml("<p>" + QString("word ").repeated(40) + "<img src=\"test:1\" width=\"30\" height=\"20\"> tail</p>");
+    edit.resize(300, 600);
+    QApplication::processEvents();
+    int at = note.pictures().at(0);
+    edit.pickPicture(at);
+    note.key(Qt::Key_Home);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() > 0);  // (not the paragraph's start)
+    CHECK(edit.textCursor().position() <= at);
+    edit.pickPicture(at);
+    note.key(Qt::Key_End);
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() > at);
+}
+
+TEST_CASE("notes: text added after pictures (an annotation, say) is not aligned as they are")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>Text</p></div>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->moveCursor(QTextCursor::End);
+    edit->insertPictures({filled(300, 200, Qt::red)});
+    edit->alignPictures(Qt::AlignHCenter);
+    editor.appendHtml("<p>added</p>");
+    auto last = edit->document()->lastBlock();
+    CHECK(last.text() == "added");
+    CHECK(!(last.blockFormat().alignment() & Qt::AlignHCenter));
+    CHECK(pictureRow(last.previous()).size() == 1);
+    // one step to undo
+    edit->undo();
+    REQUIRE(pictureRow(edit->document()->lastBlock()).size() == 1);
+    // after their caption: a paragraph, not more of the caption
+    edit->pickPicture(pictureRow(edit->document()->lastBlock()).front());
+    edit->addCaption();
+    QTest::keyClicks(edit, "Cap");
+    editor.appendHtml("<p>more</p>");
+    last = edit->document()->lastBlock();
+    CHECK(last.text() == "more");
+    CHECK(!last.blockFormat().hasProperty(kCaptionProperty));
+    CHECK(last.previous().text() == "Cap");
+    CHECK(last.previous().blockFormat().hasProperty(kCaptionProperty));
+}
+
+TEST_CASE("notes: text pasted or dropped after a picture or a formula is text, not more of it")
+{
+    app();
+    Env env;  // (noteHtmlForEditor)
+    PictureNote note({700, 500}, "<p>ab<img src=\"test:0\">cd</p>");
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    note.doc()->markContentsDirty(0, note.doc()->characterCount());
+    QApplication::processEvents();
+    auto words = [](const QString& text) {  // (text alone, as a terminal or an editor gives it)
+        auto* mime = new QMimeData;
+        mime->setData("text/plain", text.toUtf8());
+        QApplication::clipboard()->setMimeData(mime);
+    };
+    auto saved = [&] { return documentToNoteHtml(note.doc()); };
+    // on its right edge: the cursor after it; pasted there, the words saved as words
+    auto r = note.shown(2);
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, QPoint(int(r.right()) - 2, int(r.center().y())));
+    REQUIRE(edit.textCursor().position() == 3);
+    words("XY");
+    edit.paste();
+    CHECK(note.pictures().size() == 1);
+    CHECK(saved().contains("<p>ab<img src=\"test:0\">XYcd</p>"));
+    // with it picked (after it), and from Ctrl+Shift+V
+    edit.pickPicture(2);
+    edit.paste();
+    CHECK(saved().contains("<img src=\"test:0\">XYXYcd</p>"));
+    edit.pickPicture(2);
+    note.key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(saved().contains("<img src=\"test:0\">XYXYXYcd</p>"));
+    CHECK(note.pictures().size() == 1);
+    // after a formula too
+    edit.setHtml(noteHtmlForEditor("<p>a<span class=\"math\">$x$</span>b</p>", env.lib, note.doc()));
+    edit.prepareDocument();
+    note.caretAt(2);
+    words("YZ");
+    edit.paste();
+    CHECK(saved().contains("<span class=\"math\">$x$</span>YZb</p>"));
+}
+
+TEST_CASE("notes: a picture in a table's cell is where it is drawn: a click picks it, the cursor is drawn beside it")
+{
+    app();
+    PictureNote note({700, 600}, "<p>Line 1</p><p>Line 2</p><p>Line 3</p><p>Line 4</p>"
+                                 "<table><tr><td><img src=\"test:0\"></td><td>B</td></tr></table><p>After</p>");
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(150, 100, Qt::red));
+    note.doc()->markContentsDirty(0, note.doc()->characterCount());
+    QApplication::processEvents();
+    int at = note.pictures().at(0);
+    auto r = note.shown(at);
+    auto shot = edit.viewport()->grab().toImage();
+    CHECK(near(shot.pixelColor(r.center().toPoint()), Qt::red));  // (where it is drawn)
+    CHECK(near(shot.pixelColor(int(r.left()) + 2, int(r.top()) + 2), Qt::red));
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
+    QApplication::processEvents();
+    CHECK(edit.pickedPicture() == at);
+    // the cursor after it: drawn there, at its foot
+    note.caretAt(at + 1);
+    CHECK(edit.cursorWidth() == 0);
+    CHECK(inked(edit, QRect(int(r.right()) + 1, int(r.bottom()) - 8, 5, 8)));
+}
+
+TEST_CASE("notes: clicks at pictures: an input method's text written first, a selection dragged from an edge, a double click beside one")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    auto a = note.shown(note.pictures().at(0)), b = note.shown(note.pictures().at(1));
+    // composing (at the end of "Text"), then a click on a picture: nothing composed is left
+    note.caretAt(4);
+    QInputMethodEvent preedit("zhong", {});
+    QApplication::sendEvent(&edit, &preedit);
+    REQUIRE(!note.doc()->begin().layout()->preeditAreaText().isEmpty());
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, a.center().toPoint());
+    CHECK(note.doc()->begin().layout()->preeditAreaText().isEmpty());
+    CHECK(edit.pickedPicture() == note.pictures().at(0));
+    // pressed on an edge and dragged: a selection, as from beside it
+    QPoint from(int(a.right()) - 2, int(a.center().y())), to(int(b.right()) + 40, int(b.center().y()));
+    QTest::mousePress(edit.viewport(), Qt::LeftButton, {}, from);
+    QTest::mouseMove(edit.viewport(), to);
+    QTest::mouseRelease(edit.viewport(), Qt::LeftButton, {}, to);
+    CHECK(edit.textCursor().hasSelection());
+    CHECK(edit.textCursor().selectionStart() == note.pictures().at(1));
+    // one picked, a double click on its edge: the cursor beside it, none picked
+    edit.pickPicture(note.pictures().at(1));
+    QTest::mouseDClick(edit.viewport(), Qt::LeftButton, {}, QPoint(int(b.right()) - 2, int(b.center().y())));
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(1) + 1);
+    // a Shift+click in the gap right before the one picked: no longer picked
+    edit.pickPicture(note.pictures().at(1));
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, Qt::ShiftModifier, QPoint(int((a.right() + b.left()) / 2), int(b.center().y())));
+    CHECK(edit.pickedPicture() == -1);
+    // beside a corner of the one picked (not on the corner drawn): the cursor there, not resizing
+    edit.pickPicture(note.pictures().at(1));
+    int steps = note.doc()->availableUndoSteps();
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, QPoint(int(b.right()) + 6, int(b.bottom()) - 3));
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == note.pictures().at(1) + 1);
+    CHECK(note.doc()->availableUndoSteps() == steps);
+}
+
+TEST_CASE("notes: at pictures, formulas, Ctrl+Backspace and Undo keep out of their line")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    auto pictures = [&] { return note.pictures(); };
+    // a formula (Ctrl+M) beside them: on a line of its own
+    note.caretAt(0);
+    note.caretAt(pictures()[1] + 1);
+    note.key(Qt::Key_M, Qt::ControlModifier);
+    note.type("x^2");
+    note.key(Qt::Key_Escape);
+    CHECK(note.lines().mid(0, 2) == QStringList{"Text", "##"});
+    CHECK(pictureRow(note.doc()->findBlock(pictures()[0])).size() == 2);
+    // a caption, Ctrl+Backspace at its start: the picture picked, the caption not joined to it
+    edit.pickPicture(pictures()[0]);
+    note.click("pictureCaption");
+    note.type("Cap");
+    auto caption = note.doc()->findBlock(pictures()[0]).next();
+    REQUIRE(caption.text() == "Cap");
+    note.caretAt(caption.position());
+    note.key(Qt::Key_Backspace, Qt::ControlModifier);
+    CHECK(edit.pickedPicture() == pictures()[1]);
+    CHECK(note.doc()->findBlock(pictures()[0]).next().text() == "Cap");
+    // Ctrl+Delete at the end of the line above them: the first picked
+    note.caretAt(4);
+    note.key(Qt::Key_Delete, Qt::ControlModifier);
+    CHECK(edit.pickedPicture() == pictures()[0]);
+    CHECK(note.lines().at(0) == "Text");
+    // Undo by its other keys (Alt+Backspace) beside them: undone, nothing picked
+    if (QKeySequence::keyBindings(QKeySequence::Undo).contains(QKeySequence(Qt::ALT | Qt::Key_Backspace))) {
+        note.caretAt(0);
+        note.caretAt(pictures()[1] + 1);
+        int before = note.doc()->availableUndoSteps();
+        note.key(Qt::Key_Backspace, Qt::AltModifier);
+        CHECK(edit.pickedPicture() == -1);
+        CHECK(note.doc()->availableUndoSteps() == before - 1);
+    }
+}
+
+TEST_CASE("notes: typing at pictures: its line and it one step to undo, with the format set for it; input methods")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    int end = note.pictures().at(1) + 1;
+    auto at = [&](int pos) {
+        note.caretAt(0);
+        note.caretAt(pos);
+    };
+    // bold set (as the note's Ctrl+B does), then typed: bold, on a line under them; one
+    // undo: the line gone too
+    at(end);
+    QTextCharFormat bold;
+    bold.setFontWeight(QFont::Bold);
+    edit.mergeCurrentCharFormat(bold);
+    note.type("x");
+    CHECK(note.lines() == QStringList{"Text", "##", "x"});
+    CHECK(note.doc()->lastBlock().begin().fragment().charFormat().fontWeight() == QFont::Bold);
+    CHECK(!note.doc()->lastBlock().begin().fragment().charFormat().isImageFormat());
+    edit.undo();
+    CHECK(note.lines() == QStringList{"Text", "##"});
+    // an emoji's two halves in one key: on a line under them too
+    at(end);
+    QKeyEvent emoji(QEvent::KeyPress, 0, Qt::NoModifier, QString::fromUtf8("😀"));
+    QApplication::sendEvent(&edit, &emoji);
+    CHECK(note.lines() == QStringList{"Text", "##", QString::fromUtf8("😀")});
+    edit.undo();
+    // an input method: composed, then written: one step to undo with its line
+    at(end);
+    QInputMethodEvent preedit("zhong", {});
+    QApplication::sendEvent(&edit, &preedit);
+    CHECK(note.lines() == QStringList{"Text", "##", ""});
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("中"));
+    QApplication::sendEvent(&edit, &commit);
+    CHECK(note.lines() == QStringList{"Text", "##", QString::fromUtf8("中")});
+    edit.undo();
+    CHECK(note.lines() == QStringList{"Text", "##"});
+    // composed, then given up: no line left, the cursor back beside them
+    at(end);
+    QApplication::sendEvent(&edit, &preedit);
+    QInputMethodEvent cancel;
+    QApplication::sendEvent(&edit, &cancel);
+    CHECK(note.lines() == QStringList{"Text", "##"});
+    CHECK(edit.textCursor().position() == end);
+    // written, replacing what is before it (as some input methods do): not into their line
+    at(end);
+    QInputMethodEvent replacing;
+    replacing.setCommitString(QString::fromUtf8("é"), -1, 1);
+    QApplication::sendEvent(&edit, &replacing);
+    CHECK(note.lines() == QStringList{"Text", "##", QString::fromUtf8("é")});
+    CHECK(pictureRow(note.doc()->findBlock(note.pictures().at(0))).size() == 2);
+}
+
+TEST_CASE("notes: pictures pasted into a line of pictures keep its height; undone and redone, the note stays where it was")
+{
+    app();
+    QString html;
+    for (int i = 0; i < 60; ++i)
+        html += QString("<p>Line %1</p>").arg(i);
+    PictureNote note({700, 400}, html);
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    edit.pickPicture(note.pictures().at(0));
+    note.click("pictureMedium");  // (the row 360 high)
+    QApplication::processEvents();
+    qreal height = note.storedSize(note.pictures().at(0)).height();
+    REQUIRE(height == 360);
+    auto* picture = new QMimeData;
+    picture->setImageData(filled(100, 100, Qt::green));
+    QApplication::clipboard()->setMimeData(picture);
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(0));  // (at the start of the row)
+    edit.paste();
+    QApplication::processEvents();
+    for (int p : note.pictures())
+        CHECK(note.storedSize(p).height() == height);
+    auto bottom = [&] { return edit.verticalScrollBar()->value() > edit.verticalScrollBar()->maximum() / 2; };
+    CHECK(bottom());
+    edit.undo();
+    QApplication::processEvents();
+    CHECK(bottom());
+    edit.redo();
+    QApplication::processEvents();
+    CHECK(bottom());
+    CHECK(edit.textCursor().blockNumber() > 50);
+    CHECK(note.pictures().size() == 3);
+}
+
+TEST_CASE("notes: pasted at pictures: into a caption, under it; links not swallowed; an empty clipboard adds nothing")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    note.click("pictureCaption");
+    note.type("Cap");
+    // a picture pasted in the caption: under it, the caption whole
+    note.caretAt(note.doc()->lastBlock().position() + 1);  // "C|ap"
+    auto* picture = new QMimeData;
+    picture->setImageData(filled(100, 100, Qt::green));
+    QApplication::clipboard()->setMimeData(picture);
+    edit.paste();
+    CHECK(note.lines() == QStringList{"Text", "#", "Cap", "#"});
+    CHECK(note.doc()->begin().next().next().blockFormat().hasProperty(kCaptionProperty));
+    CHECK(!note.doc()->lastBlock().blockFormat().hasProperty(kCaptionProperty));
+    // text pasted at them: on a line of its own, it and its line one step to undo
+    auto* words = new QMimeData;
+    words->setText("words");
+    QApplication::clipboard()->setMimeData(words);
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(1) + 1);
+    auto lines = note.lines();
+    edit.paste();
+    CHECK(note.lines() == lines + QStringList{"words"});
+    edit.undo();
+    CHECK(note.lines() == lines);
+    // a link (an address, not a picture file): its text
+    auto* link = new QMimeData;
+    link->setUrls({QUrl("https://example.org/page")});
+    link->setText("https://example.org/page");
+    QApplication::clipboard()->setMimeData(link);
+    note.caretAt(4);  // ("Text|")
+    edit.paste();
+    CHECK(note.lines().at(0) == "Texthttps://example.org/page");
+    // Ctrl+Shift+V with no text: nothing, no line made
+    auto* none = new QMimeData;
+    none->setImageData(filled(10, 10, Qt::black));
+    QApplication::clipboard()->setMimeData(none);
+    edit.pickPicture(note.pictures().at(0));
+    auto before = note.lines();
+    note.key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(note.lines() == before);
+}
+
+TEST_CASE("notes: the only picture of a note, with its caption, deleted: no caption left; read-only switched back")
+{
+    app();
+    PictureNote note({700, 500}, "<p><img src=\"test:0\"></p>");
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    note.doc()->markContentsDirty(0, note.doc()->characterCount());
+    QApplication::processEvents();
+    edit.pickPicture(0);
+    note.click("pictureCaption");
+    note.type("Cap");
+    REQUIRE(note.lines() == QStringList{"#", "Cap"});
+    edit.pickPicture(0);
+    note.key(Qt::Key_Delete);
+    REQUIRE(note.doc()->blockCount() == 1);
+    CHECK(!note.doc()->begin().blockFormat().hasProperty(kCaptionProperty));
+    note.type("plain");
+    CHECK(documentToNoteHtml(note.doc()).contains("<p>plain</p>"));
+
+    // the cursor in a line of pictures, read-only and back: drawn again, Qt's hidden
+    edit.setHtml("<p><img src=\"test:0\"></p>");
+    note.caretAt(1);
+    REQUIRE(edit.cursorWidth() == 0);
+    edit.setReadOnly(true);
+    edit.setReadOnly(false);
+    QApplication::processEvents();
+    CHECK(edit.cursorWidth() == 0);
+    CHECK(inked(edit, QRect(int(note.shown(0).right()) + 1, int(note.shown(0).bottom()) - 8, 5, 8)));
+}
+
+TEST_CASE("notes: pictures copied from another note are this note's own copies")
+{
+    app();
+    Env env;
+    auto first = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>One</p></div>");
+    auto second = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>Two</p></div>");
+    NoteEditor from, into;
+    for (auto* editor : {&from, &into}) {
+        editor->resize(700, 500);
+        editor->show();
+    }
+    from.setNote(env.lib, qs(jstr(first, "key")));
+    into.setNote(env.lib, qs(jstr(second, "key")));
+    QApplication::processEvents();
+    auto* edit = from.findChild<NoteTextEdit*>();
+    edit->moveCursor(QTextCursor::End);
+    edit->insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    from.flush();
+    // the row copied (both pictures)
+    auto row = edit->document()->lastBlock();
+    QTextCursor both(edit->document());
+    both.setPosition(row.position());
+    both.setPosition(row.position() + 2, QTextCursor::KeepAnchor);
+    edit->setTextCursor(both);
+    edit->copy();
+    auto* target = into.findChild<NoteTextEdit*>();
+    target->setFocus();
+    target->moveCursor(QTextCursor::End);
+    target->paste();
+    into.flush();
+    auto pasted = pictureRow(target->document()->lastBlock());
+    REQUIRE(pasted.size() == 2);
+    QStringList names;
+    for (int p : pasted) {
+        QTextCursor c(target->document());
+        c.setPosition(p);
+        c.setPosition(p + 1, QTextCursor::KeepAnchor);
+        auto name = c.charFormat().toImageFormat().name();
+        names << name;
+        CHECK(target->document()->resource(QTextDocument::ImageResource, QUrl(name)).isValid());  // (shown)
+    }
+    // the second note's own attachments, not the first's
+    auto ownKeys = env.library.children(env.lib, jstr(second, "key"), "attachment");
+    CHECK(ownKeys.size() == 2);
+    for (auto& name : names) {
+        auto att = env.library.item(env.lib, ss(name.mid(11)));
+        REQUIRE(att);
+        CHECK(jstr(*att, "parentItem") == jstr(second, "key"));
+    }
+}
+
+TEST_CASE("notes: typed or pasted under pictures in a long note, the view stays at it")
+{
+    app();
+    QString html;
+    for (int i = 0; i < 40; ++i)
+        html += QString("<p>Line %1</p>").arg(i);
+    PictureNote note({700, 400}, html);
+    auto& edit = note.edit;
+    note.caretAt(note.doc()->findBlockByNumber(20).position());
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});  // (in the middle)
+    QApplication::processEvents();
+    int end = note.pictures().at(1) + 1;
+    auto visible = [&] {
+        auto r = edit.cursorRect();
+        return edit.verticalScrollBar()->value() > 0 && r.top() >= 0 && r.bottom() <= edit.viewport()->height();
+    };
+    note.caretAt(0);
+    note.caretAt(end);
+    note.type("x");
+    CHECK(visible());
+    edit.undo();
+    auto* words = new QMimeData;
+    words->setText("pasted");
+    QApplication::clipboard()->setMimeData(words);
+    note.caretAt(0);
+    note.caretAt(end);
+    edit.paste();  // (as from the context menu)
+    QApplication::processEvents();
+    CHECK(visible());
+    edit.undo();
+    note.caretAt(0);
+    note.caretAt(end);
+    note.key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(visible());
+}
+
+TEST_CASE("notes: an input method's composition dropped or left behind does not reach a line of pictures later")
+{
+    app();
+    PictureNote note({900, 600}, "<p>Text</p>");
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    auto at = [&](int pos) {
+        note.caretAt(0);
+        note.caretAt(pos);
+    };
+    auto rowIntact = [&] { return pictureRow(note.doc()->findBlock(note.pictures().at(0))).size() == 2; };
+    // composed beside them (a line made under them), then a click on a picture (no input
+    // method to write it: dropped)
+    at(note.pictures().at(1) + 1);
+    QInputMethodEvent preedit("zhong", {});
+    QApplication::sendEvent(&edit, &preedit);
+    auto a = note.shown(note.pictures().at(0));
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, a.center().toPoint());
+    // then composed and written beside them again: on a line of its own
+    at(note.pictures().at(1) + 1);
+    QApplication::sendEvent(&edit, &preedit);
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("国"));
+    QApplication::sendEvent(&edit, &commit);
+    CHECK(rowIntact());
+    CHECK(note.lines().contains(QString::fromUtf8("国")));
+    // composing when the note is opened again: the new note's pictures not reached either
+    at(note.pictures().at(1) + 1);
+    QApplication::sendEvent(&edit, &preedit);
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:9"), filled(100, 100, Qt::green));
+    edit.setHtml("<p>Other</p><p><img src=\"test:9\"></p>");
+    QApplication::processEvents();
+    at(note.pictures().at(0) + 1);
+    QApplication::sendEvent(&edit, &preedit);
+    QApplication::sendEvent(&edit, &commit);
+    CHECK(note.lines() == QStringList{"Other", "#", QString::fromUtf8("国")});
+    // given up after an undo had something to redo: no empty line to redo afterwards
+    note.type("");
+    at(note.pictures().at(0) + 1);
+    QApplication::sendEvent(&edit, &preedit);
+    QInputMethodEvent cancel;
+    QApplication::sendEvent(&edit, &cancel);
+    CHECK(!note.doc()->isRedoAvailable());
+}
+
+TEST_CASE("notes: an input method's replacement beside a picture picked replaces text, not the picture")
+{
+    app();
+    PictureNote note({700, 500}, "<p>ab<img src=\"test:0\">cd</p>");
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    note.doc()->markContentsDirty(0, note.doc()->characterCount());
+    QApplication::processEvents();
+    edit.pickPicture(2);
+    QInputMethodEvent replacing;  // (as the input method saw it: the cursor before the picture)
+    replacing.setCommitString(QString::fromUtf8("é"), -1, 1);
+    QApplication::sendEvent(&edit, &replacing);
+    CHECK(note.pictures().size() == 1);
+    CHECK(note.lines() == QStringList{QString::fromUtf8("aé#cd")});
+}
+
+TEST_CASE("notes: a formula made at pictures (Ctrl+M) is one step to undo with its line; Ctrl and a keypad key type there too")
+{
+    app();
+    PictureNote note({900, 600}, "<p>Text</p><p>After</p>");
+    auto& edit = note.edit;
+    note.caretAt(4);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    REQUIRE(note.lines() == QStringList{"Text", "##", "After"});
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(1) + 1);
+    note.key(Qt::Key_M, Qt::ControlModifier);
+    note.type("x");
+    note.key(Qt::Key_Escape);
+    CHECK(note.lines() == QStringList{"Text", "##", "#", "After"});
+    edit.undo();
+    CHECK(note.lines() == QStringList{"Text", "##", "After"});
+    // Ctrl with a keypad key (its text typed, as Qt does): on a line of its own too
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(1) + 1);
+    QKeyEvent keypad(QEvent::KeyPress, Qt::Key_9, Qt::ControlModifier | Qt::KeypadModifier, "9");
+    QApplication::sendEvent(&edit, &keypad);
+    CHECK(note.lines() == QStringList{"Text", "##", "9", "After"});
+}
+
+TEST_CASE("notes: right to left, and at a wrapped line's end, pictures are where they are drawn")
+{
+    app();
+    PictureNote note({700, 500}, QString::fromUtf8("<p dir=\"rtl\">שלום <img src=\"test:0\"> עולם</p>"));
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(100, 60, Qt::red));
+    note.doc()->markContentsDirty(0, note.doc()->characterCount());
+    QApplication::processEvents();
+    int at = note.pictures().at(0);
+    auto r = note.shown(at);
+    auto shot = edit.viewport()->grab().toImage();
+    CHECK(near(shot.pixelColor(r.center().toPoint()), Qt::red));
+    CHECK(near(shot.pixelColor(int(r.left()) + 2, int(r.center().y())), Qt::red));
+    CHECK(near(shot.pixelColor(int(r.right()) - 2, int(r.center().y())), Qt::red));
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
+    CHECK(edit.pickedPicture() == at);
+
+    // the last on a wrapped line, its right edge clicked: the cursor after it
+    QString words;
+    for (int i = 0; i < 60; ++i)
+        words += QString::fromUtf8("字");
+    edit.setHtml("<p>" + words.left(20) + "<img src=\"test:0\">" + words + "</p>");
+    edit.resize(300, 500);
+    QApplication::processEvents();
+    at = note.pictures().at(0);
+    r = note.shown(at);
+    QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, QPoint(int(r.right()) - 2, int(r.center().y())));
+    CHECK(edit.pickedPicture() == -1);
+    CHECK(edit.textCursor().position() == at + 1);
+}
+
+TEST_CASE("notes: Esc while a corner is dragged: the picture shown as it is when let go")
+{
+    app();
+    PictureNote note;
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    QApplication::processEvents();
+    int at = note.pictures().at(0);
+    auto r = note.shown(at);
+    auto corner = r.bottomRight().toPoint();
+    QTest::mousePress(edit.viewport(), Qt::LeftButton, {}, corner);
+    QTest::mouseMove(edit.viewport(), corner + QPoint(0, 80));
+    note.key(Qt::Key_Escape);
+    QTest::mouseRelease(edit.viewport(), Qt::LeftButton, {}, corner + QPoint(0, 80));
+    QApplication::processEvents();
+    CHECK(note.shown(at) == r);
+}
+
+TEST_CASE("notes: dragged over pictures, text is marked where its line will be")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::yellow)});
+    note.caretAt(0);
+    auto a = note.shown(note.pictures().at(0)), b = note.shown(note.pictures().at(1));
+    QPoint gap(int((a.right() + b.left()) / 2), int(a.center().y()));
+    QMimeData mime;
+    mime.setText("dropped");
+    QDragEnterEvent enter(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &enter);
+    QDragMoveEvent move(gap, Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &move);
+    QApplication::processEvents();
+    auto shot = edit.viewport()->grab().toImage();
+    auto accent = edit.palette().color(QPalette::Highlight);
+    bool between = false, under = false;
+    for (int x = int(a.right()); x <= int(b.left()); ++x)
+        between = between || near(shot.pixelColor(x, gap.y()), accent);
+    for (int y = int(b.bottom()); y <= int(b.bottom()) + 8; ++y)
+        under = under || near(shot.pixelColor(int(a.center().x()), y), accent);
+    CHECK(!between);  // (it does not go between them)
+    CHECK(under);     // (a line of its own under them)
+    QDropEvent drop(QPointF(gap), Qt::CopyAction, &mime, Qt::LeftButton, {});
+    QApplication::sendEvent(edit.viewport(), &drop);
+    CHECK(note.lines() == QStringList{"Text", "##", "dropped"});
+}
+
+TEST_CASE("notes: plain text pasted over a selection next to a picture or formula is text")
+{
+    app();
+    Env env;
+    PictureNote note;
+    auto& edit = note.edit;
+    edit.setHtml(noteHtmlForEditor("<p>Then <span class=\"math\">$x^2$</span> grows</p>", env.lib, note.doc()));
+    edit.prepareDocument();
+    QApplication::processEvents();
+    QTextCursor then(note.doc());
+    then.setPosition(0);
+    then.setPosition(5, QTextCursor::KeepAnchor);  // "Then "
+    edit.setTextCursor(then);
+    auto* words = new QMimeData;
+    words->setData("text/plain", "So ");
+    QApplication::clipboard()->setMimeData(words);
+    edit.paste();
+    CHECK(documentToNoteHtml(note.doc()).contains("<p>So <span class=\"math\">$x^2$</span> grows</p>"));
+}
+
+TEST_CASE("notes: pictures put into a line of pictures not downloaded yet keep their size")
+{
+    app();
+    PictureNote note({900, 600}, "<p>Text</p><p><img src=\"missing:1\"></p>");
+    auto& edit = note.edit;
+    note.caretAt(note.doc()->lastBlock().position() + 1);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    QApplication::processEvents();
+    auto pictures = note.pictures();
+    REQUIRE(pictures.size() == 2);
+    CHECK(note.shown(pictures[1]).height() == doctest::Approx(200));
+}
+
+TEST_CASE("notes: copied with its picture, a caption is a caption; its words copied alone are plain text")
+{
+    app();
+    Env env;
+    PictureNote note;
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    edit.setHtml(noteHtmlForEditor("<div data-schema-version=\"9\"><p><img src=\"test:0\"></p><p class=\"caption\">Figure 1</p>"
+                                   "<p>Below</p></div>",
+                                   env.lib, note.doc()));
+    edit.prepareDocument();
+    QApplication::processEvents();
+    // the picture and its caption, copied and pasted on the line below
+    QTextCursor both(note.doc());
+    both.setPosition(0);
+    both.setPosition(note.doc()->begin().next().position() + 8, QTextCursor::KeepAnchor);
+    edit.setTextCursor(both);
+    edit.copy();
+    note.caretAt(note.doc()->lastBlock().position() + 5);  // ("Below|")
+    note.key(Qt::Key_Return);
+    edit.paste();
+    auto html = documentToNoteHtml(note.doc());
+    CHECK(html.count("<p class=\"caption\">Figure 1</p>") == 2);
+    CHECK(!html.contains("#888888"));
+    // a word of it, pasted in a paragraph: no caption's gray
+    QTextCursor word(note.doc());
+    word.setPosition(note.doc()->begin().next().position());
+    word.setPosition(note.doc()->begin().next().position() + 6, QTextCursor::KeepAnchor);  // "Figure"
+    edit.setTextCursor(word);
+    edit.copy();
+    note.caretAt(note.doc()->findBlockByNumber(2).position() + 5);  // ("Below|")
+    edit.paste();
+    html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<p>BelowFigure</p>"));
+    CHECK(!html.contains("#888888"));
+}
+
+TEST_CASE("notes: lines pasted into a caption: the first in it, the others paragraphs")
+{
+    app();
+    PictureNote note;
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    note.click("pictureCaption");
+    note.type("Cap");
+    auto* lines = new QMimeData;
+    lines->setData("text/plain", "one\ntwo");
+    QApplication::clipboard()->setMimeData(lines);
+    edit.paste();
+    auto html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<p class=\"caption\">Capone</p><p>two</p>"));
+    edit.undo();
+    note.key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+    html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<p class=\"caption\">Capone</p><p>two</p>"));
+}
+
+TEST_CASE("notes: pasted at pictures: nothing to paste, no line; a formula being typed done first; files that are no pictures as text")
+{
+    app();
+    TempDir dir;
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    QApplication::processEvents();
+    auto before = note.lines();
+    auto* empty = new QMimeData;
+    empty->setData("text/plain", "");
+    QApplication::clipboard()->setMimeData(empty);
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(0) + 1);
+    edit.paste();
+    CHECK(note.lines() == before);
+    // a picture pasted while a formula is typed: the formula done, no "$$" left
+    note.caretAt(4);  // ("Text|")
+    note.key(Qt::Key_M, Qt::ControlModifier);
+    note.type("y");
+    auto* picture = new QMimeData;
+    picture->setImageData(filled(50, 50, Qt::green));
+    QApplication::clipboard()->setMimeData(picture);
+    edit.paste();
+    edit.clearFocus();
+    QApplication::processEvents();
+    CHECK(!documentToNoteHtml(note.doc()).contains("$$"));
+    CHECK(documentToNoteHtml(note.doc()).contains("$y$"));
+    // a picture file that cannot be read: its address, as other files
+    std::ofstream(qpath(dir.path / "broken.png").toStdString()) << "\x89PNG\r\n";
+    auto* broken = new QMimeData;
+    broken->setUrls({QUrl::fromLocalFile(qpath(dir.path / "broken.png"))});
+    QApplication::clipboard()->setMimeData(broken);
+    note.caretAt(4);
+    auto pictures = note.pictures().size();
+    edit.paste();
+    CHECK(note.pictures().size() == pictures);
+    CHECK(note.doc()->toPlainText().contains("broken.png"));
+}
+
+TEST_CASE("notes: Add to Note: a paragraph after headings and lists, a quote kept, nothing in a note that cannot be changed")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><h1>Heading</h1></div>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    editor.appendHtml("<p>“A” (Doe, 2020)</p>");
+    auto html = documentToNoteHtml(edit->document());
+    CHECK(html.contains("<h1>Heading</h1><p>“A” (Doe, 2020)</p>"));
+    editor.appendHtml("<blockquote><p>“quoted”</p></blockquote>");
+    html = documentToNoteHtml(edit->document());
+    CHECK(html.contains("<blockquote><p>“quoted”</p></blockquote>"));
+    // with a formula being typed: done, and what is added kept
+    edit->setFocus();
+    edit->moveCursor(QTextCursor::End);
+    edit->insertMath(false);
+    QTest::keyClicks(edit, "z");
+    editor.appendHtml("<p>after the formula</p>");
+    html = documentToNoteHtml(edit->document());
+    CHECK(html.contains("$z$"));
+    CHECK(html.contains("after the formula"));
+    // read only: nothing added, nothing saved
+    edit->setReadOnly(true);
+    editor.appendHtml("<p>never</p>");
+    editor.flush();
+    CHECK(!documentToNoteHtml(edit->document()).contains("never"));
 }
 
 TEST_CASE("notes: picture files pasted or dropped together are one row")

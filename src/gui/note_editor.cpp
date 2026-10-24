@@ -90,6 +90,8 @@ void NoteTextEdit::changeEvent(QEvent* e)
         adaptColors();
         viewport()->update();
     }
+    if (e->type() == QEvent::ReadOnlyChange)
+        updateCaret();  // (in a line of pictures: drawn, or Qt's)
 }
 
 // Back to the note's own font: the format names no family. An empty family list is not
@@ -171,6 +173,58 @@ static void applyHeading(QTextCursor cursor, int level)
 
 // A formula has the colour of the text it was typed in (or was given): that colour and
 // nothing else of `from`, also when hidden for contrast in dark mode (see adaptColors).
+namespace {
+// What is done while it lives: one step to undo (back to where the cursor was), or part of
+// the one before (join: a line just made for it).
+struct UndoStep {
+    explicit UndoStep(QTextEdit* edit, bool join = false) : edit(edit), cursor(edit->textCursor())
+    {
+        join ? cursor.joinPreviousEditBlock() : cursor.beginEditBlock();
+    }
+    ~UndoStep()
+    {
+        cursor.endEditBlock();
+        edit->ensureCursorVisible();  // (laid out only now)
+    }
+    QTextEdit* edit;
+    QTextCursor cursor;
+};
+
+// Lines pasted into a caption after its first: paragraphs, their text no caption's (one
+// caption under the pictures, as Enter in it makes).
+struct CaptionKept {
+    explicit CaptionKept(QTextEdit* edit) : edit(edit)
+    {
+        auto block = edit->textCursor().block();
+        if (block.blockFormat().hasProperty(kCaptionProperty))
+            caption = block.position();
+    }
+    ~CaptionKept()
+    {
+        if (caption < 0)
+            return;
+        auto* doc = edit->document();
+        int end = edit->textCursor().position();
+        for (auto b = doc->findBlock(caption).next(); b.isValid() && b.position() <= end; b = b.next())
+            setCaption(b, false);
+    }
+    QTextEdit* edit;
+    int caption = -1;
+};
+
+// A colour too near the background to read (dark on dark): shown in the text's colour, kept
+// (as adaptColors does).
+bool hideUnreadable(QTextCharFormat& f, const QColor& base)
+{
+    if (f.hasProperty(kOriginalForegroundProperty) || !f.hasProperty(QTextFormat::ForegroundBrush) ||
+        std::abs(f.foreground().color().lightness() - base.lightness()) >= 90)
+        return false;
+    f.setProperty(kOriginalForegroundProperty, f.foreground().color());
+    f.clearForeground();
+    return true;
+}
+} // namespace
+
 static void copyTextColor(const QTextCharFormat& from, QTextCharFormat& to)
 {
     // (a caption's gray is the caption's, not the formula's own: kCaptionProperty)
@@ -368,8 +422,12 @@ void NoteTextEdit::insertMath(bool display)
 {
     if (runAtCursor())
         return;
+    commitMathEdits(true);    // (one formula at a time: done before a line is made for this one)
+    bool made = caretForText();  // (at pictures: on a line of its own, as text)
     auto cursor = textCursor();
     startMathEdit(cursor, cursor.selectedText().replace(QChar::ParagraphSeparator, ' ').trimmed(), display);
+    if (session_.undoSteps >= 0)
+        session_.joinLine = made;  // (the line and the formula: one step to undo)
 }
 
 void NoteTextEdit::editMathInPlace(QTextCursor selection)
@@ -493,7 +551,10 @@ bool NoteTextEdit::finishMathSession(const QString& latex, QTextCursor* after)
         *after = c;
         return true;
     }
-    c.beginEditBlock();
+    if (session.joinLine)
+        c.joinPreviousEditBlock();  // (the line made for it at pictures: one step with it)
+    else
+        c.beginEditBlock();
     auto textFormat = outerFormat(c.block(), c.selectionStart() - c.block().position());
     auto colour = c.charFormat();  // the formula's, or that of the signs it was typed with
     c.removeSelectedText();
@@ -1321,6 +1382,16 @@ void NoteTextEdit::wheelEvent(QWheelEvent* e)
 
 void NoteTextEdit::keyPressEvent(QKeyEvent* e)
 {
+    struct EndStep {  // (text typed at pictures: see pictureKey, rowKey)
+        NoteTextEdit* edit;
+        ~EndStep()
+        {
+            if (edit->typingStep_.isNull())
+                return;
+            std::exchange(edit->typingStep_, QTextCursor()).endEditBlock();
+            edit->ensureCursorVisible();  // (laid out only now)
+        }
+    } endStep{this};
     if (int zoom = zoomKey(e); zoom != -2) {
         zoomBy(zoom);
         return;
@@ -1328,7 +1399,7 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
     bool swallow = std::exchange(swallowDollar_, false);
     if (swallow && e->text() == "$")
         return;  // the second $ of a $$ that one $ already closed
-    if (pictureKey(e) || captionKey(e))
+    if (pictureKey(e) || rowKey(e) || captionKey(e))
         return;
     if (markdown_ && !isReadOnly() && e->key() == Qt::Key_Backspace && e->modifiers() == Qt::NoModifier) {
         auto cursor = textCursor();
@@ -1377,8 +1448,17 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
         }
     }
     if (e->key() == Qt::Key_V && e->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && !isReadOnly()) {
-        caretForText();  // (a picture picked: under it)
-        insertPlainText(QApplication::clipboard()->text());  // as it is, Markdown or not
+        auto text = QApplication::clipboard()->text();
+        if (text.isEmpty())
+            return;
+        bool made = caretForText();  // (at pictures: on a line of its own, a step it joins)
+        UndoStep step(this, made);
+        CaptionKept caption(this);
+        if (auto c = textCursor(); !c.hasSelection() && c.charFormat().objectType() != QTextFormat::NoObject) {
+            c.setCharFormat(textFormatOf(c.charFormat()));  // (after a picture: text, not more of it)
+            setTextCursor(c);
+        }
+        insertPlainText(text);  // as it is, Markdown or not
         return;
     }
     if (!isReadOnly() && !runAtCursor()) {
@@ -1476,6 +1556,7 @@ bool NoteTextEdit::event(QEvent* e)
 void NoteTextEdit::focusOutEvent(QFocusEvent* e)
 {
     QTextEdit::focusOutEvent(e);
+    updateCaret();  // (none drawn in a line of pictures)
     viewport()->update();  // (no picture shown picked)
     pictureBarTimer_.start();
     if (e->reason() != Qt::PopupFocusReason)
@@ -1558,6 +1639,8 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
     }
     QTextDocument copy;
     QTextCursor(&copy).insertFragment(cursor.selection());
+    markForCopy(&copy);
+    data->setData(kNoteFragmentMime, QTextDocumentFragment(&copy).toHtml().toUtf8());
     if (cursor.hasComplexSelection() && cursor.currentTable()) {
         // cells of a table: a header row only if the header row is among them
         int row0, rows, col0, cols;
@@ -1629,6 +1712,22 @@ QMimeData* NoteTextEdit::createMimeDataFromSelection() const
     return data;
 }
 
+bool NoteTextEdit::picturesOnly(const QMimeData* source) const
+{
+    bool fromNote = source->hasFormat(kNoteFragmentMime);
+    if (storeImage && source->hasImage() && !fromNote)
+        return true;
+    if (storeImage && source->hasUrls())
+        for (auto& url : source->urls())
+            if (url.isLocalFile() && !QImageReader::imageFormat(url.toLocalFile()).isEmpty())
+                return true;
+    if (!fromNote)
+        return false;
+    QTextDocument copied;
+    copied.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
+    return copied.blockCount() == 1 && !pictureRow(copied.begin()).empty();
+}
+
 bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 {
     return source->hasFormat(kNoteFragmentMime) || (storeImage && source->hasImage()) ||
@@ -1637,10 +1736,6 @@ bool NoteTextEdit::canInsertFromMimeData(const QMimeData* source) const
 
 void NoteTextEdit::insertFromMimeData(const QMimeData* source)
 {
-    // a picture picked (the cursor at it, not shown): what is pasted goes under it, as text
-    // typed (from the context menu too)
-    if (int p = pickedPicture(); p >= 0 && textCursor().position() == p && !textCursor().hasSelection() && !isReadOnly())
-        caretForText();
     // Into a formula being typed, text is its LaTeX (without $ signs of its own); into an
     // empty one, just opened with $$, the formula is done at once.
     if (auto run = runAtCursor(); run && source->hasText() && !isReadOnly()) {
@@ -1668,18 +1763,58 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     if (storeImage && source->hasImage() && !fromNote) {
         auto image = qvariant_cast<QImage>(source->imageData());
         if (!image.isNull()) {
-            insertPictures({image});  // (shown small, on a line of its own)
+            insertPictures({image});  // (shown small; in a line of pictures, or of its own)
             return;
         }
     }
     if (storeImage && source->hasUrls()) {  // pictures dropped or pasted together: one row
         QList<QImage> images;
-        for (auto& url : source->urls())
+        QStringList others;
+        for (auto& url : source->urls()) {
+            QImage image;
             if (url.isLocalFile() && !QImageReader::imageFormat(url.toLocalFile()).isEmpty())
-                images << QImage(url.toLocalFile());
-        insertPictures(images);
-        return;
+                image = QImage(url.toLocalFile());
+            if (!image.isNull())
+                images << image;
+            else
+                others << url.toString();
+        }
+        if (!images.isEmpty()) {
+            insertPictures(images);
+            if (!others.isEmpty()) {  // (other files with them: their addresses, under them)
+                bool made = caretForText();
+                UndoStep step(this, made);
+                insertPlainText(others.join('\n'));
+            }
+            return;
+        }  // (links, other files, pictures that cannot be read: as text)
     }
+    // copied in a note: pictures of another note there are this note's own copies; pictures
+    // alone are put as other pictures pasted
+    QTextDocument copied;
+    if (fromNote) {
+        copied.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
+        markCaptions(&copied);  // (marked when copied: see createMimeDataFromSelection)
+        adoptPictures(&copied, source);
+        if (copied.blockCount() == 1 && !pictureRow(copied.begin()).empty()) {
+            QList<QTextImageFormat> pictures;
+            for (auto it = copied.begin().begin(); !it.atEnd(); ++it)
+                for (int i = 0; i < it.fragment().length(); ++i)
+                    pictures << it.fragment().charFormat().toImageFormat();
+            placePictures(pictures);
+            return;
+        }
+    }
+    // text at pictures (one picked, or the cursor in a line of them, from the context menu
+    // too): on a line of its own, as typed text; it and its line one step to undo (nothing
+    // there: no line)
+    bool something = !source->text().isEmpty() || (fromNote && !copied.isEmpty()) ||
+                     (source->hasHtml() && !QTextDocumentFragment::fromHtml(source->html()).isEmpty());
+    if (isReadOnly() || !something)
+        return;
+    bool made = caretForText();
+    UndoStep step(this, made);
+    CaptionKept caption(this);
     static const QRegularExpression markdownRe(
         R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|^ {0,3}\|? *:?-+:? *\|[ :|-]*$|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
         QRegularExpression::MultilineOption);
@@ -1707,27 +1842,9 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     // follow the note's text size. From another program, Zotero's formulas and LaTeX
     // written in the text become formulas; from a note, it is as it was.
     if (fromNote || source->hasHtml()) {
-        QTextDocument tmp;
-        if (fromNote) {
-            tmp.setHtml(QString::fromUtf8(source->data(kNoteFragmentMime)));
-            // pictures alone: on a line of their own, as other pictures pasted; one from
-            // another note (not among this one's) is this note's own copy of it
-            if (auto row = pictureRow(tmp.begin()); tmp.blockCount() == 1 && !row.empty()) {
-                QList<QTextImageFormat> pictures;
-                bool ours = true;
-                for (auto it = tmp.begin().begin(); !it.atEnd(); ++it)
-                    for (int i = 0; i < it.fragment().length(); ++i) {
-                        auto f = it.fragment().charFormat().toImageFormat();
-                        ours = ours && document()->resource(QTextDocument::ImageResource, QUrl(f.name())).isValid();
-                        pictures << f;
-                    }
-                if (!ours && storeImage && source->hasImage())
-                    insertPictures({qvariant_cast<QImage>(source->imageData())});
-                else
-                    placePictures(pictures);
-                return;
-            }
-        } else {
+        QTextDocument other;
+        QTextDocument& tmp = fromNote ? copied : other;  // (copied in a note: read already)
+        if (!fromNote) {
             tmp.setHtml(tableHeadersForEditor(mathMarkupToImages(source->html())));
             formulasFromText(&tmp);
         }
@@ -1737,9 +1854,12 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         for (auto block = tmp.begin(); block.isValid(); block = block.next())
             for (auto it = block.begin(); !it.atEnd(); ++it)
                 fragments.push_back(it.fragment());
+        QColor base = palette().color(QPalette::Base);
         for (auto& fragment : fragments) {
             auto f = fragment.charFormat();
             useNoteFont(f);
+            if (!isPicture(f))
+                hideUnreadable(f, base);
             f.clearProperty(QTextFormat::FontPointSize);
             f.clearProperty(QTextFormat::FontPixelSize);
             QTextCursor c(&tmp);
@@ -1749,6 +1869,18 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         }
         textCursor().insertFragment(QTextDocumentFragment(&tmp));
         return;
+    }
+    // after a picture or a formula, text is text: Qt's plain text takes the format of what is
+    // before it (a selection taken away first: of what is before that), and was saved as more
+    // of them
+    auto c = textCursor();
+    if (c.hasSelection()) {
+        c.removeSelectedText();
+        setTextCursor(c);
+    }
+    if (c.charFormat().objectType() != QTextFormat::NoObject) {
+        c.setCharFormat(textFormatOf(c.charFormat()));
+        setTextCursor(c);
     }
     QTextEdit::insertFromMimeData(source);
 }
@@ -1797,6 +1929,22 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     edit_->setAcceptRichText(true);
     edit_->setPlaceholderText(tr("Write a note…"));
     edit_->storeImage = [this](const QImage& img) { return storeImage(img); };
+    edit_->loadPicture = [this](const QString& name) -> QImage {  // (another note's, in this library or another)
+        if (!name.startsWith("attachment:"))
+            return {};
+        auto& lib = AppContext::get().library();
+        auto key = ss(name.mid(11));
+        std::vector<int64_t> ids{libraryId_};
+        for (auto& info : lib.libraries())
+            if (info.id != libraryId_)
+                ids.push_back(info.id);
+        for (auto id : ids)
+            if (auto att = lib.item(id, key)) {
+                auto path = lib.attachmentFile(id, *att);
+                return path.empty() ? QImage() : QImage(qpath(path));
+            }
+        return {};
+    };
     edit_->openPicture = [this](const QString& name) {  // in the program the system has for it
         if (!name.startsWith("attachment:")) {
             QUrl url(name);
@@ -2200,7 +2348,7 @@ void NoteEditor::load(bool force)
 void NoteEditor::save()
 {
     saveTimer_.stop();
-    if (key_.isEmpty() || !edit_->document()->isModified())
+    if (key_.isEmpty() || !edit_->document()->isModified() || edit_->isReadOnly())
         return;
     auto html = documentToNoteHtml(edit_->document());
     if (html == lastSaved_ || html == lastSerialized_)
@@ -2220,10 +2368,21 @@ void NoteEditor::flush()
 
 void NoteEditor::appendHtml(const QString& html)
 {
+    if (edit_->isReadOnly())
+        return;
+    edit_->commitMathEdits(true);  // (a formula being typed: done, not undone with this)
+    QTextDocument added;
+    added.setHtml(html);
+    auto first = added.begin().blockFormat();
+    first.clearProperty(QTextFormat::ObjectIndex);  // (a list of that document's)
     auto cursor = edit_->textCursor();
     cursor.movePosition(QTextCursor::End);
-    cursor.insertBlock();
+    cursor.beginEditBlock();  // (one step to undo)
+    cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());  // (not the heading, list or caption before)
+    int at = cursor.position();
     cursor.insertHtml(html);
+    QTextCursor(edit_->document()->findBlock(at)).setBlockFormat(first);  // (a quote, say: as it was)
+    cursor.endEditBlock();
     edit_->setTextCursor(cursor);
     edit_->document()->setModified(true);
     saveTimer_.start();

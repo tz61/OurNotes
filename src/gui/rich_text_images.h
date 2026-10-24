@@ -9,6 +9,7 @@
 #include <vector>
 
 class QTextBlock;
+class QTextCharFormat;
 class QTextDocument;
 class QTextImageFormat;
 
@@ -25,6 +26,9 @@ bool isPicture(const QTextFormat& format);
 std::vector<int> pictureRow(const QTextBlock& block);
 // As large as it is (in logical pixels); empty when it cannot be read.
 QSizeF naturalPictureSize(const QTextDocument* doc, const QTextImageFormat& format);
+// A picture's or a formula's format as one for text after it: no object, no image. (Text
+// pasted in Qt's way takes the format of what is before it, and was saved as more of them.)
+QTextCharFormat textFormatOf(QTextCharFormat format);
 // Whether its shape is known: it has a size of its own, or it is here to be measured (a
 // picture not downloaded yet is a placeholder, of no shape of its own).
 bool pictureKnown(const QTextDocument* doc, const QTextImageFormat& format);

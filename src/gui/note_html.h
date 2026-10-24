@@ -40,6 +40,10 @@ QTextCharFormat captionCharFormat();
 // captions the HTML had (see noteHtmlForEditor) made so, once the document has it.
 void setCaption(QTextBlock block, bool caption);
 void markCaptions(QTextDocument* doc);
+// A copy of a note's text, made ready for Qt's HTML (which keeps none of our properties):
+// captions marked as markCaptions finds them, their look (and gray) not left on the text,
+// colours hidden for contrast (dark mode) as they are.
+void markForCopy(QTextDocument* doc);
 
 // Serialise a QTextDocument to clean note HTML in Zotero's format
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.

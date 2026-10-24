@@ -560,8 +560,10 @@ void ReaderTab::buildToolbar()
 void ReaderTab::followParent()
 {
     bool filed = !parentKey_.isEmpty();
-    view_->setNotesAvailable(filed);
-    annotations_->setNotesAvailable(filed);
+    // "Add to Note": not in a library that cannot be changed (a group's, read only)
+    bool notes = filed && AppContext::get().editable(libraryId_);
+    view_->setNotesAvailable(notes);
+    annotations_->setNotesAvailable(notes);
     paneToggle_->setVisible(filed);
     contextPane_->setVisible(filed && paneToggle_->isChecked());
     contextTabs_->setTabEnabled(0, filed);
@@ -899,6 +901,8 @@ QString ReaderTab::citationFor(const Json& annotation) const
 
 void ReaderTab::addToNote(const QString& html)
 {
+    if (!AppContext::get().editable(libraryId_))
+        return;
     if (!noteEditor_->key().isEmpty()) {
         if (!html.isEmpty())
             noteEditor_->appendHtml(html);

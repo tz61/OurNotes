@@ -187,6 +187,45 @@ void setCaption(QTextBlock block, bool caption)
     c.setBlockCharFormat(cf);
 }
 
+void markForCopy(QTextDocument* doc)
+{
+    struct Change {
+        int start, end;
+        QTextCharFormat format;
+    };
+    std::vector<Change> changes;
+    auto gray = captionCharFormat().foreground().color();
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        if (block.blockFormat().hasProperty(kCaptionProperty) && block.length() > 1)
+            block.setUserState(kCaptionState);
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            auto f = frag.charFormat();
+            bool changed = false;
+            if (f.hasProperty(kOriginalForegroundProperty)) {  // (hidden for contrast: its own)
+                f.setForeground(f.property(kOriginalForegroundProperty).value<QColor>());
+                f.clearProperty(kOriginalForegroundProperty);
+                changed = true;
+            }
+            if (f.hasProperty(kCaptionProperty)) {  // (the caption's look: made again for a caption)
+                if (f.foreground().color() == gray)
+                    f.clearProperty(QTextFormat::ForegroundBrush);
+                f.clearProperty(QTextFormat::FontSizeAdjustment);
+                f.clearProperty(kCaptionProperty);
+                changed = true;
+            }
+            if (changed)
+                changes.push_back({frag.position(), frag.position() + frag.length(), f});
+        }
+    }
+    QTextCursor c(doc);
+    for (auto& change : changes) {
+        c.setPosition(change.start);
+        c.setPosition(change.end, QTextCursor::KeepAnchor);
+        c.setCharFormat(change.format);
+    }
+}
+
 void markCaptions(QTextDocument* doc)
 {
     for (auto block = doc->begin(); block.isValid(); block = block.next())
