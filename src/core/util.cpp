@@ -523,6 +523,16 @@ std::string inlineMarkdown(std::string_view line)
                 continue;
             }
         }
+        if (c == '!' && i + 1 < line.size() && line[i + 1] == '[') {  // an image: ![what it shows](where)
+            auto close = line.find("](", i + 2);
+            auto end = close == npos ? npos : line.find(')', close + 2);
+            if (end != npos) {
+                out += "<img src=\"" + htmlEscape(line.substr(close + 2, end - close - 2)) + "\" alt=\"" +
+                       htmlEscape(line.substr(i + 2, close - i - 2)) + "\">";
+                i = end + 1;
+                continue;
+            }
+        }
         if (c == '[') {
             auto close = line.find("](", i + 1);
             auto end = close == npos ? npos : line.find(')', close + 2);

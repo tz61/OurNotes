@@ -1055,6 +1055,29 @@ Json Library::importAttachment(int64_t lib, const fs::path& src, const std::stri
     return createItem(lib, d);
 }
 
+Json Library::importNoteImage(int64_t lib, const fs::path& src, const std::string& noteKey)
+{
+    if (!fs::is_regular_file(src))
+        throw Error("not a file: " + pathString(src));
+    auto contentType = guessContentType(src);
+    static const std::set<std::string> shown = {"image/png", "image/jpeg", "image/gif", "image/svg+xml"};
+    if (!shown.count(contentType))
+        throw Error("a note shows PNG, JPEG, GIF and SVG pictures, not " + pathString(src.filename()));
+    auto key = newKey();
+    auto filename = safeFilename(pathString(src.filename()), "image");
+    auto dir = storageDir() / key;
+    fs::create_directories(dir);
+    fs::copy_file(src, dir / u8path(filename), fs::copy_options::overwrite_existing);
+    return createItem(lib, Json{{"key", key},
+                                {"itemType", "attachment"},
+                                {"linkMode", "embedded_image"},
+                                {"parentItem", noteKey},
+                                {"contentType", contentType},
+                                {"filename", filename},
+                                {"md5", md5File(dir / u8path(filename))},
+                                {"mtime", fileMtimeMs(dir / u8path(filename))}});
+}
+
 std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<std::string>& keys, int64_t toLib,
                                             const std::string& collectionKey)
 {

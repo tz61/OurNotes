@@ -136,12 +136,20 @@ public:
     std::vector<Json> embeddedAnnotations();
     // Write a copy of the document with `annotations` (Zotero-style data) embedded.
     void exportWithAnnotations(const fs::path& out, const std::vector<Json>& annotations);
+    // Page `page` (or `clip` of it, in page space) at `scale` into a PNG file, with
+    // `annotations` (Zotero-style data) drawn on it as a PDF viewer draws them, beside the
+    // file's own; without the page (withPage false), those annotations alone, on clear.
+    void renderPng(int page, float scale, const Rect& clip, const std::vector<Json>& annotations, bool withPage,
+                   const fs::path& out);
 
     struct Impl;  // MuPDF state (document.cpp)
 
 private:
     Document() = default;
     void* loadPage(int page);  // fz_page*, cached
+    // Adds them to this document's pages (in memory); external: also the file's own ones
+    // the library keeps (left out otherwise: the file has them already).
+    void writeAnnotations(const std::vector<Json>& annotations, bool external);
 
     fs::path path_;
     int pageCount_ = 0;

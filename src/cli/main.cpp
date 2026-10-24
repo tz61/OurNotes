@@ -80,7 +80,10 @@ Notes and attachments:
   add-note --collection C | --standalone [TEXT|-]
                                     a note of its own (Markdown, or --html, --text)
   edit-note NOTE [TEXT|-] [--append]
-                                    replace (or add to) a note's text
+                                    replace (or add to) a note's text; ![what](picture.png)
+                                    in Markdown puts a picture in (a file, web address, data:)
+  add-image NOTE PICTURE... [--width PX]
+                                    pictures at the end of a note
   attach KEY FILE... [--link] [--title T]
                                     files under an item (--link: linked to, not copied)
   attach-url [KEY] URL [--title T] [--collection C]
@@ -102,6 +105,10 @@ Annotations (KEY: a PDF, or the item it is under; X,Y: points from the page's to
   note-from-annotations KEY [--to NOTE]
                                     a note quoting an item's, a PDF's, or one annotation
   export-pdf KEY [-o FILE]          a copy of the PDF with its annotations in it
+  render KEY [--page N] [--rect X0,Y0,X1,Y1] [--dpi D] [--no-page] [-o FILE.png]
+                                    a page with its annotations as a picture; KEY an
+                                    annotation (a doodle): its place on the page, --margin M
+                                    around it; --no-page: the annotations alone, on clear
   view-state KEY [--page N] [--zoom PERCENT|page-width|page-fit]
                                     where (and how large) the app opens the PDF
 

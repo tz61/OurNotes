@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <tuple>
 
 #include "../core/test_helpers.h"
 #include "../pdf/sample_pdf.h"
@@ -775,4 +776,142 @@ TEST_CASE("cli: what a review found: scope, partial changes, odd input, as the a
     CHECK(cli.run({"export-pdf", pdf}).first == 1);
     CHECK(cli.run({"export-pdf", pdf, "--force"}).first == 0);
     fs::current_path(cwd);
+}
+
+namespace {
+// A PNG's width, height and colour type (2: RGB, 6: RGB with alpha).
+std::tuple<int, int, int> pngInfo(const fs::path& file)
+{
+    auto d = readFile(file);
+    REQUIRE(d.size() > 26);
+    REQUIRE(d.substr(1, 3) == "PNG");
+    auto be = [&](size_t at) {
+        return (int)((unsigned char)d[at] << 24 | (unsigned char)d[at + 1] << 16 | (unsigned char)d[at + 2] << 8 |
+                     (unsigned char)d[at + 3]);
+    };
+    return {be(16), be(20), (unsigned char)d[25]};
+}
+} // namespace
+
+TEST_CASE("cli: a page with its annotations as a picture, or a doodle's place on it, or the doodle alone")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+    cli.run({"annotate", paper, "--quote", "Hello World"});
+    auto ink = trim(cli.run({"annotate", paper, "--type", "ink", "--color", "red", "--ink", "100,200 150,250 200,200"}).second);
+
+    // the page, at 72 dots per inch: as large as it is in points (612 by 792)
+    auto page = cli.dir.path / "page.png";
+    auto [code, out] = cli.run({"render", paper, "--dpi", "72", "-o", pathString(page)});
+    INFO(out);
+    REQUIRE(code == 0);
+    CHECK(trim(out) == pathString(page));
+    auto [w, h, type] = pngInfo(page);
+    CHECK(w == 612);
+    CHECK(h == 792);
+    CHECK(type == 2);
+    // the doodle's place: it and 18 points around it, on the page
+    auto place = cli.dir.path / "place.png";
+    CHECK(cli.run({"render", ink, "--dpi", "72", "-o", pathString(place)}).first == 0);
+    auto [pw, ph, ptype] = pngInfo(place);
+    CHECK(std::abs(pw - (100 + 2 * 18 + 4)) <= 2);  // the stroke 100 wide, its width, the margin
+    CHECK(std::abs(ph - (50 + 2 * 18 + 4)) <= 2);
+    CHECK(ptype == 2);
+    // the doodle alone, on clear
+    auto alone = cli.dir.path / "alone.png";
+    CHECK(cli.run({"render", ink, "--no-page", "--margin", "0", "-o", pathString(alone)}).first == 0);
+    CHECK(std::get<2>(pngInfo(alone)) == 6);
+    // a part of the page; without -o, named after the PDF and its page, not over another
+    auto cwd = fs::current_path();
+    fs::current_path(cli.dir.path);
+    CHECK(cli.run({"render", pdf, "--rect", "72,72,300,150"}).first == 0);
+    CHECK(fs::exists(cli.dir.path / "one p1.png"));
+    CHECK(cli.run({"render", pdf, "--rect", "72,72,300,150"}).first == 1);
+    CHECK(cli.run({"render", pdf, "--rect", "72,72,300,150", "--force"}).first == 0);
+    fs::current_path(cwd);
+    CHECK(cli.run({"render", pdf, "--page", "2"}).first == 1);                // it has one page
+    CHECK(cli.run({"render", pdf, "--rect", "72,72,3000,150"}).first == 1);   // off the page
+    CHECK(cli.run({"render", ink, "--page", "1"}).first == 1);                // an annotation is where it is
+    CHECK(cli.run({"render", pdf, "--dpi", "6000"}).first == 1);
+}
+
+TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, kept as the app keeps them")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+    auto figure = cli.dir.path / "figure.png";
+    REQUIRE(cli.run({"render", pdf, "--dpi", "36", "-o", pathString(figure)}).first == 0);
+
+    // ![what it shows](file) in Markdown
+    auto [code, out] = cli.run({"add-note", paper, "-"}, "# Figures\n\n![the first page](" + pathString(figure) + ")\n");
+    INFO(out);
+    REQUIRE(code == 0);
+    auto note = trim(out);
+    auto html = jstr(*lib.item(mine, note), "note");
+    INFO(html);
+    auto pictures = lib.children(mine, note, "attachment");
+    REQUIRE(pictures.size() == 1);
+    auto picture = pictures[0];
+    CHECK(jstr(picture, "linkMode") == "embedded_image");
+    CHECK(jstr(picture, "contentType") == "image/png");
+    CHECK(lib.attachmentFileExists(mine, picture));
+    CHECK(html.find("<img data-attachment-key=\"" + jstr(picture, "key") + "\" alt=\"the first page\">") != npos);
+
+    // more at the end: a file, and a data: URI
+    auto bytes = readFile(figure);
+    std::string b64;
+    {
+        static const char* digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        size_t i = 0;
+        for (; i + 2 < bytes.size(); i += 3) {
+            unsigned v = (unsigned char)bytes[i] << 16 | (unsigned char)bytes[i + 1] << 8 | (unsigned char)bytes[i + 2];
+            for (int k = 3; k >= 0; --k)
+                b64 += digits[(v >> (6 * k)) & 63];
+        }
+        if (i < bytes.size()) {
+            unsigned v = (unsigned char)bytes[i] << 16 | (i + 1 < bytes.size() ? (unsigned char)bytes[i + 1] << 8 : 0);
+            b64 += digits[(v >> 18) & 63];
+            b64 += digits[(v >> 12) & 63];
+            b64 += i + 1 < bytes.size() ? digits[(v >> 6) & 63] : '=';
+            b64 += '=';
+        }
+    }
+    CHECK(cli.run({"add-image", note, pathString(figure), "data:image/png;base64," + b64, "--width", "200"}).first == 0);
+    pictures = lib.children(mine, note, "attachment");
+    REQUIRE(pictures.size() == 3);
+    for (auto& p : pictures)
+        CHECK(readFile(lib.attachmentFile(mine, p)) == bytes);
+    html = jstr(*lib.item(mine, note), "note");
+    CHECK(html.find("width=\"200\"></p></div>") != npos);
+    // and in a note edited
+    CHECK(cli.run({"edit-note", note, "--append", "![again](" + pathString(figure) + ")"}).first == 0);
+    CHECK(lib.children(mine, note, "attachment").size() == 4);
+
+    // read: where each picture's file is, to be looked at
+    auto [textCode, text] = cli.run({"text", note});
+    CHECK(textCode == 0);
+    CHECK(text.find("[picture: " + pathString(lib.attachmentFile(mine, picture)) + "]") != npos);
+
+    // what is no picture, or not there, leaves the note as it was
+    auto before = jstr(*lib.item(mine, note), "note");
+    CHECK(cli.run({"add-image", note, pathString(cli.dir.path / "gone.png")}).first == 1);
+    CHECK(cli.run({"add-image", note, pathString(pdfPath)}).first == 1);
+    CHECK(cli.run({"add-image", note, "data:image/png;base64,bm90IGEgcGljdHVyZQ=="}).first == 1);
+    CHECK(cli.run({"add-image", paper, pathString(figure)}).first == 1);  // not a note
+    CHECK(jstr(*lib.item(mine, note), "note") == before);
+    CHECK(lib.children(mine, note, "attachment").size() == 4);
+    auto [badCode, badOut] = cli.run({"add-note", paper, "![x](" + pathString(cli.dir.path / "gone.png") + ")"});
+    CHECK(badCode == 1);
+    CHECK(lib.children(mine, paper, "note").size() == 1);  // no note made
 }

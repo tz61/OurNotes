@@ -461,6 +461,90 @@ int cmdExportPdf(Library& lib, Args& args)
     return 0;
 }
 
+// Where an annotation is on its page, in page space: its rects, or its strokes as wide as
+// they are drawn.
+pdf::Rect boundsOf(pdf::Document& doc, int page, const Json& pos)
+{
+    pdf::Rect bounds;
+    auto add = [&](const pdf::Rect& r) { bounds = bounds.isEmpty() ? r : bounds.united(r); };
+    for (auto& r : pos.value("rects", Json::array()))
+        if (r.is_array() && r.size() == 4 && r[0].is_number() && r[1].is_number() && r[2].is_number() && r[3].is_number())
+            add(doc.pdfToPage(page, pdf::Rect{r[0].get<float>(), r[1].get<float>(), r[2].get<float>(), r[3].get<float>()})
+                    .normalized());
+    float half = pos.value("width", 2.0f) / 2 + 1;
+    for (auto& path : pos.value("paths", Json::array()))
+        for (size_t i = 0; i + 1 < path.size(); i += 2)
+            if (path[i].is_number() && path[i + 1].is_number()) {
+                auto p = doc.pdfToPage(page, pdf::Point{path[i].get<float>(), path[i + 1].get<float>()});
+                add({p.x - half, p.y - half, p.x + half, p.y + half});
+            }
+    return bounds;
+}
+
+// A page with its annotations, or the place of one annotation on it (and the page under it,
+// or not), as a PNG picture.
+int cmdRender(Library& lib, Args& args)
+{
+    requirePositionals(args, 1);
+    auto [id, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
+    std::optional<Json> annotation;
+    Json att = item;
+    if (jstr(item, "itemType") == "annotation") {
+        annotation = item;
+        auto pdf = lib.item(id, jstr(item, "parentItem"));
+        if (!pdf)
+            throw Error("the PDF of " + jstr(item, "key") + " is not in the library");
+        att = *pdf;
+    } else {
+        att = pdfAttachment(lib, args).second;
+    }
+    auto doc = openPdf(lib, id, att);
+    float scale = (float)numberOption(args, "--dpi", 150, 30, 600) / 72;
+    bool withPage = !args.flag("--no-page");
+    auto drawn = lib.annotations(id, jstr(att, "key"));
+    int page = 0;
+    pdf::Rect clip;  // empty: the whole page
+    if (annotation) {
+        if (!args.option("--page").empty() || !args.option("--rect").empty())
+            throw Error("an annotation is drawn where it is: --page and --rect are for a page");
+        auto pos = annotation->value("annotationPosition", Json::object());
+        page = pos.value("pageIndex", -1);
+        if (page < 0 || page >= doc->pageCount())
+            throw Error(jstr(item, "key") + " is on no page of its PDF");
+        auto bounds = boundsOf(*doc, page, pos);
+        if (bounds.isEmpty())
+            throw Error(jstr(item, "key") + " has no place on its page");
+        auto margin = (float)numberOption(args, "--margin", 18, 0, 1000);
+        auto size = doc->pageSize(page);
+        clip = {std::max(0.f, bounds.x0 - margin), std::max(0.f, bounds.y0 - margin),
+                std::min(size.width, bounds.x1 + margin), std::min(size.height, bounds.y1 + margin)};
+        if (!withPage)
+            drawn = {*annotation};  // that one alone
+    } else {
+        page = std::max(0, pageOption(args, *doc));
+        if (auto spec = args.option("--rect"); !spec.empty()) {
+            auto v = numbers(spec, 4, "--rect X0,Y0,X1,Y1 (points from the page's top left)");
+            clip = pdf::Rect{v[0], v[1], v[2], v[3]}.normalized();
+            if (clip.width() < 1 || clip.height() < 1)
+                throw Error("that is too small");
+            requireOnPage(*doc, page, clip);
+        }
+    }
+    auto size = clip.isEmpty() ? doc->pageSize(page) : pdf::Size{clip.width(), clip.height()};
+    if (size.width * scale > 12000 || size.height * scale > 12000)
+        throw Error("that is too large a picture at that --dpi");
+    auto out = args.option("-o");
+    auto name = pathString(lib.attachmentFile(id, att).stem()) +
+                (annotation ? " " + jstr(item, "key") : " p" + std::to_string(page + 1)) + ".png";
+    auto dest = out.empty() ? fs::current_path() / u8path(name) : u8path(out);
+    std::error_code ec;
+    if (out.empty() && fs::exists(dest, ec) && !args.flag("--force"))
+        throw Error(pathString(dest) + " is there already: add --force to replace it, or give another with -o");
+    doc->renderPng(page, scale, clip, drawn, withPage, dest);
+    std::cout << pathString(fs::absolute(dest, ec)) << "\n";
+    return 0;
+}
+
 // Zotero's view state: "scale" is a percentage, or "page-width" or "page-fit".
 std::string zoomText(const Json& scale)
 {
@@ -531,5 +615,6 @@ void registerAnnotationCommands(CommandMap& commands, Config& config)
     commands["annotation"] = cmdAnnotation;
     commands["note-from-annotations"] = cmdNoteFromAnnotations;
     commands["export-pdf"] = cmdExportPdf;
+    commands["render"] = cmdRender;
     commands["view-state"] = cmdViewState;
 }

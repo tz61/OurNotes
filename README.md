@@ -256,6 +256,7 @@ ournotes-cli cite KEY... --style ieee   ournotes-cli index
 ournotes-cli new-item book title="Deep Learning"          ournotes-cli creators KEY "Goodfellow, Ian"
 ournotes-cli attach KEY slides.pdf      ournotes-cli merge KEY KEY      ournotes-cli rename-tag todo later
 ournotes-cli annotate KEY --quote "Theorem 2" --comment "check"       ournotes-cli export-pdf KEY -o a.pdf
+ournotes-cli render INK_KEY -o doodle.png          ournotes-cli add-image NOTE figure.png
 ournotes-cli add-server https://host:8642 --user alice    ournotes-cli sync
 ournotes-cli help                      # every command
 ```

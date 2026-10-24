@@ -36,7 +36,8 @@ struct Args {
             "--target",   "--user",    "--password", "--style", "--pages",      "--add",       "--remove",
             "--parent",   "--to",      "--to-library", "--into", "--title",     "--tag",       "--position",
             "--type",     "--page",    "--quote",   "--at",     "--rect",       "--ink",       "--color",
-            "--comment",  "--tags",    "--font-size", "--zoom", "--limit",      "--name"};
+            "--comment",  "--tags",    "--font-size", "--zoom", "--limit",      "--name",      "--width",
+            "--dpi",      "--margin"};
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
             bool takesValue = std::find(valued.begin(), valued.end(), a) != valued.end();

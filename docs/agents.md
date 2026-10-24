@@ -135,8 +135,12 @@ ournotes-cli rename-tag todo later     # tag-color later red
 - Markdown in notes: paragraphs, `#` headings (`###` and deeper become level 3), `-` and
   `1.` lists (not nested), `>` quotes, code blocks between ```` ``` ````, `---`, tables
   (a header row, a `|---|:-:|--:|` row, then rows of cells; `\|` for a | in a cell),
-  `**bold**`, `*italic*`, `` `code` ``, `[links](https://...)`, and formulas: `$x^2$` in a
-  line, `$$...$$` on lines of their own, shown as formulas in the app.
+  `**bold**`, `*italic*`, `` `code` ``, `[links](https://...)`, pictures
+  (`![what it shows](figure.png)`: a PNG, JPEG, GIF or SVG file, a web address or a
+  `data:` URI, stored in the note as the app stores a pasted one), and formulas: `$x^2$`
+  in a line, `$$...$$` on lines of their own, shown as formulas in the app.
+  `add-image NOTE figure.png [--width 400]` puts pictures at the end of a note; `text
+  NOTE` says where each picture's file is (`[picture: PATH]`), to look at it.
 - `trash` moves items to the trash, where the user can look them over. What deletes for
   good (`delete`, `empty-trash`, `delete-collection`, `delete-tag`, `delete-library`)
   asks for `--yes`: use it only when the user asks for exactly that.
@@ -155,6 +159,17 @@ ournotes-cli annotation ANNO2345 --comment "..." --tags "exam"   # change one; -
 ournotes-cli note-from-annotations ABCD2345        # a note quoting them, under the item
 ournotes-cli export-pdf ABCD2345 -o annotated.pdf  # a copy of the PDF with them in it
 ```
+
+To look at annotations as they are drawn, doodles (`ink`) above all, make a picture:
+
+```sh
+ournotes-cli render ABCD2345 --page 3 -o page3.png       # the page with its annotations
+ournotes-cli render INK23456 -o doodle.png               # a doodle's place on its page
+ournotes-cli render INK23456 --no-page -o doodle.png     # the doodle alone, on clear
+```
+
+It prints the picture's path; `--dpi` (150), `--rect X0,Y0,X1,Y1` for a part of a page,
+`--margin` (18 points) around an annotation.
 
 `--quote` finds the words (in any case) on `--page`, or on the first page that has them.
 Areas (`--type image --rect X0,Y0,X1,Y1`) and drawings (`--type ink --ink "X,Y X,Y"`)

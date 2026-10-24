@@ -6,6 +6,7 @@
 #include <iostream>
 #include <iterator>
 #include <optional>
+#include <regex>
 #include <set>
 
 #if defined(_WIN32)
@@ -19,7 +20,9 @@
 
 #include "cli/agent_guide.h"
 #include "cli/commands.h"
+#include "core/hash.h"
 #include "core/schema.h"
+#include "formats/metadata.h"
 #include "ournotes/version.h"
 #include "pdf/document.h"
 
@@ -268,7 +271,19 @@ int cmdText(Library& lib, Args& args)
 {
     auto [id, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
     if (jstr(item, "itemType") == "note") {
-        std::cout << htmlToText(jstr(item, "note")) << "\n";
+        // its pictures as where their files are, to be looked at
+        static const std::regex picture(R"re(<img\b[^>]*?data-attachment-key="([A-Za-z0-9]+)"[^>]*>)re");
+        auto html = jstr(item, "note");
+        std::string shown;
+        size_t last = 0;
+        for (auto it = std::sregex_iterator(html.begin(), html.end(), picture); it != std::sregex_iterator(); ++it) {
+            auto att = lib.item(id, (*it)[1].str());
+            auto path = att ? lib.attachmentFile(id, *att) : fs::path();
+            shown += html.substr(last, it->position() - last) + "<p>[picture: " +
+                     htmlEscape(path.empty() ? (*it)[1].str() : pathString(path)) + "]</p>";
+            last = it->position() + it->length();
+        }
+        std::cout << htmlToText(shown + html.substr(last)) << "\n";
         return 0;
     }
     auto [pid, pdf] = pdfOf(lib, args);
@@ -373,6 +388,137 @@ int cmdTag(Library& lib, Args& args)
     return 0;
 }
 
+// --- pictures in notes ----------------------------------------------------------------
+
+std::string base64Decode(const std::string& in)
+{
+    static const std::string digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    int bits = 0, value = 0;
+    for (char c : in) {
+        if (c == '=' || std::isspace((unsigned char)c))
+            continue;
+        auto d = c == '-' ? 62 : c == '_' ? 63 : digits.find(c);  // (URL-safe too)
+        if (d == std::string::npos)
+            throw Error("a data: picture that is not base64");
+        value = (value << 6) | (int)d;
+        if ((bits += 6) >= 8) {
+            bits -= 8;
+            out += (char)((value >> bits) & 0xff);
+        }
+    }
+    return out;
+}
+
+// What a note can show, by the file's first bytes: ".png", ".jpg", ".gif", ".svg"; or "".
+std::string pictureKind(const std::string& head)
+{
+    if (head.rfind("\x89PNG", 0) == 0)
+        return ".png";
+    if (head.rfind("\xff\xd8\xff", 0) == 0)
+        return ".jpg";
+    if (head.rfind("GIF8", 0) == 0)
+        return ".gif";
+    if (head.find("<svg") != std::string::npos)
+        return ".svg";
+    return {};
+}
+
+// A folder of its own for files fetched for a moment, gone with it.
+struct ScratchFolder {
+    fs::path path = fs::temp_directory_path() / ("ournotes-" + randomToken(6));
+    ScratchFolder() { fs::create_directories(path); }
+    ~ScratchFolder()
+    {
+        std::error_code ec;
+        fs::remove_all(path, ec);
+    }
+};
+
+// A picture a note's HTML shows by its file (<img src>, as Markdown's ![what](file) makes):
+// a file here, a data: URI, or a picture on the web (fetched into `scratch`).
+struct NotePicture {
+    size_t at = 0, length = 0;  // its <img> in the HTML
+    fs::path file;
+    std::string attrs;  // its width, height and alt, kept
+};
+
+std::vector<NotePicture> notePictures(const std::string& html, const fs::path& scratch)
+{
+    static const std::regex tag(R"(<img\b[^>]*>)", std::regex::icase);
+    static const std::regex source(R"re(\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'))re", std::regex::icase);
+    static const std::regex kept(R"re(\b(?:width|height|alt)\s*=\s*(?:"[^"]*"|'[^']*'))re", std::regex::icase);
+    std::vector<NotePicture> out;
+    int n = 0;
+    for (auto it = std::sregex_iterator(html.begin(), html.end(), tag); it != std::sregex_iterator(); ++it) {
+        auto t = it->str();
+        std::smatch m;
+        if (t.find("data-attachment-key") != std::string::npos || !std::regex_search(t, m, source))
+            continue;  // stored already, or showing nothing
+        auto src = htmlUnescape(m[1].matched ? m[1].str() : m[2].str());
+        NotePicture p{(size_t)it->position(), (size_t)it->length(), {}, {}};
+        for (auto k = std::sregex_iterator(t.begin(), t.end(), kept); k != std::sregex_iterator(); ++k)
+            p.attrs += " " + k->str();
+        auto name = scratch / ("picture-" + std::to_string(++n));
+        if (startsWith(src, "data:")) {
+            auto comma = src.find(',');
+            if (comma == std::string::npos || src.substr(0, comma).find(";base64") == std::string::npos)
+                throw Error("a data: picture is given in base64 (data:image/png;base64,...)");
+            auto bytes = base64Decode(src.substr(comma + 1));
+            auto kind = pictureKind(bytes.substr(0, 512));
+            if (kind.empty())
+                throw Error("a note shows PNG, JPEG, GIF and SVG pictures: the data: one is none");
+            p.file = name.concat(kind);
+            writeFileAtomic(p.file, bytes);
+        } else if (startsWith(src, "http://") || startsWith(src, "https://")) {
+            formats::downloadFile(src, name, false);
+            auto kind = pictureKind(readFile(name).substr(0, 512));
+            if (kind.empty())
+                throw Error(src + " is no PNG, JPEG, GIF or SVG picture");
+            p.file = fs::path(name).concat(kind);
+            fs::rename(name, p.file);
+        } else {
+            auto path = u8path(startsWith(src, "file://") ? src.substr(7) : src);
+            std::error_code ec;
+            if (!fs::is_regular_file(path, ec))
+                throw Error("no picture " + src);
+            auto type = guessContentType(path);
+            if (type != "image/png" && type != "image/jpeg" && type != "image/gif" && type != "image/svg+xml")
+                throw Error("a note shows PNG, JPEG, GIF and SVG pictures, not " + src);
+            p.file = fs::absolute(path, ec);
+        }
+        out.push_back(p);
+    }
+    return out;
+}
+
+// The pictures stored under the note, as the app keeps pasted ones; the HTML showing them
+// by their keys.
+std::string storeNotePictures(Library& lib, int64_t id, const std::string& noteKey, const std::string& html,
+                              const std::vector<NotePicture>& pictures)
+{
+    std::string out;
+    size_t last = 0;
+    for (auto& p : pictures) {
+        auto att = lib.importNoteImage(id, p.file, noteKey);
+        out += html.substr(last, p.at - last) + "<img data-attachment-key=\"" + jstr(att, "key") + "\"" + p.attrs + ">";
+        last = p.at + p.length;
+    }
+    return out + html.substr(last);
+}
+
+// A note's HTML without the <div data-schema-version> around it.
+std::string noteBody(std::string h)
+{
+    if (h.find("<div data-schema-version") == 0) {
+        h = h.substr(h.find('>') + 1);
+        auto end = h.rfind("</div>");
+        if (end != std::string::npos)
+            h.resize(end);
+    }
+    return h;
+}
+
 int cmdAddNote(Library& lib, Args& args)
 {
     auto spec = args.option("--collection");
@@ -397,14 +543,21 @@ int cmdAddNote(Library& lib, Args& args)
     }
     requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, contentAt));
-    if (trim(htmlToText(html)).empty())
+    ScratchFolder scratch;
+    auto pictures = notePictures(html, scratch.path);  // all there before the note is made
+    if (trim(htmlToText(html)).empty() && html.find("<img") == std::string::npos)
         throw Error("the note is empty");
     Json data{{"itemType", "note"}, {"note", html}};
     if (!parent.empty())
         data["parentItem"] = parent;
     if (into)
         data["collections"] = Json::array({into->key});
-    std::cout << jstr(lib.createItem(id, data), "key") << "\n";
+    auto key = jstr(lib.createItem(id, data), "key");
+    if (!pictures.empty()) {
+        auto shown = storeNotePictures(lib, id, key, html, pictures);
+        lib.updateItem(id, key, [&](Json& d) { d["note"] = shown; });
+    }
+    std::cout << key << "\n";
     return 0;
 }
 
@@ -415,21 +568,35 @@ int cmdEditNote(Library& lib, Args& args)
         throw Error(jstr(note, "key") + " is not a note");
     requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, 1));
-    if (args.flag("--append")) {
-        auto old = jstr(note, "note");
-        auto body = [](std::string h) {  // without the <div data-schema-version> around it
-            auto start = h.find("<div data-schema-version");
-            if (start == 0) {
-                h = h.substr(h.find('>') + 1);
-                auto end = h.rfind("</div>");
-                if (end != std::string::npos)
-                    h.resize(end);
-            }
-            return h;
-        };
-        html = "<div data-schema-version=\"9\">" + body(old) + body(html) + "</div>";
-    }
+    ScratchFolder scratch;
+    auto pictures = notePictures(html, scratch.path);
+    html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);
+    if (args.flag("--append"))
+        html = "<div data-schema-version=\"9\">" + noteBody(jstr(note, "note")) + noteBody(html) + "</div>";
     lib.updateItem(id, jstr(note, "key"), [&](Json& d) { d["note"] = html; });
+    std::cout << jstr(note, "key") << "\n";
+    return 0;
+}
+
+int cmdAddImage(Library& lib, Args& args)
+{
+    auto [id, note] = findItem(lib, args.positional(0), libraryOption(lib, args));
+    if (jstr(note, "itemType") != "note")
+        throw Error(jstr(note, "key") + " is not a note: pictures go into notes (a file under an item: attach)");
+    if (args.positionals.size() < 2)
+        throw Error("give the pictures: files, web addresses or data: URIs");
+    requireEditable(lib, id);
+    int width = (int)numberOption(args, "--width", 0, 1, 10000);
+    std::string html;
+    for (size_t i = 1; i < args.positionals.size(); ++i)
+        html += "<p><img src=\"" + htmlEscape(args.positionals[i]) + "\"" +
+                (width ? " width=\"" + std::to_string(width) + "\"" : std::string()) + "></p>";
+    ScratchFolder scratch;
+    auto pictures = notePictures(html, scratch.path);
+    html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);
+    lib.updateItem(id, jstr(note, "key"), [&](Json& d) {
+        d["note"] = "<div data-schema-version=\"9\">" + noteBody(jstr(d, "note")) + html + "</div>";
+    });
     std::cout << jstr(note, "key") << "\n";
     return 0;
 }
@@ -760,6 +927,7 @@ void registerAgentCommands(CommandMap& commands, Config& config)
     commands["tag"] = cmdTag;
     commands["add-note"] = cmdAddNote;
     commands["edit-note"] = cmdEditNote;
+    commands["add-image"] = cmdAddImage;
     commands["new-collection"] = cmdNewCollection;
     commands["file"] = [](Library& lib, Args& args) { return fileOrUnfile(lib, args, true); };
     commands["unfile"] = [](Library& lib, Args& args) { return fileOrUnfile(lib, args, false); };

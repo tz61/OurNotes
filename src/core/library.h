@@ -209,6 +209,10 @@ public:
                           const std::string& title = {});
     Json createLinkedUrl(int64_t lib, const std::string& url, const std::string& title,
                          const std::string& parentKey = {});
+    // An image in a note, as the app keeps one pasted into it: a copy of the file, as an
+    // "embedded_image" attachment under the note (noteKey), which the note's HTML shows
+    // with <img data-attachment-key="KEY">.
+    Json importNoteImage(int64_t lib, const fs::path& src, const std::string& noteKey);
     fs::path attachmentFile(int64_t lib, const Json& attachment);  // empty when not a file attachment
     bool attachmentFileExists(int64_t lib, const Json& attachment);
     // Recompute md5/mtime of a stored attachment after the file changed on disk.

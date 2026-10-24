@@ -946,34 +946,32 @@ std::vector<Json> Document::embeddedAnnotations()
     return out;
 }
 
-void Document::exportWithAnnotations(const fs::path& out, const std::vector<Json>& annotations)
+void Document::writeAnnotations(const std::vector<Json>& annotations, bool external)
 {
-    if (!d_->pdf)
-        throw Error("only PDF files can carry annotations");
-    // Work on a separate instance so the open document stays untouched.
-    auto copy = Document::open(path_);
-    auto& im = *copy->d_;
-    auto ctx = im.ctx;
+    auto ctx = d_->ctx;
     for (auto& ann : annotations) {
-        if (jbool(ann, "annotationIsExternal"))
+        if (jbool(ann, "annotationIsExternal") && !external)
             continue;
         auto pos = ann.value("annotationPosition", Json::object());
         int n = (int)jint(pos, "pageIndex", -1);
-        if (n < 0 || n >= copy->pageCount_)
+        if (n < 0 || n >= pageCount_)
             continue;
-        pdf_page* pp = pdf_page_from_fz_page(ctx, (fz_page*)copy->loadPage(n));
+        pdf_page* pp = pdf_page_from_fz_page(ctx, (fz_page*)loadPage(n));
         if (!pp)
             continue;
         AnnotWrite w;
         w.type = jstr(ann, "annotationType");
         for (auto& r : pos.value("rects", Json::array()))
-            if (r.is_array() && r.size() == 4)
-                w.rects.push_back(toFz(copy->pdfToPage(
-                    n, Rect{r[0].get<float>(), r[1].get<float>(), r[2].get<float>(), r[3].get<float>()})));
+            if (r.is_array() && r.size() == 4 && r[0].is_number() && r[1].is_number() && r[2].is_number() &&
+                r[3].is_number())
+                w.rects.push_back(
+                    toFz(pdfToPage(n, Rect{r[0].get<float>(), r[1].get<float>(), r[2].get<float>(), r[3].get<float>()})));
         for (auto& path : pos.value("paths", Json::array())) {
             std::vector<fz_point> pts;
             for (size_t i = 0; i + 1 < path.size(); i += 2) {
-                auto p = copy->pdfToPage(n, Point{path[i].get<float>(), path[i + 1].get<float>()});
+                if (!path[i].is_number() || !path[i + 1].is_number())
+                    continue;
+                auto p = pdfToPage(n, Point{path[i].get<float>(), path[i + 1].get<float>()});
                 pts.push_back(fz_make_point(p.x, p.y));
             }
             if (!pts.empty())
@@ -986,6 +984,17 @@ void Document::exportWithAnnotations(const fs::path& out, const std::vector<Json
         w.fontSize = (float)pos.value("fontSize", 12.0);
         writeAnnot(ctx, pp, &w);
     }
+}
+
+void Document::exportWithAnnotations(const fs::path& out, const std::vector<Json>& annotations)
+{
+    if (!d_->pdf)
+        throw Error("only PDF files can carry annotations");
+    // Work on a separate instance so the open document stays untouched.
+    auto copy = Document::open(path_);
+    auto& im = *copy->d_;
+    auto ctx = im.ctx;
+    copy->writeAnnotations(annotations, false);
     std::string file = pathString(out);
     bool failed = false;
     fz_var(failed);
@@ -999,6 +1008,63 @@ void Document::exportWithAnnotations(const fs::path& out, const std::vector<Json
     fz_catch(ctx) { failed = true; }
     if (failed)
         im.fail("cannot save " + file);
+}
+
+void Document::renderPng(int n, float scale, const Rect& clip, const std::vector<Json>& annotations, bool withPage,
+                         const fs::path& out)
+{
+    if (n < 0 || n >= pageCount_)
+        throw Error("no page " + std::to_string(n + 1));
+    // A separate instance gets the annotations, so the open document stays untouched.
+    auto copy = Document::open(path_);
+    auto& im = *copy->d_;
+    auto ctx = im.ctx;
+    if (im.pdf) {
+        if (!withPage) {  // these annotations alone: none of the file's own
+            pdf_page* pp = pdf_page_from_fz_page(ctx, (fz_page*)copy->loadPage(n));
+            fz_try(ctx)
+            {
+                while (pdf_annot* a = pp ? pdf_first_annot(ctx, pp) : nullptr)
+                    pdf_delete_annot(ctx, pp, a);
+            }
+            fz_catch(ctx) {}
+        }
+        copy->writeAnnotations(annotations, !withPage);
+    }
+    auto* page = (fz_page*)copy->loadPage(n);
+    std::string file = pathString(out);
+    fz_pixmap* pix = nullptr;
+    fz_device* dev = nullptr;
+    bool failed = false;
+    fz_var(pix);
+    fz_var(dev);
+    fz_try(ctx)
+    {
+        fz_matrix ctm = fz_scale(scale, scale);
+        fz_rect area = clip.isEmpty() ? fz_bound_page(ctx, page) : toFz(clip);
+        fz_irect bbox = fz_round_rect(fz_transform_rect(area, ctm));
+        pix = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), bbox, nullptr, withPage ? 0 : 1);
+        if (withPage)
+            fz_clear_pixmap_with_value(ctx, pix, 0xff);
+        else
+            fz_clear_pixmap(ctx, pix);  // clear: the annotations on nothing
+        dev = fz_new_draw_device(ctx, fz_identity, pix);
+        if (withPage) {
+            fz_run_page_contents(ctx, page, dev, ctm, nullptr);
+            fz_run_page_widgets(ctx, page, dev, ctm, nullptr);
+        }
+        fz_run_page_annots(ctx, page, dev, ctm, nullptr);
+        fz_close_device(ctx, dev);
+        fz_save_pixmap_as_png(ctx, pix, file.c_str());
+    }
+    fz_always(ctx)
+    {
+        fz_drop_device(ctx, dev);
+        fz_drop_pixmap(ctx, pix);
+    }
+    fz_catch(ctx) { failed = true; }
+    if (failed)
+        im.fail("cannot draw page " + std::to_string(n + 1) + " into " + file);
 }
 
 } // namespace on::pdf
