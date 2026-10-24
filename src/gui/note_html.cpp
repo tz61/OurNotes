@@ -22,6 +22,8 @@ namespace {
 // what marks a caption's paragraph while the HTML becomes a document (noteHtmlForEditor):
 // a block's user state, which QTextDocument keeps whatever the paragraph begins with
 constexpr int kCaptionState = 0x43415054;
+// a formula's own colour in a copy (Qt's HTML keeps no colour for an image, but its alt text)
+const QString kColorMark = "ournotes-color:";
 }
 
 namespace on::gui {
@@ -214,6 +216,11 @@ void markForCopy(QTextDocument* doc)
                 f.clearProperty(kCaptionProperty);
                 changed = true;
             }
+            if (f.isImageFormat() && parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr) &&
+                f.hasProperty(QTextFormat::ForegroundBrush)) {  // (a formula's colour: see readCopy)
+                f.setProperty(QTextFormat::ImageAltText, kColorMark + f.foreground().color().name());
+                changed = true;
+            }
             if (changed)
                 changes.push_back({frag.position(), frag.position() + frag.length(), f});
         }
@@ -224,6 +231,50 @@ void markForCopy(QTextDocument* doc)
         c.setPosition(change.end, QTextCursor::KeepAnchor);
         c.setCharFormat(change.format);
     }
+    // an empty caption (one begun and left so, or where the selection ended) is not copied, as
+    // it is not saved: its gray would be the line's it is pasted on
+    std::vector<int> empty;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        if (block.blockFormat().hasProperty(kCaptionProperty) && block.length() <= 1)
+            empty.push_back(block.position());
+    for (auto it = empty.rbegin(); it != empty.rend(); ++it) {
+        auto block = doc->findBlock(*it);
+        auto previous = block.previous();
+        if (previous.isValid() && QTextCursor(previous).currentFrame() == QTextCursor(block).currentFrame()) {
+            c.setPosition(block.position() - 1);
+            c.setPosition(block.position(), QTextCursor::KeepAnchor);
+            c.removeSelectedText();
+        } else {  // (the copy's first line: a paragraph, empty)
+            QTextCursor(block).setBlockFormat(QTextBlockFormat());
+            QTextCursor(block).setBlockCharFormat(QTextCharFormat());
+        }
+    }
+}
+
+void readCopy(QTextDocument* doc)
+{
+    struct Change {
+        int start, end;
+        QTextCharFormat format;
+    };
+    std::vector<Change> changes;
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto f = it.fragment().charFormat();
+            auto alt = f.property(QTextFormat::ImageAltText).toString();
+            if (!f.isImageFormat() || !alt.startsWith(kColorMark))
+                continue;
+            f.setForeground(QColor(alt.mid(kColorMark.size())));
+            f.clearProperty(QTextFormat::ImageAltText);
+            changes.push_back({it.fragment().position(), it.fragment().position() + it.fragment().length(), f});
+        }
+    QTextCursor c(doc);
+    for (auto& change : changes) {
+        c.setPosition(change.start);
+        c.setPosition(change.end, QTextCursor::KeepAnchor);
+        c.setCharFormat(change.format);
+    }
+    markCaptions(doc);
 }
 
 void markCaptions(QTextDocument* doc)

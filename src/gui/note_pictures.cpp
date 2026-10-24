@@ -598,8 +598,20 @@ bool NoteTextEdit::pictureMousePress(QMouseEvent* e)
         return false;
     auto pos = e->position().toPoint();
     bool shift = e->modifiers() & Qt::ShiftModifier;
-    finishComposing();  // (first: written, it moves the pictures after it)
-    if (int corner = pictureCornerAt(pos); corner >= 0 && !shift) {
+    int corner = shift ? -1 : pictureCornerAt(pos);
+    int edge = 0, hit = corner >= 0 ? -1 : pictureAt(pos, &edge);
+    if (corner < 0 && (hit < 0 || shift || (edge != 0 && !isReadOnly()))) {
+        // beside pictures, on one's edge (Qt puts the cursor on the side of its half there),
+        // or a selection to there: as in text (Qt writes what is composed itself, after
+        // reading the point)
+        unpickPicture();  // (the cursor may go where it is already, before the one picked)
+        return false;
+    }
+    // ours: what is composed written first (the picture followed: it moves what is after it)
+    QTextCursor at(document());
+    at.setPosition(corner >= 0 ? pickedPicture() : hit);
+    finishComposing();
+    if (corner >= 0) {
         resizing_.corner = corner;
         resizing_.at = pickedPicture();
         resizing_.start = pos;
@@ -608,16 +620,12 @@ bool NoteTextEdit::pictureMousePress(QMouseEvent* e)
         pictureBar_->hide();
         return true;
     }
-    int edge = 0, hit = pictureAt(pos, &edge);
-    if (hit < 0 || shift || (edge != 0 && !isReadOnly())) {
-        // beside pictures, on one's edge (Qt puts the cursor on the side of its half there),
-        // or a selection to there: as in text
-        unpickPicture();  // (the cursor may go where it is already, before the one picked)
-        return false;
-    }
+    hit = at.position();
+    if (!isPictureAt(document(), hit))
+        return true;
     setFocus(Qt::MouseFocusReason);
     pickPicture(hit);
-    pressedPicture_ = hit;
+    pressedPicture_ = pickedPicture();  // (picking it renders a formula being typed: it may have moved)
     pressedAt_ = pos;
     return true;
 }
@@ -689,12 +697,14 @@ bool NoteTextEdit::pictureMouseRelease(QMouseEvent*)
 
 void NoteTextEdit::mouseDoubleClickEvent(QMouseEvent* e)
 {
-    finishComposing();
     int edge = 0;
     int p = pictureAt(e->position().toPoint(), &edge);
     if (p >= 0 && (edge == 0 || isReadOnly())) {
-        if (openPicture)
-            openPicture(formatAt(document(), p).name());
+        QTextCursor at(document());  // (what is composed written first: it moves what is after it)
+        at.setPosition(p);
+        finishComposing();
+        if (openPicture && isPictureAt(document(), at.position()))
+            openPicture(formatAt(document(), at.position()).name());
         return;
     }
     if (p >= 0) {  // on its edge: as one click there (the cursor beside it)
@@ -757,7 +767,9 @@ void NoteTextEdit::dragMoveEvent(QDragMoveEvent* e)
     int line = 0, block = -1;
     if (at >= 0) {
         auto there = document()->findBlock(at);
-        if (dropPictures_ && isCaption(there)) {
+        if (!dragged_.isNull() && there == captionOf(document()->findBlock(dragged_.selectionStart()))) {
+            at = -1;  // (its own picture's caption: dropped there, it stays where it is)
+        } else if (dropPictures_ && isCaption(there)) {
             line = 1;
             block = there.position();
         } else if (!dropPictures_ && !pictureRow(there).empty() && !inTable(there)) {
@@ -828,6 +840,24 @@ void NoteTextEdit::endComposing()
 }
 
 // --- the keys -----------------------------------------------------------------------------------
+
+bool NoteTextEdit::resizeKey(QKeyEvent* e)
+{
+    if (resizing_.corner < 0)
+        return false;
+    if (e->key() == Qt::Key_Escape) {  // the drag given up: as it was
+        resizing_.corner = -1;
+        images_->setResizing(document(), -1, 0);
+        if (int at = std::min(resizing_.at, document()->characterCount() - 1); at >= 0) {
+            auto block = document()->findBlock(at);
+            document()->markContentsDirty(block.position(), block.length());
+        }
+        if (int p = pickedPicture(); p >= 0)
+            pickPicture(p);  // (its buttons again)
+        viewport()->update();
+    }
+    return true;  // (other keys wait: they would change what is being resized)
+}
 
 bool NoteTextEdit::pictureKey(QKeyEvent* e)
 {
@@ -1156,25 +1186,27 @@ QTextCursor NoteTextEdit::newLineAfter(const QTextBlock& row)
 {
     auto caption = captionOf(row);
     auto after = caption.isValid() ? caption : row;
+    auto step = textCursor();  // (undone: the cursor back where it was, not at the caption's end)
+    step.beginEditBlock();
     QTextCursor c(document());
     c.setPosition(after.position() + after.length() - 1);
-    c.beginEditBlock();
     c.insertBlock(textAfter(row.blockFormat()), QTextCharFormat());
-    c.endEditBlock();
+    step.endEditBlock();
     return c;
 }
 
 QTextCursor NoteTextEdit::newLineBefore(const QTextBlock& row)
 {
     auto format = row.blockFormat();
+    auto step = textCursor();  // (undone: the cursor back where it was)
+    step.beginEditBlock();
     QTextCursor c(document());
     c.setPosition(row.position());
-    c.beginEditBlock();
     c.insertBlock(format, row.charFormat());  // (the pictures a line down)
     c.movePosition(QTextCursor::PreviousBlock);
     c.setBlockFormat(textAfter(format));
     c.setBlockCharFormat(QTextCharFormat());
-    c.endEditBlock();
+    step.endEditBlock();
     return c;
 }
 

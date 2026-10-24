@@ -5035,6 +5035,209 @@ TEST_CASE("notes: Add to Note: a paragraph after headings and lists, a quote kep
     CHECK(!documentToNoteHtml(edit->document()).contains("never"));
 }
 
+TEST_CASE("notes: a picture copied with its caption goes on lines of its own; the line it is pasted in stays itself")
+{
+    app();
+    Env env;
+    PictureNote note;
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    QString body = "<p><img src=\"test:0\"></p><p class=\"caption\">Cap</p><p>Hello world</p>";
+    for (int at : {6, 0, 11}) {  // ("Hello |world", "|Hello world", "Hello world|")
+        edit.setHtml(noteHtmlForEditor("<div data-schema-version=\"9\">" + body + "</div>", env.lib, note.doc()));
+        edit.prepareDocument();
+        QApplication::processEvents();
+        QTextCursor figure(note.doc());
+        figure.setPosition(0);
+        figure.setPosition(note.doc()->begin().next().position() + 3, QTextCursor::KeepAnchor);
+        edit.setTextCursor(figure);
+        edit.copy();
+        note.caretAt(note.doc()->lastBlock().position() + at);
+        edit.paste();
+        auto html = documentToNoteHtml(note.doc());
+        CAPTURE(at);
+        CAPTURE(html.toStdString());
+        CHECK(html.count("<p class=\"caption\">Cap</p>") == 2);
+        CHECK(!html.contains("CapHello"));
+        CHECK(!html.contains("Capworld"));
+        CHECK(!html.contains("Hello world<img"));
+        CHECK(!html.contains("Hello <img"));
+    }
+}
+
+TEST_CASE("notes: pictures copied in a note and pasted while a formula is typed go after it")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    auto row = note.doc()->findBlock(note.pictures().at(0));
+    QTextCursor both(note.doc());
+    both.setPosition(row.position());
+    both.setPosition(row.position() + 2, QTextCursor::KeepAnchor);
+    edit.setTextCursor(both);
+    edit.copy();
+    note.caretAt(4);  // ("Text|")
+    note.key(Qt::Key_M, Qt::ControlModifier);
+    note.type("y");
+    edit.paste();
+    edit.clearFocus();
+    QApplication::processEvents();
+    auto html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<span class=\"math\">$y$</span>"));
+    CHECK(!html.contains("[image]"));
+    CHECK(note.pictures().size() == 4);
+}
+
+TEST_CASE("notes: copies carry captions and formulas' colours; an empty caption is not copied; lines pasted over a caption")
+{
+    app();
+    Env env;
+    PictureNote note;
+    auto& edit = note.edit;
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:0"), filled(120, 80, Qt::red));
+    auto open = [&](const QString& body) {
+        edit.setHtml(noteHtmlForEditor("<div data-schema-version=\"9\">" + body + "</div>", env.lib, note.doc()));
+        edit.prepareDocument();
+        QApplication::processEvents();
+    };
+    // a red formula copied and pasted: still red
+    open("<p>See <span style=\"color: #ff0000\"><span class=\"math\">$x$</span></span> end</p><p>Here</p>");
+    QTextCursor line(note.doc());
+    line.setPosition(0);
+    line.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    edit.setTextCursor(line);
+    edit.copy();
+    note.caretAt(note.doc()->lastBlock().position() + 4);
+    edit.paste();
+    CHECK(documentToNoteHtml(note.doc()).count("<span style=\"color: #ff0000\"><span class=\"math\">$x$</span></span>") == 2);
+    // a picture with an empty caption, copied with the line under it: no gray line pasted
+    open("<p><img src=\"test:0\"></p><p>Under</p><p>Target</p>");
+    edit.pickPicture(0);
+    note.click("pictureCaption");  // (left empty)
+    QTextCursor three(note.doc());
+    three.setPosition(0);
+    three.setPosition(note.doc()->findBlockByNumber(2).position() + 5, QTextCursor::KeepAnchor);  // (to "Under")
+    edit.setTextCursor(three);
+    edit.copy();
+    note.caretAt(note.doc()->lastBlock().position() + 6);  // ("Target|")
+    note.key(Qt::Key_Return);
+    edit.paste();
+    note.type("typed");
+    CHECK(!documentToNoteHtml(note.doc()).contains("#888888"));
+    // two lines pasted over a selection dragged down out of a caption: the second a paragraph
+    open("<p><img src=\"test:0\"></p><p class=\"caption\">Figure one</p><p>Below here</p>");
+    auto caption = note.doc()->findBlockByNumber(1);
+    QTextCursor down(note.doc());
+    down.setPosition(caption.position() + 6);                                      // "Figure|"
+    down.setPosition(caption.next().position() + 5, QTextCursor::KeepAnchor);      // to "Below|"
+    edit.setTextCursor(down);
+    auto* lines = new QMimeData;
+    lines->setData("text/plain", "one\ntwo");
+    QApplication::clipboard()->setMimeData(lines);
+    edit.paste();
+    auto html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<p class=\"caption\">Figureone</p><p>two here</p>"));
+    // LaTeX pasted into an empty caption: a caption still
+    open("<p><img src=\"test:0\"></p><p>After</p>");
+    edit.pickPicture(0);
+    note.click("pictureCaption");
+    auto* latex = new QMimeData;
+    latex->setData("text/plain", "Figure 1: $\\alpha$-helix");
+    QApplication::clipboard()->setMimeData(latex);
+    edit.paste();
+    CHECK(documentToNoteHtml(note.doc()).contains("<p class=\"caption\">Figure 1: <span class=\"math\">$\\alpha$</span>-helix</p>"));
+}
+
+TEST_CASE("notes: at a captioned line of pictures, undone or given up, the cursor is beside them again (not in the caption)")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    note.click("pictureCaption");
+    note.type("Cap");
+    int end = note.pictures().at(1) + 1;
+    note.caretAt(0);
+    note.caretAt(end);
+    note.type("x");
+    edit.undo();
+    CHECK(edit.textCursor().position() == end);
+    QInputMethodEvent preedit("zhong", {});
+    QApplication::sendEvent(&edit, &preedit);
+    QInputMethodEvent cancel;
+    QApplication::sendEvent(&edit, &cancel);
+    CHECK(edit.textCursor().position() == end);
+    note.type("y");
+    CHECK(note.doc()->findBlock(end).next().text() == "Cap");  // (the caption as it was)
+}
+
+TEST_CASE("notes: Ctrl+M over a selection with a picture keeps the picture; Delete while a corner is dragged waits")
+{
+    app();
+    PictureNote note({900, 600});
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red), filled(200, 200, Qt::blue)});
+    QApplication::processEvents();
+    note.caretAt(0);
+    note.caretAt(note.pictures().at(0));
+    note.key(Qt::Key_Right, Qt::ShiftModifier);  // (the first selected, as text)
+    note.key(Qt::Key_M, Qt::ControlModifier);
+    note.key(Qt::Key_Escape);
+    CHECK(note.pictures().size() == 2);
+    CHECK(!documentToNoteHtml(note.doc()).contains(QChar::ObjectReplacementCharacter));
+    // a corner dragged, Delete pressed: nothing deleted; let go: that picture's row resized
+    edit.pickPicture(note.pictures().at(1));
+    QApplication::processEvents();
+    auto b = note.shown(note.pictures().at(1));
+    auto corner = b.bottomRight().toPoint();
+    QTest::mousePress(edit.viewport(), Qt::LeftButton, {}, corner);
+    QTest::mouseMove(edit.viewport(), corner - QPoint(0, 50));
+    note.key(Qt::Key_Delete);
+    QTest::mouseRelease(edit.viewport(), Qt::LeftButton, {}, corner - QPoint(0, 50));
+    QApplication::processEvents();
+    CHECK(note.pictures().size() == 2);
+    CHECK(note.shown(note.pictures().at(1)).height() == doctest::Approx(b.height() - 50));
+}
+
+TEST_CASE("notes: pasted from elsewhere in dark mode, a link's own colour is not kept; Add to Note's first paragraph as close as the others")
+{
+    app();
+    Env env;
+    PictureNote note;
+    auto& edit = note.edit;
+    auto dark = edit.palette();
+    dark.setColor(QPalette::Base, QColor(30, 30, 30));
+    dark.setColor(QPalette::Text, QColor(230, 230, 230));
+    edit.setPalette(dark);
+    edit.setHtml("<p>Text</p>");
+    auto* web = new QMimeData;
+    web->setHtml("<a href=\"https://example.org/\" style=\"color: #0645ad\">link</a>");
+    QApplication::clipboard()->setMimeData(web);
+    edit.moveCursor(QTextCursor::End);
+    edit.paste();
+    auto html = documentToNoteHtml(note.doc());
+    CHECK(html.contains("<a href=\"https://example.org/\">link</a>"));
+    CHECK(!html.contains("#0645ad"));
+
+    auto added = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>Text</p></div>");
+    NoteEditor editor;
+    editor.resize(700, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(added, "key")));
+    QApplication::processEvents();
+    editor.appendHtml("<p>“A” (Doe, 2020)</p><p>comment</p>");
+    auto* text = editor.findChild<NoteTextEdit*>();
+    auto block = text->document()->lastBlock().previous();
+    REQUIRE(block.text() == "“A” (Doe, 2020)");
+    CHECK(block.blockFormat().topMargin() == 0);
+    CHECK(block.blockFormat().bottomMargin() == 0);
+}
+
 TEST_CASE("notes: picture files pasted or dropped together are one row")
 {
     app();

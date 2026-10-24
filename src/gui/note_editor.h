@@ -147,6 +147,7 @@ private:
     // cursor beside it), else 0.
     int pictureAt(const QPoint& viewportPos, int* edge = nullptr) const;
     int pictureCornerAt(const QPoint& viewportPos) const;  // of the picked picture: 0..3, or -1
+    bool resizeKey(QKeyEvent* e);     // a key while a corner is dragged (Esc: given up)
     bool pictureKey(QKeyEvent* e);    // a key for the picked picture (true: used)
     bool rowKey(QKeyEvent* e);        // a key with the cursor in a line of pictures
     // Where text typed (or pasted) at pictures goes: on a line of its own under them (above

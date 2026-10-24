@@ -44,6 +44,8 @@ void markCaptions(QTextDocument* doc);
 // captions marked as markCaptions finds them, their look (and gray) not left on the text,
 // colours hidden for contrast (dark mode) as they are.
 void markForCopy(QTextDocument* doc);
+// Such a copy, read back (into a note): formulas' colours and captions as they were.
+void readCopy(QTextDocument* doc);
 
 // Serialise a QTextDocument to clean note HTML in Zotero's format
 // (<div data-schema-version="9">…</div>), without Qt's inline styling.
