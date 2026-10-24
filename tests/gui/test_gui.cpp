@@ -3020,7 +3020,7 @@ struct PictureNote {
     }
 };
 
-bool near(const QColor& a, const QColor& b, int tolerance = 60)
+bool similar(const QColor& a, const QColor& b, int tolerance = 60)
 {
     return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < tolerance;
 }
@@ -3084,9 +3084,9 @@ TEST_CASE("notes: a picture pasted is small, on a line of its own; a click picks
     auto r = note.shown(at);
     auto shot = edit.viewport()->grab().toImage();
     auto accent = edit.palette().color(QPalette::Highlight);
-    CHECK(near(shot.pixelColor(int(std::floor(r.left())) - 1, int(r.center().y())), accent));
-    CHECK(near(shot.pixelColor(int(r.center().x()), int(std::ceil(r.bottom()))), accent));
-    CHECK(near(shot.pixelColor(int(r.center().x()), int(r.center().y())), Qt::darkCyan));
+    CHECK(similar(shot.pixelColor(int(std::floor(r.left())) - 1, int(r.center().y())), accent));
+    CHECK(similar(shot.pixelColor(int(r.center().x()), int(std::ceil(r.bottom()))), accent));
+    CHECK(similar(shot.pixelColor(int(r.center().x()), int(r.center().y())), Qt::darkCyan));
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         edit.grab().save(dir + "/note-picture-picked.png");
 
@@ -3650,7 +3650,7 @@ TEST_CASE("notes: a corner taken and let go where it was changes nothing; an emp
         int n = 0;
         for (int x = caret.right() + 4; x < caret.right() + 120; ++x)
             for (int y = caret.top(); y <= caret.bottom(); ++y)
-                n += !near(shot.pixelColor(x, y), base, 30);
+                n += !similar(shot.pixelColor(x, y), base, 30);
         return n;
     };
     CHECK(inked() > 20);
@@ -4223,7 +4223,7 @@ TEST_CASE("notes: what is dragged over a note is marked where it would go")
     auto marked = [&] {
         auto shot = edit.viewport()->grab().toImage();
         for (int x = int(a.right()); x <= int(b.left()); ++x)
-            if (near(shot.pixelColor(x, gap.y()), accent))
+            if (similar(shot.pixelColor(x, gap.y()), accent))
                 return true;
         return false;
     };
@@ -4382,8 +4382,8 @@ TEST_CASE("notes: a picture in a table's cell is where it is drawn: a click pick
     int at = note.pictures().at(0);
     auto r = note.shown(at);
     auto shot = edit.viewport()->grab().toImage();
-    CHECK(near(shot.pixelColor(r.center().toPoint()), Qt::red));  // (where it is drawn)
-    CHECK(near(shot.pixelColor(int(r.left()) + 2, int(r.top()) + 2), Qt::red));
+    CHECK(similar(shot.pixelColor(r.center().toPoint()), Qt::red));  // (where it is drawn)
+    CHECK(similar(shot.pixelColor(int(r.left()) + 2, int(r.top()) + 2), Qt::red));
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
     QApplication::processEvents();
     CHECK(edit.pickedPicture() == at);
@@ -4836,9 +4836,9 @@ TEST_CASE("notes: right to left, and at a wrapped line's end, pictures are where
     int at = note.pictures().at(0);
     auto r = note.shown(at);
     auto shot = edit.viewport()->grab().toImage();
-    CHECK(near(shot.pixelColor(r.center().toPoint()), Qt::red));
-    CHECK(near(shot.pixelColor(int(r.left()) + 2, int(r.center().y())), Qt::red));
-    CHECK(near(shot.pixelColor(int(r.right()) - 2, int(r.center().y())), Qt::red));
+    CHECK(similar(shot.pixelColor(r.center().toPoint()), Qt::red));
+    CHECK(similar(shot.pixelColor(int(r.left()) + 2, int(r.center().y())), Qt::red));
+    CHECK(similar(shot.pixelColor(int(r.right()) - 2, int(r.center().y())), Qt::red));
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
     CHECK(edit.pickedPicture() == at);
 
@@ -4896,9 +4896,9 @@ TEST_CASE("notes: dragged over pictures, text is marked where its line will be")
     auto accent = edit.palette().color(QPalette::Highlight);
     bool between = false, under = false;
     for (int x = int(a.right()); x <= int(b.left()); ++x)
-        between = between || near(shot.pixelColor(x, gap.y()), accent);
+        between = between || similar(shot.pixelColor(x, gap.y()), accent);
     for (int y = int(b.bottom()); y <= int(b.bottom()) + 8; ++y)
-        under = under || near(shot.pixelColor(int(a.center().x()), y), accent);
+        under = under || similar(shot.pixelColor(int(a.center().x()), y), accent);
     CHECK(!between);  // (it does not go between them)
     CHECK(under);     // (a line of its own under them)
     QDropEvent drop(QPointF(gap), Qt::CopyAction, &mime, Qt::LeftButton, {});
