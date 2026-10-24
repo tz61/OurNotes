@@ -91,7 +91,7 @@ void NoteTextEdit::changeEvent(QEvent* e)
         viewport()->update();
     }
     if (e->type() == QEvent::ReadOnlyChange)
-        updateCaret();  // (in a line of pictures: drawn, or Qt's)
+        updateCaret();
 }
 
 // Back to the note's own font: the format names no family. An empty family list is not
@@ -1561,7 +1561,6 @@ bool NoteTextEdit::event(QEvent* e)
 void NoteTextEdit::focusOutEvent(QFocusEvent* e)
 {
     QTextEdit::focusOutEvent(e);
-    updateCaret();  // (none drawn in a line of pictures)
     viewport()->update();  // (no picture shown picked)
     pictureBarTimer_.start();
     if (e->reason() != Qt::PopupFocusReason)

@@ -18,6 +18,8 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QScrollBar>
+#include <QStyle>
+#include <QStyleOption>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QTextList>
@@ -237,7 +239,6 @@ void insertPictureLine(QTextCursor& c, const QList<QTextImageFormat>& pictures)
 
 void NoteTextEdit::setUpPictures()
 {
-    caretWidth_ = cursorWidth();
     pictureBarTimer_.setSingleShot(true);
     pictureBarTimer_.setInterval(0);
     connect(&pictureBarTimer_, &QTimer::timeout, this, &NoteTextEdit::placePictureBar);
@@ -261,11 +262,6 @@ void NoteTextEdit::setUpPictures()
     connect(document(), &QTextDocument::contentsChanged, this, [this] {
         if (!picking_)
             updateCaret();  // (its line a line of pictures now, or no more)
-    });
-    caretBlink_.setInterval(std::max(100, QApplication::cursorFlashTime() / 2));
-    connect(&caretBlink_, &QTimer::timeout, this, [this] {
-        caretShown_ = !caretShown_;
-        viewport()->update(staleCaret().united(rowCaretRect()).adjusted(-2, -2, 2, 2));
     });
 
     pictureBar_ = new QFrame(viewport());
@@ -350,44 +346,11 @@ void NoteTextEdit::unpickPicture()
 
 void NoteTextEdit::updateCaret()
 {
-    auto c = textCursor();
-    rowCaret_ = picked_.isNull() && !isReadOnly() && !pictureRow(c.block()).empty();
-    int width = !picked_.isNull() || rowCaret_ || dropAt_ >= 0 ? 0 : caretWidth_;
-    if (cursorWidth() != width)
-        setCursorWidth(width);
-    caretShown_ = true;  // (moved: shown at once)
-    if (rowCaret_ && hasFocus() && QApplication::cursorFlashTime() > 0)
-        caretBlink_.start();
-    else
-        caretBlink_.stop();
-    if (!drawnCaret_.isNull())
-        viewport()->update(staleCaret().adjusted(-2, -2, 2, 2));
-    if (rowCaret_)
-        viewport()->update(rowCaretRect().adjusted(-2, -2, 2, 2));
-}
-
-QRect NoteTextEdit::staleCaret() const
-{
-    return drawnCaret_.translated(caretScroll_ - QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value()));
-}
-
-QRect NoteTextEdit::rowCaretRect() const
-{
-    // where Qt has it, but clear of the pictures beside it, and as high as text, standing on
-    // the line as they do
-    auto c = textCursor();
-    int pos = c.position();
-    auto line = cursorRect(c);
-    QRectF before = pos > c.block().position() && isPictureAt(document(), pos - 1) ? pictureRect(pos - 1) : QRectF();
-    QRectF after = pos < c.block().position() + c.block().length() - 1 && isPictureAt(document(), pos) ? pictureRect(pos) : QRectF();
-    qreal x = line.left();
-    for (auto& r : {before, after})  // (on its left or right: right to left, the one before is right)
-        if (!r.isNull() && x > r.left() - 3 && x < r.right() + 2)
-            x = x - r.left() < r.right() - x ? r.left() - 3 : r.right() + 2;
-    // (a rect's bottom is under its last row of pixels)
-    int foot = !after.isNull() ? qRound(after.bottom()) - 1 : !before.isNull() ? qRound(before.bottom()) - 1 : line.bottom();
-    int height = std::min(line.height(), QFontMetrics(document()->defaultFont()).height());
-    return QRect(qRound(x), foot - height + 1, std::max(1, caretWidth_), height);
+    bool hidden = !isReadOnly() && (!picked_.isNull() || dropAt_ >= 0 || !pictureRow(textCursor().block()).empty());
+    if (hidden == caretHidden_)
+        return;
+    caretHidden_ = hidden;
+    viewport()->update();
 }
 
 QRectF NoteTextEdit::pictureRect(int pos) const
@@ -535,15 +498,37 @@ void NoteTextEdit::placePictureBar()
 
 void NoteTextEdit::paintEvent(QPaintEvent* e)
 {
-    QTextEdit::paintEvent(e);
-    QPainter p(viewport());
-    // the cursor in a line of pictures (see updateCaret); where something dragged would go
-    drawnCaret_ = QRect();
-    if (rowCaret_ && caretShown_ && hasFocus() && !isReadOnly() && dropAt_ < 0) {
-        drawnCaret_ = rowCaretRect();
-        caretScroll_ = QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value());
-        p.fillRect(drawnCaret_, palette().color(QPalette::Text));
+    if (!caretHidden_) {
+        QTextEdit::paintEvent(e);
+    } else {
+        // as QTextEdit draws the note, but with no text cursor: one 0 wide is still drawn a
+        // pixel wide at 150%, say
+        QPainter p(viewport());
+        auto* bar = horizontalScrollBar();
+        QPoint offset(isRightToLeft() ? bar->maximum() - bar->value() : bar->value(), verticalScrollBar()->value());
+        p.translate(-offset);
+        QRect area = e->rect().translated(offset);
+        p.setClipRect(area);
+        QAbstractTextDocumentLayout::PaintContext context;
+        context.palette = palette();
+        context.clip = area;
+        for (auto& s : extraSelections())
+            context.selections.append({s.cursor, s.format});
+        if (auto c = textCursor(); c.hasSelection()) {
+            QAbstractTextDocumentLayout::Selection s{c, {}};
+            auto group = hasFocus() ? QPalette::Active : QPalette::Inactive;
+            s.format.setBackground(palette().brush(group, QPalette::Highlight));
+            s.format.setForeground(palette().brush(group, QPalette::HighlightedText));
+            QStyleOption option;
+            option.initFrom(this);
+            if (style()->styleHint(QStyle::SH_RichText_FullWidthSelection, &option, this))
+                s.format.setProperty(QTextFormat::FullWidthSelection, true);
+            context.selections.append(s);
+        }
+        document()->documentLayout()->draw(&p, context);
     }
+    QPainter p(viewport());
+    // where something dragged would go
     if (dropAt_ >= 0 && dropLine_ != 0) {  // on a line of its own: a bar across, under or above
         auto block = document()->findBlock(dropBlock_);
         auto r = document()->documentLayout()->blockBoundingRect(block).translated(-horizontalScrollBar()->value(),
@@ -596,7 +581,6 @@ void NoteTextEdit::resizeEvent(QResizeEvent* e)
 void NoteTextEdit::focusInEvent(QFocusEvent* e)
 {
     QTextEdit::focusInEvent(e);
-    updateCaret();
     viewport()->update();
     pictureBarTimer_.start();
 }

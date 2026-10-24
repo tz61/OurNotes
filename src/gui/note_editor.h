@@ -68,6 +68,7 @@ public:
     // this note keeps a copy of its own (storeImage).
     std::function<QImage(const QString& name)> loadPicture;
     int pickedPicture() const;  // where the picture picked is, or -1
+    bool caretHidden() const { return caretHidden_; }  // (see updateCaret)
     void pickPicture(int pos);
     QRectF pictureRect(int pos) const;  // where it is drawn, in the viewport
     enum class PictureSize { Small, Medium, Large, FitWidth, Original };
@@ -157,11 +158,9 @@ private:
     bool caretForText();
     void typeAside();  // caretForText for a key typed: its line and it one step (typingStep_)
     bool captionKey(QKeyEvent* e);    // Enter, Backspace, Delete next to pictures and captions
-    // The cursor in a line of pictures: drawn here, as high as text (Qt's is as high as they
-    // are), blinking; Qt's hidden then, and while one is picked or something dragged over.
+    // No text cursor drawn in a line of pictures (Qt's is as high as they are), while one is
+    // picked, and while something is dragged over the note (see paintEvent).
     void updateCaret();
-    QRect rowCaretRect() const;
-    QRect staleCaret() const;  // where the drawn cursor was, now (the note scrolled since)
     void finishComposing();    // an input method's text, before a click Qt does not see
     void endComposing();       // (see composeTo_)
     // Pictures of another note in what is pasted (not among this note's): this note's own
@@ -192,19 +191,14 @@ private:
     int pressedPicture_ = -1;
     QPoint pressedAt_;
     QTextCursor dragged_;  // the picture being dragged
-    int caretWidth_ = 1;
     int picking_ = 0;
-    bool rowCaret_ = false;  // the cursor in a line of pictures, drawn by paintEvent
-    bool caretShown_ = true;  // (blinking)
-    QRect drawnCaret_;
-    QPoint caretScroll_;  // (the scroll bars' values when it was drawn)
+    bool caretHidden_ = false;
     QTextCursor typingStep_;  // text typed at pictures: its new line and it, one step to undo
     // an input method's text at pictures: where the cursor was moved to for it, the line
     // made for it (gone again if nothing is written, while it is the last step to undo:
     // composeSteps_), how far it was moved in its line (what it replaces is that far back)
     QTextCursor composeTo_, composeLine_;
     int composeSteps_ = -1, composeShift_ = 0;
-    QTimer caretBlink_;
     int dropAt_ = -1;  // where what is dragged over the note would go
     // (a line of its own made there: under the block at dropBlock_, or above it: 1, -1)
     int dropLine_ = 0, dropBlock_ = -1;

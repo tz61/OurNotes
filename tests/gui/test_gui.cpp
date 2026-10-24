@@ -3025,15 +3025,24 @@ bool near(const QColor& a, const QColor& b, int tolerance = 60)
     return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < tolerance;
 }
 
-// Whether something as dark as text (the text cursor) is drawn in an area of the note.
-bool inked(NoteTextEdit& edit, const QRect& area)
+// Whether the text cursor is drawn, at 100% or at 150% (Qt then draws one 0 wide a pixel
+// wide): where it is, the note looks other than with the focus elsewhere (no cursor drawn).
+bool caretDrawn(NoteTextEdit& edit)
 {
-    auto shot = edit.viewport()->grab().toImage();
-    for (int y = std::max(0, area.top()); y <= std::min(shot.height() - 1, area.bottom()); ++y)
-        for (int x = std::max(0, area.left()); x <= std::min(shot.width() - 1, area.right()); ++x)
-            if (auto c = shot.pixelColor(x, y); c.red() + c.green() + c.blue() < 150)
-                return true;
-    return false;
+    auto area = edit.cursorRect().adjusted(-3, -1, 3, 1);
+    auto draw = [&](qreal scale) {
+        QImage shot(edit.viewport()->size() * scale, QImage::Format_RGB32);
+        shot.setDevicePixelRatio(scale);
+        edit.viewport()->render(&shot);
+        return shot.copy(QRect(area.topLeft() * scale, area.size() * scale));
+    };
+    QImage focused[] = {draw(1), draw(1.5)};
+    edit.clearFocus();
+    QApplication::processEvents();
+    bool drawn = draw(1) != focused[0] || draw(1.5) != focused[1];
+    edit.setFocus();
+    QApplication::processEvents();
+    return drawn;
 }
 
 const QColor kCaptionGray(0x88, 0x88, 0x88);
@@ -3045,8 +3054,6 @@ TEST_CASE("notes: a picture pasted is small, on a line of its own; a click picks
     app();
     PictureNote note({600, 500}, "<p>Above and below</p>");
     auto& edit = note.edit;
-    int caret = edit.cursorWidth();
-    REQUIRE(caret > 0);
     note.caretAt(5);  // "Above| and below"
     auto* mime = new QMimeData;
     mime->setImageData(filled(1200, 800, Qt::darkCyan));
@@ -3062,7 +3069,7 @@ TEST_CASE("notes: a picture pasted is small, on a line of its own; a click picks
     CHECK(note.shown(at).size() == QSizeF(360, 240));
     // picked: no text cursor, the buttons by it (neither over it nor out of sight)
     CHECK(edit.pickedPicture() == at);
-    CHECK(edit.cursorWidth() == 0);
+    CHECK(edit.caretHidden());
     auto* bar = note.bar();
     REQUIRE(bar);
     CHECK(bar->isVisible());
@@ -3089,26 +3096,24 @@ TEST_CASE("notes: a picture pasted is small, on a line of its own; a click picks
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, edit.cursorRect(text).center());
     QApplication::processEvents();
     CHECK(edit.pickedPicture() == -1);
-    CHECK(edit.cursorWidth() == caret);
+    CHECK(!edit.caretHidden());
     CHECK(!bar->isVisible());
     // a click on it picks it
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
     QApplication::processEvents();
     CHECK(edit.pickedPicture() == at);
-    CHECK(edit.cursorWidth() == 0);
+    CHECK(edit.caretHidden());
     CHECK(bar->isVisible());
-    // the cursor going into its line: beside it, drawn as high as text (Qt's, as high as the
-    // picture, hidden), the picture not picked
+    // the cursor going into its line: beside it, not drawn (as high as the picture, it looked
+    // odd), the picture not picked
     note.caretAt(2);
     CHECK(edit.pickedPicture() == -1);
     note.key(Qt::Key_Down);
     CHECK(edit.pickedPicture() == -1);
     CHECK(edit.textCursor().position() == at);
-    CHECK(edit.cursorWidth() == 0);
+    CHECK(edit.caretHidden());
     CHECK(!bar->isVisible());
-    r = note.shown(at);
-    CHECK(inked(edit, QRect(int(r.left()) - 4, int(r.bottom()) - 8, 4, 8)));
-    CHECK(!inked(edit, QRect(int(r.left()) - 4, int(r.top()), 4, int(r.height() / 2))));
+    CHECK(!caretDrawn(edit));
 
     // a small one is not made larger
     edit.moveCursor(QTextCursor::End);
@@ -3303,7 +3308,7 @@ TEST_CASE("notes: a picture joins the row above it, goes on a line of its own, i
     CHECK(note.lines() == QStringList{"Te", "xt", "#"});
     CHECK(edit.pickedPicture() == -1);
     CHECK(edit.textCursor().block().text() == "xt");
-    CHECK(edit.cursorWidth() > 0);
+    CHECK(!edit.caretHidden());
     edit.undo();
     CHECK(note.lines() == QStringList{"Te", "#", "xt", "#"});
     // the button, the last one
@@ -3328,12 +3333,12 @@ TEST_CASE("notes: keys with a picture picked: arrows put the cursor beside it, E
     note.key(Qt::Key_Left);
     CHECK(edit.pickedPicture() == -1);
     CHECK(edit.textCursor().position() == pictures[1]);
-    CHECK(edit.cursorWidth() == 0);  // (in their line: drawn as high as text)
+    CHECK(edit.caretHidden());  // (in their line)
     note.key(Qt::Key_Left);
     CHECK(edit.textCursor().position() == pictures[0]);
     note.key(Qt::Key_Left);  // out of the row: the end of the line above
     CHECK(edit.textCursor().position() == 6);
-    CHECK(edit.cursorWidth() > 0);
+    CHECK(!edit.caretHidden());
     note.key(Qt::Key_Right);
     CHECK(edit.textCursor().position() == pictures[0]);
     CHECK(edit.pickedPicture() == -1);
@@ -3455,7 +3460,7 @@ TEST_CASE("notes: a caption under pictures: small and gray, saved as <p class=\"
     CHECK(edit.textCursor().block() == caption);
     CHECK(edit.hasFocus());
     CHECK(edit.pickedPicture() == -1);
-    CHECK(edit.cursorWidth() > 0);
+    CHECK(!edit.caretHidden());
     note.type("Figure 1");
     caption = note.doc()->lastBlock();
     CHECK(caption.text() == "Figure 1");
@@ -3896,7 +3901,7 @@ TEST_CASE("notes: dropped while a picture is picked, pictures go where they are 
     REQUIRE(edit.pickedPicture() == 2);
     note.key(Qt::Key_Left);
     CHECK(edit.pickedPicture() == -1);
-    CHECK(edit.cursorWidth() > 0);
+    CHECK(!edit.caretHidden());
     CHECK(edit.textCursor().position() == 2);
     note.key(Qt::Key_Left);
     CHECK(edit.textCursor().position() == 1);
@@ -3971,7 +3976,7 @@ TEST_CASE("notes: a very wide picture in a narrow note is resized without going 
     CHECK(note.storedSize(at).height() <= 16.5);  // (as high as fits, below the least otherwise)
 }
 
-TEST_CASE("notes: a click beside pictures puts the cursor there, as high as text; pictures pasted go there, in their line")
+TEST_CASE("notes: a click beside pictures puts the cursor there, not drawn; pictures pasted go there, in their line")
 {
     app();
     PictureNote note({900, 600});
@@ -3993,16 +3998,16 @@ TEST_CASE("notes: a click beside pictures puts the cursor there, as high as text
         QApplication::processEvents();
     };
     auto shown = [&](int i) { return note.shown(note.pictures().at(i)); };
+    note.caretAt(2);  // (in text: drawn)
+    CHECK(caretDrawn(edit));
 
-    // right of them, in their line: the cursor after the last, none picked, drawn as high as
-    // text at the line's foot (Qt's, as high as they are, hidden)
+    // right of them, in their line: the cursor after the last, none picked, not drawn
     auto b = shown(1);
     click({b.right() + 60, b.center().y()});
     CHECK(edit.pickedPicture() == -1);
     CHECK(edit.textCursor().position() == note.pictures().at(1) + 1);
-    CHECK(edit.cursorWidth() == 0);
-    CHECK(inked(edit, QRect(int(b.right()) + 1, int(b.bottom()) - 8, 6, 8)));
-    CHECK(!inked(edit, QRect(int(b.right()) + 1, int(b.top()), 6, int(b.height() / 2))));
+    CHECK(edit.caretHidden());
+    CHECK(!caretDrawn(edit));
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         edit.grab().save(dir + "/note-picture-caret.png");
     // pasted there: in their line, after them, as high
@@ -4018,7 +4023,7 @@ TEST_CASE("notes: a click beside pictures puts the cursor there, as high as text
     click({a.left() + 2, a.center().y()});
     CHECK(edit.pickedPicture() == -1);
     CHECK(edit.textCursor().position() == note.pictures().at(0));
-    CHECK(inked(edit, QRect(int(a.left()) - 6, int(a.bottom()) - 8, 6, 8)));
+    CHECK(!caretDrawn(edit));
     edit.paste();
     QApplication::processEvents();
     CHECK(names() == QStringList{"test:4", "test:1", "test:2", "test:3"});
@@ -4200,7 +4205,7 @@ TEST_CASE("notes: what is dragged over a note is marked where it would go")
     QApplication::sendEvent(edit.viewport(), &move);
     QApplication::processEvents();
     CHECK(marked());
-    CHECK(edit.cursorWidth() == 0);  // (the text's own mark hidden)
+    CHECK(edit.caretHidden());  // (the text's own mark hidden)
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         edit.grab().save(dir + "/note-picture-drop.png");
     QDragLeaveEvent leave;
@@ -4335,7 +4340,7 @@ TEST_CASE("notes: text pasted or dropped after a picture or a formula is text, n
     CHECK(saved().contains("<span class=\"math\">$x$</span>YZb</p>"));
 }
 
-TEST_CASE("notes: a picture in a table's cell is where it is drawn: a click picks it, the cursor is drawn beside it")
+TEST_CASE("notes: a picture in a table's cell is where it is drawn: a click picks it, no cursor is drawn beside it")
 {
     app();
     PictureNote note({700, 600}, "<p>Line 1</p><p>Line 2</p><p>Line 3</p><p>Line 4</p>"
@@ -4352,10 +4357,10 @@ TEST_CASE("notes: a picture in a table's cell is where it is drawn: a click pick
     QTest::mouseClick(edit.viewport(), Qt::LeftButton, {}, r.center().toPoint());
     QApplication::processEvents();
     CHECK(edit.pickedPicture() == at);
-    // the cursor after it: drawn there, at its foot
+    // the cursor after it: not drawn
     note.caretAt(at + 1);
-    CHECK(edit.cursorWidth() == 0);
-    CHECK(inked(edit, QRect(int(r.right()) + 1, int(r.bottom()) - 8, 5, 8)));
+    CHECK(edit.caretHidden());
+    CHECK(!caretDrawn(edit));
 }
 
 TEST_CASE("notes: clicks at pictures: an input method's text written first, a selection dragged from an edge, a double click beside one")
@@ -4603,15 +4608,16 @@ TEST_CASE("notes: the only picture of a note, with its caption, deleted: no capt
     note.type("plain");
     CHECK(documentToNoteHtml(note.doc()).contains("<p>plain</p>"));
 
-    // the cursor in a line of pictures, read-only and back: drawn again, Qt's hidden
+    // the cursor in a line of pictures, read-only and back: hidden again
     edit.setHtml("<p><img src=\"test:0\"></p>");
     note.caretAt(1);
-    REQUIRE(edit.cursorWidth() == 0);
+    REQUIRE(edit.caretHidden());
     edit.setReadOnly(true);
+    CHECK(!edit.caretHidden());
     edit.setReadOnly(false);
     QApplication::processEvents();
-    CHECK(edit.cursorWidth() == 0);
-    CHECK(inked(edit, QRect(int(note.shown(0).right()) + 1, int(note.shown(0).bottom()) - 8, 5, 8)));
+    CHECK(edit.caretHidden());
+    CHECK(!caretDrawn(edit));
 }
 
 TEST_CASE("notes: pictures copied from another note are this note's own copies")
