@@ -2,6 +2,7 @@
 // (see docs/agents.md): libraries and collections by name, JSON output, a PDF's text,
 // fields, tags, notes, collections and the trash.
 
+#include <cmath>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -66,49 +67,6 @@ std::vector<CollectionInfo> allCollections(Library& lib, std::optional<int64_t> 
     return out;
 }
 
-std::optional<int64_t> libraryOption(Library& lib, const Args& args)
-{
-    auto v = args.option("--library");
-    if (v.empty())
-        return std::nullopt;
-    return findLibrary(lib, v);
-}
-
-// An item by key, in whichever library has it (or the one given).
-std::pair<int64_t, Json> findItem(Library& lib, const std::string& key, std::optional<int64_t> only)
-{
-    if (key.empty())
-        throw Error("an item key is needed");
-    std::vector<std::pair<int64_t, Json>> found;
-    for (auto& l : lib.libraries())
-        if (!only || l.id == *only)
-            if (auto d = lib.item(l.id, key))
-                found.push_back({l.id, *d});
-    if (found.empty())
-        throw Error("no item " + key + " (see: ournotes-cli items)");
-    if (found.size() > 1)
-        throw Error("item " + key + " is in several libraries: say which with --library");
-    return found[0];
-}
-
-std::vector<std::string> keysFrom(const Args& args, size_t from = 0)
-{
-    std::vector<std::string> keys(args.positionals.begin() + std::min(from, args.positionals.size()),
-                                  args.positionals.end());
-    if (keys.empty())
-        throw Error("no item keys given");
-    return keys;
-}
-
-// The text a note is given: the argument, or standard input when it is "-" or missing.
-std::string contentFrom(const Args& args, size_t at)
-{
-    auto v = args.positional(at);
-    if (!v.empty() && v != "-")
-        return v;
-    return std::string(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
-}
-
 std::string asNoteHtml(const Args& args, const std::string& content)
 {
     if (args.flag("--html") || (!args.flag("--markdown") && !args.flag("--text") && startsWith(trim(content), "<")))
@@ -162,12 +120,6 @@ Json itemJson(Library& lib, int64_t id, const std::string& libraryName, const Js
         j["collections"] = d.value("collections", Json::array());
     }
     return j;
-}
-
-std::string libraryName(Library& lib, int64_t id)
-{
-    auto l = lib.library(id);
-    return l ? l->name : std::string();
 }
 
 int cmdLibraries(Library& lib, Args& args)
@@ -240,17 +192,35 @@ int cmdItems(Library& lib, Args& args)
     auto search = args.option("--search");
     auto mode = args.option("--mode", "all");
     auto m = mode == "quick" ? SearchMode::TitleCreatorYear : mode == "everything" ? SearchMode::Everything : SearchMode::AllFields;
-    bool json = args.flag("--json");
+    bool json = args.flag("--json"), trash = args.flag("--trash"), unfiled = args.flag("--unfiled");
+    auto tags = commaList(args.option("--tag"));
     Json out = Json::array();
     for (auto id : ids) {
-        std::set<std::string> found;
+        std::set<std::string> found, tagged, inNone;
         if (!search.empty())
-            for (auto& k : lib.search(id, search, m))
+            for (auto& k : lib.search(id, search, m)) {  // it, and the item it is under
+                found.insert(k);
                 found.insert(lib.topLevelKey(id, k));
+            }
+        if (!tags.empty())  // an item whose tree has every tag: it, a note or an attachment under it
+            for (auto& k : lib.itemKeysWithTags(id, tags)) {
+                tagged.insert(k);
+                tagged.insert(lib.topLevelKey(id, k));
+            }
+        if (unfiled)
+            inNone = lib.unfiledItemKeys(id);
         auto name = libraryName(lib, id);
-        for (auto& r : lib.itemRows(id)) {
-            if (!r.parentKey.empty() || r.trashed || (!search.empty() && !found.count(r.key)) ||
-                (byCollection && !inCollection.count(r.key)))
+        auto rows = lib.itemRows(id);
+        std::set<std::string> trashed;
+        for (auto& r : rows)
+            if (r.trashed)
+                trashed.insert(r.key);
+        for (auto& r : rows) {
+            // the trash: its top-level items, and the notes and attachments put there alone
+            bool listed = trash ? r.trashed && (r.parentKey.empty() || !trashed.count(r.parentKey))
+                                : r.parentKey.empty() && !r.trashed;
+            if (!listed || (!search.empty() && !found.count(r.key)) || (byCollection && !inCollection.count(r.key)) ||
+                (!tags.empty() && !tagged.count(r.key)) || (unfiled && !inNone.count(r.key)))
                 continue;
             if (json) {
                 if (auto d = lib.item(id, r.key))
@@ -302,8 +272,7 @@ int cmdText(Library& lib, Args& args)
         return 0;
     }
     auto [pid, pdf] = pdfOf(lib, args);
-    if (!lib.attachmentFileExists(pid, pdf))
-        throw Error("the file of " + jstr(pdf, "key") + " is not on this computer (not downloaded)");
+    requireFile(lib, pid, pdf);
     auto doc = pdf::Document::open(lib.attachmentFile(pid, pdf));
     int pages = doc->pageCount();
     if (auto n = args.option("--pages"); !n.empty())
@@ -357,22 +326,9 @@ int cmdSet(Library& lib, Args& args)
     auto [id, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
     auto type = jstr(item, "itemType");
     if (type == "note" || type == "annotation")
-        throw Error(type == "note" ? "a note's text is changed with edit-note" : "annotations are changed in the app");
-    std::vector<std::pair<std::string, std::string>> changes;
-    for (size_t i = 1; i < args.positionals.size(); ++i) {
-        auto& a = args.positionals[i];
-        auto eq = a.find('=');
-        if (eq == std::string::npos || eq == 0)
-            throw Error("expected FIELD=VALUE, got \"" + a + "\"");
-        auto field = a.substr(0, eq);
-        if (!schema::hasField(type, field)) {
-            std::string valid;
-            for (auto& f : schema::fieldsFor(type))
-                valid += (valid.empty() ? "" : ", ") + f;
-            throw Error("a " + type + " has no field \"" + field + "\"; it has: " + valid);
-        }
-        changes.push_back({field, a.substr(eq + 1)});
-    }
+        throw Error(type == "note" ? "a note's text is changed with edit-note" : "an annotation is changed with: annotation KEY");
+    requireEditable(lib, id);
+    auto changes = fieldValues(args, 1, type);
     if (changes.empty())
         throw Error("nothing to set: give FIELD=VALUE (e.g. title=\"A new title\")");
     lib.updateItem(id, jstr(item, "key"), [&](Json& d) {
@@ -388,23 +344,19 @@ int cmdSet(Library& lib, Args& args)
     return 0;
 }
 
-std::vector<std::string> commaList(const std::string& s)
-{
-    std::vector<std::string> out;
-    for (auto& t : split(s, ','))
-        if (!trim(t).empty())
-            out.push_back(trim(t));
-    return out;
-}
-
 int cmdTag(Library& lib, Args& args)
 {
     auto add = commaList(args.option("--add")), remove = commaList(args.option("--remove"));
     if (add.empty() && remove.empty())
         throw Error("give --add TAG[,TAG...] and/or --remove TAG[,TAG...]");
     auto only = libraryOption(lib, args);
+    std::vector<std::pair<int64_t, std::string>> items;  // all looked at before any is changed
     for (auto& key : keysFrom(args)) {
         auto [id, item] = findItem(lib, key, only);
+        requireEditable(lib, id);
+        items.push_back({id, key});
+    }
+    for (auto& [id, key] : items) {
         lib.updateItem(id, key, [&](Json& d) {
             Json tags = Json::array();
             std::set<std::string> have;
@@ -427,7 +379,8 @@ int cmdAddNote(Library& lib, Args& args)
     std::string parent;
     int64_t id = 0;
     size_t contentAt = 0;
-    if (spec.empty()) {  // a child note of an item
+    bool standalone = args.flag("--standalone") || !spec.empty();
+    if (!standalone) {  // a child note of an item
         auto [lid, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
         if (!schema::isRegularType(jstr(item, "itemType")))
             throw Error("notes go under a regular item (a paper, a book...), not a " + jstr(item, "itemType"));
@@ -439,7 +392,10 @@ int cmdAddNote(Library& lib, Args& args)
     if (!spec.empty()) {
         into = findCollection(lib, spec, libraryOption(lib, args));
         id = into->library;
+    } else if (standalone) {  // in the library, in no collection
+        id = args.libraryId(lib);
     }
+    requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, contentAt));
     if (trim(htmlToText(html)).empty())
         throw Error("the note is empty");
@@ -457,6 +413,7 @@ int cmdEditNote(Library& lib, Args& args)
     auto [id, note] = findItem(lib, args.positional(0), libraryOption(lib, args));
     if (jstr(note, "itemType") != "note")
         throw Error(jstr(note, "key") + " is not a note");
+    requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, 1));
     if (args.flag("--append")) {
         auto old = jstr(note, "note");
@@ -491,6 +448,7 @@ int cmdNewCollection(Library& lib, Args& args)
     } else {
         id = args.libraryId(lib);
     }
+    requireEditable(lib, id);
     std::cout << jstr(lib.createCollection(id, name, parent), "key") << "\n";
     return 0;
 }
@@ -500,6 +458,7 @@ int fileOrUnfile(Library& lib, Args& args, bool file)
     if (args.option("--collection").empty())
         throw Error("say which collection with --collection");
     auto c = findCollection(lib, args.option("--collection"), libraryOption(lib, args));
+    requireEditable(lib, c.library);
     std::vector<std::string> keys;
     for (auto& key : keysFrom(args)) {
         auto [id, item] = findItem(lib, key, c.library);
@@ -576,8 +535,15 @@ std::string whereText(Library& lib, Config& config)
 int trashOrRestore(Library& lib, Args& args, bool trash)
 {
     auto only = libraryOption(lib, args);
+    std::vector<std::pair<int64_t, std::string>> items;  // all looked at before any is changed
     for (auto& key : keysFrom(args)) {
         auto [id, item] = findItem(lib, key, only);
+        if (jstr(item, "itemType") == "annotation")
+            throw Error(key + " is an annotation: it goes with delete KEY --yes, as in the app");
+        requireEditable(lib, id);
+        items.push_back({id, key});
+    }
+    for (auto& [id, key] : items) {
         lib.trashItems(id, {key}, trash);
         std::cout << key << "\n";
     }
@@ -585,6 +551,134 @@ int trashOrRestore(Library& lib, Args& args, bool trash)
 }
 
 } // namespace
+
+std::optional<int64_t> libraryOption(Library& lib, const Args& args)
+{
+    auto v = args.option("--library");
+    if (v.empty())
+        return std::nullopt;
+    return findLibrary(lib, v);
+}
+
+std::pair<int64_t, Json> findItem(Library& lib, const std::string& key, std::optional<int64_t> only)
+{
+    if (key.empty())
+        throw Error("an item key is needed");
+    std::vector<std::pair<int64_t, Json>> found;
+    for (auto& l : lib.libraries())
+        if (!only || l.id == *only)
+            if (auto d = lib.item(l.id, key))
+                found.push_back({l.id, *d});
+    if (found.empty())
+        throw Error("no item " + key + " (see: ournotes-cli items)");
+    if (found.size() > 1)
+        throw Error("item " + key + " is in several libraries: say which with --library");
+    return found[0];
+}
+
+std::vector<std::string> keysFrom(const Args& args, size_t from)
+{
+    std::vector<std::string> keys(args.positionals.begin() + std::min(from, args.positionals.size()),
+                                  args.positionals.end());
+    if (keys.empty())
+        throw Error("no item keys given");
+    return keys;
+}
+
+std::string contentFrom(const Args& args, size_t at)
+{
+    auto v = args.positional(at);
+    if (!v.empty() && v != "-")
+        return v;
+    return std::string(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
+}
+
+std::string libraryName(Library& lib, int64_t id)
+{
+    auto l = lib.library(id);
+    return l ? l->name : std::string();
+}
+
+std::vector<std::string> commaList(const std::string& s)
+{
+    std::vector<std::string> out;
+    for (auto& t : split(s, ','))
+        if (!trim(t).empty())
+            out.push_back(trim(t));
+    return out;
+}
+
+std::vector<std::pair<std::string, std::string>> fieldValues(const Args& args, size_t from, const std::string& itemType)
+{
+    std::vector<std::pair<std::string, std::string>> out;
+    for (size_t i = from; i < args.positionals.size(); ++i) {
+        auto& a = args.positionals[i];
+        auto eq = a.find('=');
+        if (eq == std::string::npos || eq == 0)
+            throw Error("expected FIELD=VALUE, got \"" + a + "\"");
+        auto field = a.substr(0, eq);
+        if (!schema::hasField(itemType, field)) {
+            std::string valid;
+            for (auto& f : schema::fieldsFor(itemType))
+                valid += (valid.empty() ? "" : ", ") + f;
+            throw Error("a " + itemType + " has no field \"" + field + "\"; it has: " + valid +
+                        (field == "creators"   ? " (authors are changed with: creators KEY)"
+                         : field == "itemType" ? " (the type is changed with: set-type KEY TYPE)"
+                                               : ""));
+        }
+        out.push_back({field, a.substr(eq + 1)});
+    }
+    return out;
+}
+
+double numberOption(const Args& args, const std::string& name, double def, double min, double max)
+{
+    auto v = args.option(name);
+    if (v.empty())
+        return def;
+    double n = 0;
+    try {
+        size_t used = 0;
+        n = std::stod(v, &used);
+        if (used != v.size())
+            throw Error("");
+    } catch (const std::exception&) {
+        n = min - 1;
+    }
+    if (!(n >= min && n <= max)) {
+        auto text = [](double x) { return x == std::floor(x) ? std::to_string((long long)x) : std::to_string(x); };
+        throw Error(name + " is a number from " + text(min) + " to " + text(max));
+    }
+    return n;
+}
+
+void requirePositionals(const Args& args, size_t most)
+{
+    if (args.positionals.size() > most)
+        throw Error("what is \"" + args.positionals[most] + "\" for? (see: ournotes-cli help)");
+}
+
+void requireFile(Library& lib, int64_t id, const Json& att)
+{
+    if (lib.attachmentFileExists(id, att))
+        return;
+    if (jstr(att, "linkMode") == "linked_file")
+        throw Error("the file " + jstr(att, "key") + " links to is not at " + pathString(lib.attachmentFile(id, att)));
+    throw Error("the file of " + jstr(att, "key") + " is not on this computer (not downloaded)");
+}
+
+void requireEditable(Library& lib, int64_t id)
+{
+    auto l = lib.library(id);
+    if (l && !l->editable)
+        throw Error("the library \"" + l->name + "\" can only be read here");
+}
+
+void requireYes(const Args& args, const std::string& what)
+{
+    if (!args.flag("--yes"))
+        throw Error(what + ". It cannot be undone: add --yes to do it");
+}
 
 int64_t findLibrary(Library& lib, const std::string& spec)
 {
@@ -635,6 +729,14 @@ CollectionRef findCollection(Library& lib, const std::string& spec, std::optiona
     for (auto& c : found)
         which += "\n  " + c.libraryName + "/" + c.path + "  [" + jstr(c.data, "key") + "]";
     throw Error("\"" + spec + "\" could be any of these; give its key, or the library's name first:" + which);
+}
+
+void registerAllCommands(CommandMap& commands, Config& config)
+{
+    registerAgentCommands(commands, config);
+    registerExtraCommands(commands, config);
+    registerEditCommands(commands, config);
+    registerAnnotationCommands(commands, config);
 }
 
 void registerAgentCommands(CommandMap& commands, Config& config)

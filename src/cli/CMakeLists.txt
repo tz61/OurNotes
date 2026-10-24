@@ -2,6 +2,8 @@
 add_library(ournotes_cli STATIC
     extra_commands.cpp
     agent_commands.cpp
+    edit_commands.cpp
+    annotation_commands.cpp
 )
 target_link_libraries(ournotes_cli PUBLIC ournotes_core ournotes_sync ournotes_pdf ournotes_formats)
 # docs/agents.md, built in for `ournotes-cli guide` (under 16 KB: MSVC's longest string literal)
@@ -17,6 +19,10 @@ target_include_directories(ournotes_cli PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/gen
 
 add_executable(ournotes-cli main.cpp)
 target_link_libraries(ournotes-cli PRIVATE ournotes_cli)
+if(WIN32)
+    target_link_libraries(ournotes-cli PRIVATE shell32)  # CommandLineToArgvW
+    target_link_libraries(ournotes_cli PRIVATE shell32)  # ShellExecuteW (open)
+endif()
 on_copy_runtime_dlls(ournotes-cli)
 install(TARGETS ournotes-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # For AI agents: what OurNotes can do from the command line, beside the programs (at the

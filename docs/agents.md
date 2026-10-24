@@ -2,7 +2,9 @@
 
 This is for AI agents (Claude Code, Codex, and the like) and scripts that read or change
 someone's OurNotes library: summarise the papers in a collection, rename titles, write
-notes, tag and file items. `ournotes-cli guide` prints this page.
+notes, tag and file items, annotate PDFs. What the app does with a library,
+`ournotes-cli` does too: `ournotes-cli help` lists every command. `ournotes-cli guide`
+prints this page.
 
 ## The one rule: go through `ournotes-cli`
 
@@ -69,6 +71,10 @@ ournotes-cli text NOTE2345                 # a note as text
 ournotes-cli annotations ABCD2345 --json   # highlights and comments in its PDFs
 ournotes-cli export ABCD2345 --format csljson         # or bibtex, ris
 ournotes-cli cite --collection "FA26/CS8803" --style apa
+ournotes-cli items --tag exam --json       # also --unfiled (in no collection), --trash
+ournotes-cli tags --json                   # tags, how many items have each, their colours
+ournotes-cli types book --json             # a type's fields and kinds of authors
+ournotes-cli related ABCD2345              # also: duplicates (items that look the same)
 ```
 
 `items --json` gives, for each top-level item: `key`, `library`, `libraryId`,
@@ -101,9 +107,28 @@ ournotes-cli add paper.pdf --collection "FA26/CS8803"               # a PDF; its
 ournotes-cli import refs.bib --collection "FA26/CS8803"             # BibTeX, RIS, CSL JSON
 ```
 
+More, as in the app:
+
+```sh
+ournotes-cli new-item book title="Deep Learning" date=2016 --collection "FA26/CS8803"
+ournotes-cli creators ABCD2345 "Goodfellow, Ian" "editor:Bengio, Yoshua" "OpenAI"  # replaces; --add
+ournotes-cli set-type ABCD2345 bookSection                  # --force if it loses fields
+ournotes-cli attach ABCD2345 slides.pdf                     # a file under the item; --link
+ournotes-cli attach-url ABCD2345 https://arxiv.org/abs/1706.03762 --title "arXiv"
+ournotes-cli move NOTE2345 --to EFGH6789                    # a note or attachment elsewhere
+ournotes-cli related ABCD2345 --add EFGH6789                # --remove
+ournotes-cli merge ABCD2345 EFGH6789                        # duplicates, into the oldest
+ournotes-cli retrieve-metadata PDF23456                     # a PDF of its own gets its item
+ournotes-cli rename-collection "FA26/CS8803" "CS 8803"      # move-collection C --parent P
+ournotes-cli rename-tag todo later     # tag-color later red
+```
+
 - `set` checks the field against the item's type and lists the fields it has when one is
-  wrong. Authors (`creators`) are not changed with `set`; neither are notes (use
-  `edit-note`) or annotations.
+  wrong. Authors are changed with `creators` ("Last, First", or one name for an
+  organisation; `editor:` and the like before it), the type with `set-type`, a note's
+  text with `edit-note`.
+- A tag is renamed, coloured or deleted in one library, as in the app: when several have
+  it, say which with `--library`.
 - Text for a note: an argument, or standard input with `-` (best for anything longer than a
   line, and for text that begins with `-`). It is read as Markdown unless `--html` or
   `--text` says otherwise, or it begins with `<` (then it is taken as HTML).
@@ -112,8 +137,28 @@ ournotes-cli import refs.bib --collection "FA26/CS8803"             # BibTeX, RI
   (a header row, a `|---|:-:|--:|` row, then rows of cells; `\|` for a | in a cell),
   `**bold**`, `*italic*`, `` `code` ``, `[links](https://...)`, and formulas: `$x^2$` in a
   line, `$$...$$` on lines of their own, shown as formulas in the app.
-- Nothing is deleted for good: `trash` moves items to the trash, where the user can look
-  them over. Do not empty the trash.
+- `trash` moves items to the trash, where the user can look them over. What deletes for
+  good (`delete`, `empty-trash`, `delete-collection`, `delete-tag`, `delete-library`)
+  asks for `--yes`: use it only when the user asks for exactly that.
+
+## Annotations
+
+On a PDF (its key, or the key of the item it is under); X,Y are points from the page's
+top left:
+
+```sh
+ournotes-cli annotate ABCD2345 --quote "attention is all" --comment "key idea" --color yellow
+ournotes-cli annotate ABCD2345 --quote "Theorem 2" --type underline --page 4
+ournotes-cli annotate ABCD2345 --type note --quote "Theorem 2" --comment "check the proof"
+ournotes-cli annotate ABCD2345 --type text --page 1 --at 72,700 --comment "Read for week 3"
+ournotes-cli annotation ANNO2345 --comment "..." --tags "exam"   # change one; --color, --rect
+ournotes-cli note-from-annotations ABCD2345        # a note quoting them, under the item
+ournotes-cli export-pdf ABCD2345 -o annotated.pdf  # a copy of the PDF with them in it
+```
+
+`--quote` finds the words (in any case) on `--page`, or on the first page that has them.
+Areas (`--type image --rect X0,Y0,X1,Y1`) and drawings (`--type ink --ink "X,Y X,Y"`)
+are made too; `view-state KEY --page N --zoom 150` sets where the app opens a PDF.
 
 ## Recipes
 
@@ -156,7 +201,10 @@ Leave syncing to the app: do not run `ournotes-cli sync` unless the user asks fo
 - Either way the user can look over what you did in the app's *Tools → Sync History*: your
   changes are marked as made by `ournotes-cli`, and a sync you ran as synced by it.
 - If the same item was changed on another computer meanwhile, the later change wins and
-  the other is kept under *Tools → Sync Conflicts*.
+  the other is kept under *Tools → Sync Conflicts* (`ournotes-cli conflicts`).
+- `sync-history` and `storage` show what the app shows under *Tools*. `config` shows and
+  changes the app's preferences; the app reads them when it starts and writes its own back
+  when it quits, so change them while it is closed.
 
 ## Good manners
 

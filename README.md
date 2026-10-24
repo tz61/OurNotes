@@ -91,8 +91,10 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   or synced. Library names are synced, and deleting an (empty)
   library deletes it everywhere. Works with a `ournotesd` server (HTTP/HTTPS, multiple
   users, shared libraries) or with a folder.
-- **Command line** — `ournotes-cli` for import/export, citing, adding items, indexing and
-  syncing on headless machines.
+- **Command line** — `ournotes-cli` does what the app does with a library: items, their
+  fields and authors, notes, attachments, annotations on PDFs, collections, tags, the
+  trash, import/export and citing, indexing, syncing and the preferences; also on headless
+  machines.
 
 ## Building
 
@@ -251,7 +253,11 @@ ournotes-cli add-note KEY - < summary.md                  ournotes-cli file KEY 
 ournotes-cli add paper.pdf 10.1038/nature14539 arXiv:2301.08243
 ournotes-cli import refs.bib            ournotes-cli export --format ris -o out.ris
 ournotes-cli cite KEY... --style ieee   ournotes-cli index
+ournotes-cli new-item book title="Deep Learning"          ournotes-cli creators KEY "Goodfellow, Ian"
+ournotes-cli attach KEY slides.pdf      ournotes-cli merge KEY KEY      ournotes-cli rename-tag todo later
+ournotes-cli annotate KEY --quote "Theorem 2" --comment "check"       ournotes-cli export-pdf KEY -o a.pdf
 ournotes-cli add-server https://host:8642 --user alice    ournotes-cli sync
+ournotes-cli help                      # every command
 ```
 
 **AI agents** (Claude Code, Codex, ...) can work on a library through `ournotes-cli`:

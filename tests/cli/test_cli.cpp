@@ -2,6 +2,8 @@
 // output captured.
 #include <doctest.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 
@@ -11,6 +13,7 @@
 #include "core/config.h"
 #include "core/library.h"
 #include "core/sync/history.h"
+#include "pdf/document.h"
 
 using namespace on;
 
@@ -24,8 +27,7 @@ struct Cli {
 
     Cli()
     {
-        registerAgentCommands(commands, config);
-        registerExtraCommands(commands, config);
+        registerAllCommands(commands, config);
     }
 
     // ournotes-cli <words...> with `input` on standard input: {exit code, output}
@@ -254,4 +256,523 @@ TEST_CASE("cli: what it changes and syncs is in the app's sync history, as ourno
     REQUIRE(history.runs().size() == 2);
     CHECK(history.runs()[0]["ok"] == false);
     CHECK(history.runs()[0]["by"] == "ournotes-cli");
+}
+
+TEST_CASE("cli: libraries and collections made, renamed, moved and deleted, as in the app")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    lib.defaultLibrary();
+    auto [newCode, newOut] = cli.run({"new-library", "Course"});
+    REQUIRE(newCode == 0);
+    auto course = std::stoll(trim(newOut));
+    CHECK(lib.library(course)->name == "Course");
+    CHECK(cli.run({"new-library", "course"}).first == 1);  // there is one by that name
+    CHECK(cli.run({"rename-library", "Course", "Courses"}).first == 0);
+    CHECK(lib.library(course)->name == "Courses");
+
+    auto fa26 = trim(cli.run({"new-collection", "FA26", "--library", "Courses"}).second);
+    auto cs = trim(cli.run({"new-collection", "CS8803", "--parent", "Courses/FA26"}).second);
+    CHECK(cli.run({"rename-collection", "Courses/FA26/CS8803", "CS 8803"}).first == 0);
+    CHECK(jstr(*lib.collection(course, cs), "name") == "CS 8803");
+    CHECK(cli.run({"move-collection", fa26, "--parent", cs}).first == 1);  // into its own subcollection
+    CHECK(cli.run({"move-collection", cs, "--top"}).first == 0);
+    CHECK(!lib.collection(course, cs)->value("parentCollection", Json()).is_string());
+    CHECK(cli.run({"move-collection", fa26, "--parent", cs}).first == 0);
+    CHECK(jstr(*lib.collection(course, fa26), "parentCollection") == cs);
+
+    auto item = jstr(lib.createItem(course, Json{{"itemType", "book"}, {"title", "Kept"}, {"collections", Json::array({fa26})}}),
+                     "key");
+    auto [askCode, ask] = cli.run({"delete-collection", cs});
+    CHECK(askCode == 1);
+    CHECK(ask.find("add --yes") != npos);
+    CHECK(lib.collection(course, cs));
+    CHECK(cli.run({"delete-collection", cs, "--yes"}).first == 0);
+    CHECK(!lib.collection(course, cs));
+    CHECK(!lib.collection(course, fa26));  // its subcollection with it
+    REQUIRE(lib.item(course, item));       // the items stay
+    CHECK(!jbool(*lib.item(course, item), "deleted"));
+
+    // only an empty library goes, and never the last one
+    CHECK(cli.run({"delete-library", "Courses", "--yes"}).first == 1);
+    lib.eraseItems(course, {item});
+    CHECK(cli.run({"delete-library", "Courses"}).first == 1);  // asks for --yes
+    CHECK(cli.run({"delete-library", "Courses", "--yes"}).first == 0);
+    CHECK(!lib.library(course));
+    CHECK(cli.run({"delete-library", "My Library", "--yes"}).first == 1);
+}
+
+TEST_CASE("cli: items made from nothing, of another type, their authors, copied, related and merged")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    auto mine = lib.defaultLibrary();
+    auto [code, out] = cli.run({"new-item", "journalArticle", "title=Attention Is All You Need", "date=2017",
+                                "publicationTitle=NeurIPS"});
+    INFO(out);
+    REQUIRE(code == 0);
+    auto key = trim(out);
+    CHECK(jstr(*lib.item(mine, key), "title") == "Attention Is All You Need");
+    CHECK(jstr(*lib.item(mine, key), "publicationTitle") == "NeurIPS");
+    CHECK(cli.run({"new-item", "note"}).first == 1);
+    CHECK(cli.run({"new-item", "book", "publicationTitle=x"}).first == 1);  // a book has none
+
+    // types, and another one
+    auto types = cli.json({"types", "--json"});
+    CHECK(std::any_of(types.begin(), types.end(), [](const Json& t) { return t["type"] == "book"; }));
+    auto book = cli.json({"types", "book", "--json"});
+    CHECK(std::any_of(book["creatorTypes"].begin(), book["creatorTypes"].end(),
+                      [](const Json& c) { return c["creatorType"] == "author" && c["primary"] == true; }));
+    auto [typeCode, typeOut] = cli.run({"set-type", key, "book"});
+    CHECK(typeCode == 1);  // a book has no publicationTitle
+    CHECK(typeOut.find("publicationTitle") != npos);
+    CHECK(cli.run({"set-type", key, "book", "--force"}).first == 0);
+    CHECK(jstr(*lib.item(mine, key), "itemType") == "book");
+    CHECK(!lib.item(mine, key)->contains("publicationTitle"));
+
+    // authors
+    CHECK(cli.run({"creators", key, "Vaswani, Ashish", "editor:Shazeer, Noam", "Google Brain"}).first == 0);
+    auto creators = (*lib.item(mine, key))["creators"];
+    REQUIRE(creators.size() == 3);
+    CHECK(creators[0] == Json{{"creatorType", "author"}, {"firstName", "Ashish"}, {"lastName", "Vaswani"}});
+    CHECK(creators[1]["creatorType"] == "editor");
+    CHECK(creators[2] == Json{{"creatorType", "author"}, {"name", "Google Brain"}});
+    CHECK(cli.run({"creators", key, "Parmar, Niki", "--add"}).first == 0);
+    CHECK((*lib.item(mine, key))["creators"].size() == 4);
+    CHECK(cli.run({"creators", key}).second.find("editor: Shazeer, Noam") != npos);
+    CHECK(cli.run({"creators", key, "interviewer:Doe, Jo"}).first == 1);  // not a book's
+    CHECK(cli.run({"creators", key, "--clear"}).first == 0);
+    CHECK((*lib.item(mine, key))["creators"].empty());
+
+    // a copy, related to it; duplicates merged into the oldest
+    lib.updateItem(mine, key, [](Json& d) { d["dateAdded"] = "2020-01-01T00:00:00Z"; });
+    auto copy = trim(cli.run({"duplicate", key}).second);
+    CHECK(copy != key);
+    CHECK(jstr(*lib.item(mine, copy), "title") == "Attention Is All You Need");
+    CHECK(cli.json({"related", key, "--json"})[0]["key"] == copy);
+    auto groups = cli.json({"duplicates", "--json"});
+    REQUIRE(groups.size() == 1);
+    CHECK(groups[0]["items"].size() == 2);
+    lib.createNote(mine, "<p>on the copy</p>", copy);
+    CHECK(trim(cli.run({"merge", copy, key}).second) == key);
+    CHECK(jbool(*lib.item(mine, copy), "deleted"));  // the other one to the trash
+    CHECK(lib.children(mine, key, "note").size() == 1);  // its note moved over
+
+    auto other = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "Other"}}), "key");
+    CHECK(cli.run({"related", key, "--add", other}).first == 0);
+    auto related = lib.relatedKeys(mine, key);
+    CHECK(std::find(related.begin(), related.end(), other) != related.end());
+    CHECK(cli.run({"related", key, "--remove", other}).first == 0);
+    related = lib.relatedKeys(mine, key);
+    CHECK(std::find(related.begin(), related.end(), other) == related.end());
+}
+
+TEST_CASE("cli: files and links attached, notes moved, items copied elsewhere, deleted for good with --yes")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto other = lib.createLibrary("Other");
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto book = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "Book"}}), "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto [code, out] = cli.run({"attach", paper, pathString(pdfPath)});
+    INFO(out);
+    REQUIRE(code == 0);
+    auto pdf = trim(out);
+    auto att = *lib.item(mine, pdf);
+    CHECK(jstr(att, "parentItem") == paper);
+    CHECK(jstr(att, "linkMode") == "imported_file");
+    CHECK(lib.attachmentFileExists(mine, att));
+    auto linked = trim(cli.run({"attach", paper, pathString(pdfPath), "--link", "--title", "Linked"}).second);
+    CHECK(jstr(*lib.item(mine, linked), "linkMode") == "linked_file");
+    CHECK(jstr(*lib.item(mine, linked), "title") == "Linked");
+    CHECK(cli.run({"attach", paper, pathString(cli.dir.path / "none.pdf")}).first == 1);
+    CHECK(cli.run({"attach", pdf, pathString(pdfPath)}).first == 1);  // not under an attachment
+    auto url = trim(cli.run({"attach-url", paper, "https://arxiv.org/abs/1706.03762", "--title", "arXiv"}).second);
+    CHECK(jstr(*lib.item(mine, url), "url") == "https://arxiv.org/abs/1706.03762");
+    CHECK(jstr(*lib.item(mine, url), "parentItem") == paper);
+    CHECK(cli.run({"attach-url", paper, "arxiv.org/abs/1"}).first == 1);  // no scheme
+    auto lone = trim(cli.run({"attach-url", "https://example.org"}).second);
+    CHECK(jstr(*lib.item(mine, lone), "parentItem").empty());
+
+#ifndef _WIN32
+    // opened by the system's program (here one that writes down what it was given)
+    auto opener = cli.dir.path / "opener.sh";
+    auto opened = cli.dir.path / "opened.txt";
+    writeFileAtomic(opener, "#!/bin/sh\necho \"$1\" > '" + pathString(opened) + "'\n");
+    fs::permissions(opener, fs::perms::owner_all);
+    setenv("OURNOTES_OPENER", pathString(opener).c_str(), 1);
+    CHECK(cli.run({"open", paper}).first == 0);
+    CHECK(trim(readFile(opened)) == pathString(lib.attachmentFile(mine, *lib.bestAttachment(mine, paper))));
+    CHECK(cli.run({"open", pdf, "--folder"}).first == 0);
+    CHECK(trim(readFile(opened)) == pathString(lib.attachmentFile(mine, att).parent_path()));
+    CHECK(cli.run({"open", url}).first == 0);
+    CHECK(trim(readFile(opened)) == "https://arxiv.org/abs/1706.03762");
+    unsetenv("OURNOTES_OPENER");
+#endif
+
+    // a note under another item, then of its own in a collection
+    auto note = jstr(lib.createNote(mine, "<p>a note</p>", paper), "key");
+    CHECK(cli.run({"move", note, "--to", book}).first == 0);
+    CHECK(jstr(*lib.item(mine, note), "parentItem") == book);
+    CHECK(cli.run({"move", book, "--to", paper}).first == 1);  // a regular item has no parent
+    auto loose = jstr(lib.createCollection(mine, "Loose"), "key");
+    CHECK(cli.run({"move", note, "--standalone", "--collection", "Loose"}).first == 0);
+    CHECK(!lib.item(mine, note)->contains("parentItem"));
+    CHECK((*lib.item(mine, note))["collections"] == Json::array({loose}));
+
+    // copied into another library, with what is under it
+    auto [copyCode, copyOut] = cli.run({"copy", paper, "--to-library", "Other"});
+    REQUIRE(copyCode == 0);
+    auto copied = trim(copyOut);
+    CHECK(jstr(*lib.item(other, copied), "title") == "Paper");
+    CHECK(lib.children(other, copied, "attachment").size() == 3);
+
+    // deleted for good: only with --yes
+    CHECK(cli.run({"delete", paper}).first == 1);
+    CHECK(lib.item(mine, paper));
+    CHECK(cli.run({"delete", paper, "--yes"}).first == 0);
+    CHECK(!lib.item(mine, paper));
+    CHECK(!lib.item(mine, pdf));  // and what was under it
+    cli.run({"trash", book});
+    CHECK(cli.run({"empty-trash"}).first == 1);
+    CHECK(cli.run({"empty-trash", "--yes"}).first == 0);
+    CHECK(!lib.item(mine, book));
+}
+
+TEST_CASE("cli: tags listed, renamed, coloured and deleted; items by tag, unfiled or in the trash")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto c = jstr(lib.createCollection(mine, "C"), "key");
+    auto a = jstr(lib.createItem(mine, Json{{"itemType", "book"},
+                                            {"title", "A"},
+                                            {"tags", Json::array({Json{{"tag", "exam"}}, Json{{"tag", "week-3"}}})},
+                                            {"collections", Json::array({c})}}),
+                  "key");
+    auto b = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "B"}, {"tags", Json::array({Json{{"tag", "exam"}}})}}),
+                  "key");
+    auto tags = cli.json({"tags", "--json"});
+    REQUIRE(tags.size() == 2);
+    CHECK(tags[0]["tag"] == "exam");
+    CHECK(tags[0]["items"] == 2);
+    CHECK(cli.run({"rename-tag", "exam", "final"}).first == 0);
+    CHECK(lib.itemKeysWithTags(mine, {"final"}).size() == 2);
+    CHECK(cli.run({"rename-tag", "nope", "x"}).first == 1);
+    CHECK(cli.run({"tag-color", "final", "red"}).first == 0);
+    CHECK(lib.tagColors(mine)["final"] == "#ff6666");
+    CHECK(cli.run({"tag-color", "final", "blurple"}).first == 1);
+    CHECK(cli.run({"tag-color", "final", "none"}).first == 0);
+    CHECK(!lib.tagColors(mine).count("final"));
+    auto both = cli.json({"items", "--tag", "final,week-3", "--json"});
+    REQUIRE(both.size() == 1);
+    CHECK(both[0]["key"] == a);
+    auto unfiled = cli.json({"items", "--unfiled", "--json"});
+    REQUIRE(unfiled.size() == 1);
+    CHECK(unfiled[0]["key"] == b);
+    cli.run({"trash", b});
+    auto trashed = cli.json({"items", "--trash", "--json"});
+    REQUIRE(trashed.size() == 1);
+    CHECK(trashed[0]["key"] == b);
+    CHECK(cli.run({"delete-tag", "week-3"}).first == 1);
+    CHECK(cli.run({"delete-tag", "week-3", "--yes"}).first == 0);
+    CHECK(lib.itemKeysWithTags(mine, {"week-3"}).empty());
+}
+
+TEST_CASE("cli: annotations made on a PDF and changed; a note of them; the PDF with them; where it opens")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"},
+                                                {"title", "Paper"},
+                                                {"date", "2020"},
+                                                {"creators", Json::array({Json{{"creatorType", "author"},
+                                                                               {"firstName", "Jane"},
+                                                                               {"lastName", "Smith"}}})}}),
+                      "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+
+    // a passage highlighted, found by its words
+    auto [code, out] = cli.run({"annotate", paper, "--quote", "World from", "--comment", "a greeting", "--tags", "hello",
+                                "--color", "green"});
+    INFO(out);
+    REQUIRE(code == 0);
+    auto hlKey = trim(out);
+    auto hl = *lib.item(mine, hlKey);
+    CHECK(jstr(hl, "parentItem") == pdf);
+    CHECK(jstr(hl, "annotationType") == "highlight");
+    CHECK(jstr(hl, "annotationText") == "World from");
+    CHECK(jstr(hl, "annotationColor") == "#5fb236");
+    CHECK(jstr(hl, "annotationPageLabel") == "1");
+    CHECK(hl["tags"] == Json::array({Json{{"tag", "hello"}}}));
+    CHECK(hl["annotationPosition"]["pageIndex"] == 0);
+    REQUIRE(hl["annotationPosition"]["rects"].size() == 1);
+    auto rect = hl["annotationPosition"]["rects"][0];  // in the PDF's space: the line at y = 700
+    CHECK(rect[1].get<double>() < 705);
+    CHECK(rect[3].get<double>() > 700);
+    CHECK(cli.run({"annotate", paper, "--quote", "not in it"}).first == 1);
+    auto under = trim(cli.run({"annotate", pdf, "--quote", "second line", "--type", "underline"}).second);
+    CHECK(jstr(*lib.item(mine, under), "annotationType") == "underline");
+
+    // a note beside a passage, a text box, an area, a drawing
+    auto note = trim(cli.run({"annotate", paper, "--type", "note", "--quote", "second line", "--comment", "why?"}).second);
+    CHECK(jstr(*lib.item(mine, note), "annotationComment") == "why?");
+    auto text = trim(cli.run({"annotate", paper, "--type", "text", "--at", "72,300", "--comment", "Summary"}).second);
+    auto textPos = (*lib.item(mine, text))["annotationPosition"];
+    CHECK(textPos["fontSize"] == 14);
+    CHECK(textPos["rotation"] == 0);
+    CHECK(cli.run({"annotate", paper, "--type", "text", "--at", "72,300"}).first == 1);  // a text box needs its text
+    auto area = trim(cli.run({"annotate", paper, "--type", "image", "--rect", "72,100,300,200"}).second);
+    CHECK((*lib.item(mine, area))["annotationPosition"]["rects"].size() == 1);
+    CHECK(cli.run({"annotate", paper, "--type", "image", "--rect", "72,100,3000,200"}).first == 1);  // off the page
+    auto ink = trim(cli.run({"annotate", paper, "--type", "ink", "--ink", "100,400 150,420 200,400;100,450 200,450"}).second);
+    auto inkPos = (*lib.item(mine, ink))["annotationPosition"];
+    CHECK(inkPos["paths"].size() == 2);
+    CHECK(inkPos["paths"][0].size() == 6);
+    CHECK(inkPos["width"] == 2);
+    CHECK(lib.annotations(mine, pdf).size() == 6);
+
+    // changed; one from the PDF file itself is not
+    CHECK(cli.run({"annotation", hlKey, "--comment", "hello there", "--color", "#123456", "--tags", "a,b"}).first == 0);
+    hl = *lib.item(mine, hlKey);
+    CHECK(jstr(hl, "annotationComment") == "hello there");
+    CHECK(jstr(hl, "annotationColor") == "#123456");
+    CHECK(hl["tags"].size() == 2);
+    CHECK(cli.json({"annotation", hlKey})["comment"] == "hello there");
+    auto external = jstr(lib.createItem(mine, Json{{"itemType", "annotation"},
+                                                   {"parentItem", pdf},
+                                                   {"annotationType", "highlight"},
+                                                   {"annotationIsExternal", true}}),
+                         "key");
+    CHECK(cli.run({"annotation", external, "--comment", "x"}).first == 1);
+    CHECK(cli.run({"delete", external, "--yes"}).first == 1);
+    // moved and resized, as dragged in the app
+    CHECK(cli.run({"annotation", area, "--rect", "100,100,250,180"}).first == 0);
+    CHECK((*lib.item(mine, area))["annotationPosition"]["rects"][0][0] == 100.0);
+    CHECK(cli.run({"annotation", text, "--font-size", "20"}).first == 0);
+    CHECK((*lib.item(mine, text))["annotationPosition"]["fontSize"] == 20.0);
+    CHECK(cli.run({"annotation", note, "--at", "30,30"}).first == 0);
+    CHECK(cli.run({"annotation", hlKey, "--rect", "1,1,50,50"}).first == 1);  // a highlight stays on its words
+    CHECK(cli.run({"annotation", area, "--font-size", "12"}).first == 1);
+
+    // a note quoting them, under the paper; and the same added to a note
+    auto noteKey = trim(cli.run({"note-from-annotations", paper}).second);
+    auto made = *lib.item(mine, noteKey);
+    CHECK(jstr(made, "parentItem") == paper);
+    INFO(jstr(made, "note"));
+    CHECK(jstr(made, "note").find("“World from” (Smith, 2020, p. 1) hello there") != npos);
+    CHECK(jstr(made, "note").find("Summary (Smith, 2020, p. 1)") != npos);
+    CHECK(cli.run({"note-from-annotations", pdf, "--to", noteKey}).first == 0);
+    auto html = jstr(*lib.item(mine, noteKey), "note");
+    CHECK(html.find("World from") != html.rfind("World from"));  // twice
+    auto one = trim(cli.run({"note-from-annotations", hlKey}).second);  // as the reader's Add to Note
+    CHECK(jstr(*lib.item(mine, one), "note") ==
+          "<div data-schema-version=\"9\"><p>\u201cWorld from\u201d (Smith, 2020, p. 1)</p><p>hello there</p></div>");
+    CHECK(jstr(*lib.item(mine, one), "parentItem") == paper);
+
+    // a copy of the PDF with them in it
+    auto exported = cli.dir.path / "annotated.pdf";
+    CHECK(cli.run({"export-pdf", paper, "-o", pathString(exported)}).first == 0);
+    CHECK(pdf::Document::open(exported)->embeddedAnnotations().size() == 6);  // (the PDF's own one has no place)
+    CHECK(cli.run({"export-pdf", paper, "-o", pathString(lib.attachmentFile(mine, *lib.item(mine, pdf)))}).first == 1);
+
+    // where the app opens it
+    CHECK(cli.run({"view-state", paper, "--page", "1", "--zoom", "150"}).first == 0);
+    CHECK(lib.readerState(pdf)["scale"] == 150.0);
+    CHECK(lib.readerState(pdf)["pageIndex"] == 0);
+    CHECK(lib.setting(mine, "lastPageIndex_" + pdf) == 0);
+    CHECK(cli.run({"view-state", paper, "--page", "9"}).first == 1);  // it has one page
+    CHECK(cli.run({"view-state", paper, "--zoom", "page-fit"}).first == 0);
+    auto state = cli.json({"view-state", paper, "--json"});
+    CHECK(state["zoom"] == "page-fit");
+    CHECK(state["page"] == 1);
+}
+
+TEST_CASE("cli: the app's preferences, what the library takes on disk, its syncs and conflicts")
+{
+    Cli cli;
+    constexpr auto npos = std::string::npos;
+    auto mine = cli.lib.defaultLibrary();
+    auto prefs = cli.json({"config", "--json"});
+    CHECK(std::any_of(prefs.begin(), prefs.end(), [](const Json& p) { return p["name"] == "note-zoom" && p["value"] == 100; }));
+    CHECK(cli.run({"config", "note-zoom", "125"}).first == 0);
+    CHECK(Config(cli.dir.path / "config.json").get("/notes/zoom", 0) == 125);  // saved
+    CHECK(cli.run({"config", "note-zoom", "big"}).first == 1);
+    CHECK(cli.run({"config", "appearance", "purple"}).first == 1);
+    CHECK(cli.run({"config", "appearance", "dark"}).first == 0);
+    CHECK(cli.run({"config", "palette", "red,green,#123456"}).first == 0);
+    CHECK(cli.config.get("/reader/palette", Json()) == Json::array({"#ff6666", "#5fb236", "#123456"}));
+    CHECK(cli.run({"config", "citation-style", "nope"}).first == 1);
+    CHECK(trim(cli.run({"config", "sync-auto"}).second) == "true");
+    CHECK(cli.run({"config", "bogus"}).first == 1);
+
+    CHECK(cli.run({"add-folder", pathString(cli.dir.path / "usb"), "--name", "USB stick"}).first == 0);
+    CHECK(cli.config.targets().back().name == "USB stick");
+
+    auto usage = cli.json({"storage", "--json"});
+    REQUIRE(usage["libraries"].size() == 1);
+    CHECK(usage["libraries"][0]["name"] == "My Library");
+
+    CHECK(cli.json({"sync-history", "--json"}).empty());
+    cli.lib.recordConflict(mine, "item", "ABCD2345", Json{{"title", "here"}}, Json{{"title", "there"}}, "remote");
+    auto conflicts = cli.json({"conflicts", "--json"});
+    REQUIRE(conflicts.size() == 1);
+    CHECK(conflicts[0]["kept"] == "remote");
+    CHECK(cli.run({"conflicts"}).second.find("there") != npos);
+    CHECK(cli.run({"conflicts", "--clear"}).first == 0);
+    CHECK(cli.json({"conflicts", "--json"}).empty());
+}
+
+TEST_CASE("cli: a library the user may only read is left as it is")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    auto group = lib.createLibrary("Group", "group");
+    auto key = jstr(lib.createItem(group, Json{{"itemType", "book"}, {"title", "Read only"}}), "key");
+    auto coll = jstr(lib.createCollection(group, "C"), "key");
+    lib.setLibraryEditable(group, false);
+    for (auto words : std::vector<std::vector<std::string>>{{"set", key, "title=Changed"},
+                                                            {"tag", key, "--add", "x"},
+                                                            {"add-note", key, "a note"},
+                                                            {"creators", key, "Doe, Jo"},
+                                                            {"new-item", "book", "--library", "Group"},
+                                                            {"new-collection", "D", "--library", "Group"},
+                                                            {"rename-collection", coll, "E"},
+                                                            {"file", key, "--collection", coll},
+                                                            {"trash", key},
+                                                            {"delete", key, "--yes"},
+                                                            {"duplicate", key},
+                                                            {"empty-trash", "--library", "Group", "--yes"}}) {
+        auto [code, out] = cli.run(words);
+        INFO(words[0] << ": " << out);
+        CHECK(code == 1);
+        CHECK(out.find("can only be read") != npos);
+    }
+    CHECK(jstr(*lib.item(group, key), "title") == "Read only");
+}
+
+TEST_CASE("cli: what a review found: scope, partial changes, odd input, as the app does")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    constexpr auto npos = std::string::npos;
+    auto mine = lib.defaultLibrary();
+
+    // a new library is a group one, as the app makes it: the next sync keeps it
+    auto [newCode, newOut] = cli.run({"new-library", "Group"});
+    REQUIRE(newCode == 0);
+    auto group = std::stoll(trim(newOut));
+    CHECK(lib.library(group)->type == "group");
+
+    // what is left over is no silent no-op
+    auto a = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "A"}}), "key");
+    auto b = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "B"}}), "key");
+    auto c = jstr(lib.createItem(mine, Json{{"itemType", "book"}, {"title", "C"}}), "key");
+    CHECK(cli.run({"related", a, "--add", b, c}).first == 1);
+    CHECK(lib.relatedKeys(mine, a).empty());
+    CHECK(cli.run({"related", a, "--add", b + "," + c}).first == 0);
+    CHECK(lib.relatedKeys(mine, a).size() == 2);
+    // --add before the authors' names
+    CHECK(cli.run({"creators", a, "--add", "Doe, Jane", "Roe, Rick"}).first == 0);
+    CHECK((*lib.item(mine, a))["creators"].size() == 2);
+    CHECK(cli.run({"merge", a, a}).first == 1);
+
+    // a tag in two libraries is changed in the one said
+    auto g = jstr(lib.createItem(group, Json{{"itemType", "book"}, {"title", "G"}, {"tags", Json::array({Json{{"tag", "exam"}}})}}),
+                  "key");
+    cli.run({"tag", a, "--add", "exam"});
+    auto [tagCode, tagOut] = cli.run({"delete-tag", "exam", "--yes"});
+    CHECK(tagCode == 1);
+    CHECK(tagOut.find("say which with --library") != npos);
+    CHECK(cli.run({"delete-tag", "exam", "--library", "Group", "--yes"}).first == 0);
+    CHECK(lib.itemKeysWithTags(group, {"exam"}).empty());
+    CHECK(lib.itemKeysWithTags(mine, {"exam"}).size() == 1);
+
+    // the trash of the library named; annotations are deleted, not trashed
+    cli.run({"trash", g});
+    cli.run({"trash", c});
+    CHECK(cli.run({"empty-trash", "Group", "--yes"}).first == 0);
+    CHECK(!lib.item(group, g));
+    CHECK(lib.item(mine, c));  // the other library's trash as it was
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, b), "key");
+    auto anno = trim(cli.run({"annotate", pdf, "--quote", "Hello"}).second);
+    CHECK(cli.run({"trash", anno}).first == 1);
+    CHECK(!jbool(*lib.item(mine, anno), "deleted"));
+
+    // a passage over two lines, whole; on a page turned a quarter, the words found
+    auto [twoCode, two] = cli.run({"annotate", pdf, "--quote", "OurNotes second line"});
+    REQUIRE(twoCode == 0);
+    auto both = *lib.item(mine, trim(two));
+    CHECK(jstr(both, "annotationText") == "OurNotes second line");
+    CHECK(both["annotationPosition"]["rects"].size() == 2);
+    auto turnedPath = cli.dir.path / "turned.pdf";
+    writeSamplePdf(turnedPath, 90);
+    auto turned = jstr(lib.importAttachment(mine, turnedPath, b), "key");
+    auto [turnedCode, turnedOut] = cli.run({"annotate", turned, "--quote", "World from"});
+    REQUIRE(turnedCode == 0);
+    CHECK(jstr(*lib.item(mine, trim(turnedOut)), "annotationText") == "World from");
+
+    // no place that is not a number, or off the page
+    CHECK(cli.run({"annotate", pdf, "--type", "image", "--rect", "nan,100,300,200"}).first == 1);
+    CHECK(cli.run({"annotate", pdf, "--type", "note", "--at", "nan,nan"}).first == 1);
+    CHECK(cli.run({"annotate", pdf, "--type", "ink", "--ink", "nan,nan 10,10"}).first == 1);
+    CHECK(cli.run({"view-state", pdf, "--zoom", "nan"}).first == 1);
+    CHECK(cli.run({"annotate", pdf, "--type", "text", "--at", "700,100", "--comment", "x"}).first == 1);
+    CHECK(cli.run({"annotate", pdf, "--type", "text", "--at", "600,100", "--comment", "x"}).first == 1);  // no room
+    // moved: sorted as the app sorts one it moved
+    auto area = trim(cli.run({"annotate", pdf, "--type", "image", "--rect", "72,100,300,200"}).second);
+    CHECK(cli.run({"annotation", area, "--rect", "72,300,300,400"}).first == 0);
+    CHECK(jstr(*lib.item(mine, area), "annotationSortIndex") == pdf::sortIndex(0, 0, 300));
+
+    // copied: not an annotation alone, not from the trash, not within its own library
+    auto other = lib.createLibrary("Other");
+    CHECK(cli.run({"copy", anno, "--to-library", "Other"}).first == 1);
+    CHECK(cli.run({"copy", c, "--to-library", "Other"}).first == 1);  // in the trash
+    CHECK(cli.run({"copy", b, "--to-library", "My Library"}).first == 1);
+    CHECK(lib.libraryContents(other).empty());
+
+    // the trash listed by what matches in it, a note on its own too
+    auto note = jstr(lib.createNote(mine, "<p>zebra stripes</p>", b), "key");
+    cli.run({"trash", note});
+    auto found = cli.json({"items", "--trash", "--search", "zebra", "--json"});
+    REQUIRE(found.size() == 1);
+    CHECK(found[0]["key"] == note);
+
+    // several items: none changed when one of them may not be
+    auto locked = lib.createLibrary("Locked", "group");
+    auto l = jstr(lib.createItem(locked, Json{{"itemType", "book"}, {"title", "L"}}), "key");
+    lib.setLibraryEditable(locked, false);
+    CHECK(cli.run({"trash", b, l}).first == 1);
+    CHECK(!jbool(*lib.item(mine, b), "deleted"));
+    CHECK(cli.run({"tag", b, l, "--add", "x"}).first == 1);
+    CHECK(lib.itemKeysWithTags(mine, {"x"}).empty());
+
+    // a linked file that is not where it was is not "not downloaded"
+    auto gone = cli.dir.path / "gone.pdf";
+    writeSamplePdf(gone);
+    auto linked = trim(cli.run({"attach", b, pathString(gone), "--link"}).second);
+    fs::remove(gone);
+    auto [linkCode, linkOut] = cli.run({"export-pdf", linked, "-o", pathString(cli.dir.path / "x.pdf")});
+    CHECK(linkCode == 1);
+    CHECK(linkOut.find("is not at") != npos);
+
+    // exported without -o: not over a file that is there
+    auto cwd = fs::current_path();
+    fs::current_path(cli.dir.path);
+    CHECK(cli.run({"export-pdf", pdf}).first == 0);
+    CHECK(cli.run({"export-pdf", pdf}).first == 1);
+    CHECK(cli.run({"export-pdf", pdf, "--force"}).first == 0);
+    fs::current_path(cwd);
 }
