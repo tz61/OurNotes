@@ -267,6 +267,9 @@ QRectF FittedImageHandler::pictureRect(QTextDocument* doc, int pos)
     if (!layout)
         return {};
     int at = pos - block.position();
+    // (while something is composed in its line, it is laid out before what follows it)
+    if (!layout->preeditAreaText().isEmpty() && at >= layout->preeditAreaPosition())
+        at += layout->preeditAreaText().size();
     QTextLine line = layout->lineForTextPosition(at);
     if (!line.isValid())
         return {};

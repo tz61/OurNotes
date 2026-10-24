@@ -661,7 +661,8 @@ void serializeBlocks(QTextFrame::iterator it, QString& out, Cell cell)
         }
         closeLists(0);
         openList = nullptr;
-        if (auto formula = displayFormulaHtml(block)) {
+        // (a caption that is only a formula: a caption still, the formula in its line)
+        if (auto formula = displayFormulaHtml(block); formula && !block.blockFormat().hasProperty(kCaptionProperty)) {
             out += *formula;
             continue;
         }

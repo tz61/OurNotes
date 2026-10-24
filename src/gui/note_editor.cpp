@@ -1845,8 +1845,11 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         int at = cursor.position();
         cursor.beginEditBlock();
         cursor.insertFragment(QTextDocumentFragment(&pasted));
-        // the first paragraph went into this one, which kept its own format (a caption stays one)
-        if (emptyLine && !document()->findBlock(at).blockFormat().hasProperty(kCaptionProperty)) {
+        // the first paragraph went into this one, which kept its own format (a caption stays one,
+        // its text a caption's)
+        if (auto block = document()->findBlock(at); block.blockFormat().hasProperty(kCaptionProperty)) {
+            setCaption(block, true);
+        } else if (emptyLine) {
             QTextCursor first(document());
             first.setPosition(at);
             first.setBlockFormat(pasted.begin().blockFormat());
@@ -1875,7 +1878,9 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         for (auto& fragment : fragments) {
             auto f = fragment.charFormat();
             useNoteFont(f);
-            if (!isPicture(f))
+            if (f.isAnchor())
+                f.clearForeground();  // (a link's own colour: neither saved nor shown, in either palette)
+            else if (!isPicture(f))
                 hideUnreadable(f, base);
             f.clearProperty(QTextFormat::FontPointSize);
             f.clearProperty(QTextFormat::FontPixelSize);
@@ -1887,11 +1892,36 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         // a copy beginning with pictures, or ending with a caption (a figure): on lines of its
         // own, the line it goes into split there (its text not in the figure's lines), its
         // first line as it was
-        if (tmp.blockCount() > 1 && (!pictureRow(tmp.begin()).empty() || tmp.lastBlock().blockFormat().hasProperty(kCaptionProperty))) {
+        auto figure = [&] {
+            return tmp.blockCount() > 1 &&
+                   (!pictureRow(tmp.begin()).empty() || tmp.lastBlock().blockFormat().hasProperty(kCaptionProperty));
+        };
+        if (figure()) {  // (an empty line at its start or end, as a selection takes it: not part of it)
+            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.lastBlock().length() <= 1;) {
+                edge.setPosition(tmp.lastBlock().position() - 1);
+                edge.setPosition(tmp.lastBlock().position(), QTextCursor::KeepAnchor);
+                edge.removeSelectedText();
+            }
+            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.begin().length() <= 1;) {
+                auto next = tmp.begin().next().blockFormat();
+                edge.setPosition(0);
+                edge.deleteChar();
+                edge.setBlockFormat(next);
+            }
+        }
+        if (figure() && QTextCursor(textCursor()).currentTable()) {  // (a cell: one line saved, no captions)
+            for (auto block = tmp.begin(); block.isValid(); block = block.next())
+                if (block.blockFormat().hasProperty(kCaptionProperty))
+                    setCaption(block, false);
+        } else if (figure()) {
             caption.caption = -1;  // (its caption one)
             auto c = textCursor();
-            if (c.hasSelection())
+            if (c.hasSelection()) {
                 c.removeSelectedText();
+                setTextCursor(c);
+                caretForText();  // (beside pictures: under them and their caption, or above)
+                c = textCursor();
+            }
             if (c.block().blockFormat().hasProperty(kCaptionProperty))  // (in a caption: under it)
                 c.movePosition(QTextCursor::EndOfBlock);
             if (c.block().length() > 1) {

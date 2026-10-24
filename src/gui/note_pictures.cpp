@@ -400,18 +400,29 @@ int NoteTextEdit::pictureAt(const QPoint& viewportPos, int* edge) const
 {
     if (edge)
         *edge = 0;
-    int p = cursorForPosition(viewportPos).position();
-    for (int at : {p, p - 1}) {
-        if (!isPictureAt(document(), at))
+    // the pictures of the line there drawn under the point (and of the line being composed in:
+    // while something is composed, Qt's position for a point in it is not the note's)
+    auto there = cursorForPosition(viewportPos).block();
+    auto composing = textCursor().block();
+    bool preedit = composing.layout() && !composing.layout()->preeditAreaText().isEmpty();
+    for (auto block : {there, composing}) {
+        if (block != there && (!preedit || block == there))
             continue;
-        auto r = pictureRect(at);
-        if (!r.contains(viewportPos))
-            continue;
-        if (edge) {
-            qreal zone = std::min<qreal>(kEdge, r.width() / 4);
-            *edge = viewportPos.x() < r.left() + zone ? -1 : viewportPos.x() > r.right() - zone ? 1 : 0;
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto frag = it.fragment();
+            if (!isPicture(frag.charFormat()))
+                continue;
+            for (int at = frag.position(); at < frag.position() + frag.length(); ++at) {
+                auto r = pictureRect(at);
+                if (!r.contains(viewportPos))
+                    continue;
+                if (edge) {
+                    qreal zone = std::min<qreal>(kEdge, r.width() / 4);
+                    *edge = viewportPos.x() < r.left() + zone ? -1 : viewportPos.x() > r.right() - zone ? 1 : 0;
+                }
+                return at;
+            }
         }
-        return at;
     }
     return -1;
 }
@@ -1043,6 +1054,8 @@ bool NoteTextEdit::caretForText()
 
 void NoteTextEdit::inputMethodEvent(QInputMethodEvent* e)
 {
+    if (resizing_.corner >= 0)
+        return;  // (held while a corner is dragged, as keys are: resizeKey)
     bool composing = !e->preeditString().isEmpty(), writing = !e->commitString().isEmpty();
     // what is composed no longer shown where it was moved to (the note opened again, an undo):
     // that composition over

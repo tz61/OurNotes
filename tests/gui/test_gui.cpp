@@ -5238,6 +5238,30 @@ TEST_CASE("notes: pasted from elsewhere in dark mode, a link's own colour is not
     CHECK(block.blockFormat().bottomMargin() == 0);
 }
 
+TEST_CASE("notes: LaTeX pasted into an empty caption looks as it is saved: a caption's text, a formula alone too")
+{
+    app();
+    PictureNote note;
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    note.click("pictureCaption");
+    auto* latex = new QMimeData;
+    latex->setData("text/plain", "Figure 1: $\\alpha$-helix");
+    QApplication::clipboard()->setMimeData(latex);
+    edit.paste();
+    auto caption = note.doc()->lastBlock();
+    REQUIRE(caption.blockFormat().hasProperty(kCaptionProperty));
+    CHECK(caption.begin().fragment().charFormat().foreground().color() == kCaptionGray);
+    edit.undo();
+    auto* display = new QMimeData;
+    display->setData("text/plain", "$$E=mc^2$$");
+    QApplication::clipboard()->setMimeData(display);
+    note.caretAt(note.doc()->lastBlock().position());
+    edit.paste();
+    CHECK(documentToNoteHtml(note.doc()).contains("<p class=\"caption\">"));
+}
+
 TEST_CASE("notes: picture files pasted or dropped together are one row")
 {
     app();
