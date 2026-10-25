@@ -17,6 +17,7 @@
 #include <QToolButton>
 #include <QToolTip>
 #include <QUrl>
+#include <QVariantAnimation>
 
 #include <cmath>
 
@@ -120,11 +121,13 @@ public:
         }
         underline_ = addButton(h, icon("tool-underline"), QObject::tr("Underline"));
         copy_ = addButton(h, icon("copy"), QObject::tr("Copy"));
+        reference_ = addButton(h, icon("type-link"), QObject::tr("Copy Reference (pasted into a note: the text, and a link here)"));
         note_ = addButton(h, icon("new-note"), QObject::tr("Add to Note"));
         Q_UNUSED(view);
     }
     QToolButton* underline_;
     QToolButton* copy_;
+    QToolButton* reference_;
     QToolButton* note_;
     std::function<void(const QString&)> highlight;
 
@@ -188,11 +191,24 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
         copySelection();
         hidePopup();
     });
-    connect(popup_->note_, &QToolButton::clicked, this, [this] {
-        auto text = selectedText();
-        if (!text.isEmpty())
-            emit addToNote("<blockquote><p>“" + text.toHtmlEscaped() + "”</p></blockquote>");
+    connect(popup_->reference_, &QToolButton::clicked, this, [this] {
+        if (hasTextSelection())
+            emit referenceCopied(selectedQuote());
         hidePopup();
+    });
+    connect(popup_->note_, &QToolButton::clicked, this, [this] {
+        if (hasTextSelection())
+            emit quoteToNote(selectedQuote());
+        hidePopup();
+    });
+    placeFade_ = new QVariantAnimation(this);
+    placeFade_->setDuration(2400);
+    placeFade_->setStartValue(1.0);
+    placeFade_->setKeyValueAt(0.5, 1.0);  // (shown a while, then fading)
+    placeFade_->setEndValue(0.0);
+    connect(placeFade_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
+        placeShown_ = v.toDouble();
+        viewport()->update();
     });
     lastInkTime_.invalidate();
     releaseTimer_.setSingleShot(true);
@@ -693,6 +709,11 @@ void PdfView::paintEvent(QPaintEvent*)
         }
         paintAnnotations(p, i);
         paintTextSelection(p, i);
+        if (placePage_ == i && placeShown_ > 0) {  // a place a link named (showPlace)
+            QColor c = palette().color(QPalette::Highlight);
+            c.setAlphaF(0.4 * placeShown_);
+            p.fillRect(toView(i, place_.adjusted(-2, -2, 2, 2)), c);
+        }
         // find hits
         for (int h = 0; h < (int)hits_.size(); ++h) {
             if (hits_[h].first != i)
@@ -1366,6 +1387,31 @@ QString PdfView::selectedText() const
     return qs(doc_->text(selPage_).textOf(selFrom_, selTo_));
 }
 
+PdfQuote PdfView::selectedQuote() const
+{
+    PdfQuote quote;
+    if (!hasTextSelection())
+        return quote;
+    quote.text = selectedText();
+    quote.page = selPage_;
+    for (auto& r : doc_->text(selPage_).rectsOf(selFrom_, selTo_))
+        quote.place = quote.place.isNull() ? toQ(r) : quote.place.united(toQ(r));
+    return quote;
+}
+
+void PdfView::showPlace(int page, const QRectF& place)
+{
+    if (page < 0 || page >= pageCount())
+        return;
+    goToPage(page, place.isNull() ? -1 : place.top());
+    if (place.isNull())
+        return;
+    placePage_ = page;
+    place_ = place;
+    placeFade_->stop();
+    placeFade_->start();
+}
+
 void PdfView::clearTextSelection()
 {
     selPage_ = selFrom_ = selTo_ = selAnchor_ = -1;
@@ -1927,6 +1973,7 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
             if (a->type == "text")
                 menu.addAction(tr("Edit Text"), this, [this, key] { editTextAnnotation(key); })->setEnabled(can);
             menu.addAction(icon("copy"), tr("Copy"), this, &PdfView::copySelection);
+            menu.addAction(icon("type-link"), tr("Copy Reference"), this, [this, key] { emit annotationReferenceCopied(key); });
             menu.addSeparator();
             menu.addAction(icon("trash"), tr("Delete"), this, &PdfView::deleteSelectedAnnotation)->setEnabled(can);
             menu.exec(e->globalPos());
@@ -1935,14 +1982,13 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
     }
     if (hasTextSelection()) {
         menu.addAction(icon("copy"), tr("Copy"), this, &PdfView::copySelection);
+        menu.addAction(icon("type-link"), tr("Copy Reference"), this, [this] { emit referenceCopied(selectedQuote()); });
         menu.addAction(icon("tool-highlight"), tr("Highlight"), this, [this] { createFromSelection("highlight", color_); })
             ->setEnabled(editable_);
         menu.addAction(icon("tool-underline"), tr("Underline"), this, [this] { createFromSelection("underline", color_); })
             ->setEnabled(editable_);
         if (notesAvailable_)
-            menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] {
-                emit addToNote("<blockquote><p>“" + selectedText().toHtmlEscaped() + "”</p></blockquote>");
-            });
+            menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit quoteToNote(selectedQuote()); });
         menu.addSeparator();
     }
     menu.addAction(icon("zoom-in"), tr("Zoom In"), this, &PdfView::zoomIn);

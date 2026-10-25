@@ -570,15 +570,32 @@ TEST_CASE("cli: annotations made on a PDF and changed; a note of them; the PDF w
     auto made = *lib.item(mine, noteKey);
     CHECK(jstr(made, "parentItem") == paper);
     INFO(jstr(made, "note"));
-    CHECK(jstr(made, "note").find("“World from” (Smith, 2020, p. 1) hello there") != npos);
-    CHECK(jstr(made, "note").find("Summary (Smith, 2020, p. 1)") != npos);
+    // (each quote's reference a link to its annotation, as the app makes them)
+    auto uid = lib.library(mine)->uid;
+    auto linkTo = [&](const std::string& annotation) {
+        return "<a href=\"ournotes://item/" + uid + "/" + pdf + "?page=1&amp;annotation=" + annotation + "\">";
+    };
+    CHECK(jstr(made, "note").find("“World from” " + linkTo(hlKey) + "(Smith, 2020, p. 1)</a> hello there") != npos);
+    CHECK(jstr(made, "note").find("Summary <a href=") != npos);
     CHECK(cli.run({"note-from-annotations", pdf, "--to", noteKey}).first == 0);
     auto html = jstr(*lib.item(mine, noteKey), "note");
     CHECK(html.find("World from") != html.rfind("World from"));  // twice
     auto one = trim(cli.run({"note-from-annotations", hlKey}).second);  // as the reader's Add to Note
-    CHECK(jstr(*lib.item(mine, one), "note") ==
-          "<div data-schema-version=\"9\"><p>\u201cWorld from\u201d (Smith, 2020, p. 1)</p><p>hello there</p></div>");
+    CHECK(jstr(*lib.item(mine, one), "note") == "<div data-schema-version=\"9\"><p>\u201cWorld from\u201d " + linkTo(hlKey) +
+                                                    "(Smith, 2020, p. 1)</a></p><p>hello there</p></div>");
     CHECK(jstr(*lib.item(mine, one), "parentItem") == paper);
+
+    // links to them, for notes: the PDF at a page (the item's), an annotation, a note
+    CHECK(trim(cli.run({"link", paper}).second) == "ournotes://item/" + uid + "/" + paper);
+    CHECK(trim(cli.run({"link", paper, "--page", "1", "--markdown"}).second) ==
+          "[(Smith, 2020, p. 1)](ournotes://item/" + uid + "/" + pdf + "?page=1)");
+    CHECK(trim(cli.run({"link", hlKey, "--markdown", "--quote", "World from"}).second) ==
+          "\u201cWorld from\u201d [(Smith, 2020, p. 1)](ournotes://item/" + uid + "/" + pdf + "?page=1&annotation=" + hlKey + ")");
+    CHECK(trim(cli.run({"link", one, "--html"}).second) ==
+          "<a href=\"ournotes://item/" + uid + "/" + one + "\">\u201cWorld from\u201d (Smith, 2020, p. 1)</a>");
+    CHECK(cli.json({"link", pdf, "--page", "1", "--json"})["text"] == "(Smith, 2020, p. 1)");
+    CHECK(cli.run({"link", paper, "--page", "9"}).first == 1);  // it has one page
+    CHECK(cli.run({"link", one, "--page", "1"}).first == 1);    // a note has none
 
     // a copy of the PDF with them in it
     auto exported = cli.dir.path / "annotated.pdf";

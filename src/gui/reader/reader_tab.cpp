@@ -4,6 +4,8 @@
 #include <QAction>
 #include <QColorDialog>
 #include <QApplication>
+#include <QClipboard>
+#include <QMimeData>
 #include <QElapsedTimer>
 #include <QTextEdit>
 #include <QPlainTextEdit>
@@ -31,6 +33,7 @@
 
 #include <cmath>
 #include <functional>
+#include <utility>
 
 #include "core/schema.h"
 #include "gui/app_context.h"
@@ -89,7 +92,15 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     });
     connect(view_, &PdfView::toolChangeRequested, this, &ReaderTab::setTool);
     connect(view_, &PdfView::libraryRequested, this, &ReaderTab::libraryRequested);
-    connect(view_, &PdfView::addToNote, this, &ReaderTab::addToNote);
+    connect(view_, &PdfView::quoteToNote, this, [this](const PdfQuote& q) {
+        addToNote("<blockquote><p>" + qs(referenceHtml(reference(q.page, q.place), ss(q.text))) + "</p></blockquote>");
+    });
+    connect(view_, &PdfView::referenceCopied, this,
+            [this](const PdfQuote& q) { copyReference(reference(q.page, q.place), q.text); });
+    connect(view_, &PdfView::annotationReferenceCopied, this, [this](const QString& key) {
+        if (auto a = AppContext::get().library().item(libraryId_, ss(key)))
+            copyReference(annotationReference(*a), jqs(*a, "annotationText"));
+    });
     connect(view_, &PdfView::pageChanged, this, [this](int page) {
         updatePageLabel(page);
         positionTimer_.start();
@@ -123,15 +134,18 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     connect(annotations_, &AnnotationSidebar::changed, this, &ReaderTab::saveAnnotation);
     connect(annotations_, &AnnotationSidebar::deleted, this, &ReaderTab::deleteAnnotation);
     connect(annotations_, &AnnotationSidebar::addToNote, this, [this](const Json& a) {
-        auto text = jqs(a, "annotationText");
+        auto text = jstr(a, "annotationText");
         auto comment = jqs(a, "annotationComment");
+        auto ref = annotationReference(a);
         QString html;
-        if (!text.isEmpty())
-            html += "<p>“" + text.toHtmlEscaped() + "” " + citationFor(a).toHtmlEscaped() + "</p>";
+        if (!text.empty())
+            html += "<p>" + qs(referenceHtml(ref, text)) + "</p>";
         if (!comment.isEmpty())
-            html += "<p>" + comment.toHtmlEscaped() + "</p>";
+            html += "<p>" + comment.toHtmlEscaped() + (text.empty() ? " " + qs(referenceHtml(ref)) : QString()) + "</p>";
         addToNote(html);
     });
+    connect(annotations_, &AnnotationSidebar::referenceCopied, this,
+            [this](const Json& a) { copyReference(annotationReference(a), jqs(a, "annotationText")); });
 
     reloadTimer_.setSingleShot(true);
     reloadTimer_.setInterval(30);
@@ -195,6 +209,8 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
         connect(view_, &PdfView::viewChanged, &stateTimer_, qOverload<>(&QTimer::start));
         connect(view_, &PdfView::zoomChanged, &stateTimer_, qOverload<>(&QTimer::start));
         restored_ = true;
+        for (auto& f : std::exchange(whenRestored_, {}))
+            f();
     });
     QTimer::singleShot(400, this, &ReaderTab::importEmbeddedAnnotations);
 }
@@ -660,12 +676,30 @@ void ReaderTab::updatePageLabel(int page)
     pageCount_->setText(QString(" / %1 ").arg(view_->pageCount()));
 }
 
-void ReaderTab::goToPage(int page) { view_->goToPage(page); }
+void ReaderTab::goToPage(int page)
+{
+    if (!restored_)
+        whenRestored_.push_back([this, page] { goToPage(page); });
+    else
+        view_->goToPage(page);
+}
 
 void ReaderTab::selectAnnotation(const QString& key)
 {
+    if (!restored_) {
+        whenRestored_.push_back([this, key] { selectAnnotation(key); });
+        return;
+    }
     view_->selectAnnotation(key, true);
     annotations_->setSelected(key, true);
+}
+
+void ReaderTab::showPlace(int page, const QRectF& place)
+{
+    if (!restored_)
+        whenRestored_.push_back([this, page, place] { showPlace(page, place); });
+    else
+        view_->showPlace(page, place);
 }
 
 void ReaderTab::focusFind()
@@ -880,23 +914,30 @@ void ReaderTab::deleteAnnotation(const QString& key)
     pushAnnotationEdit(*d, std::nullopt, tr("Delete Annotation"));
 }
 
-QString ReaderTab::citationFor(const Json& annotation) const
+Reference ReaderTab::reference(int page, const QRectF& place) const
 {
-    auto& lib = AppContext::get().library();
-    QString author, year;
-    if (auto p = lib.item(libraryId_, ss(parentKey_))) {
-        author = qs(creatorSummary(p->value("creators", Json::array()), schema::primaryCreatorType(jstr(*p, "itemType"))));
-        year = qs(yearOf(jstr(*p, "date")));
-    }
-    QStringList parts;
-    if (!author.isEmpty())
-        parts << author;
-    if (!year.isEmpty())
-        parts << year;
-    auto page = jqs(annotation, "annotationPageLabel");
-    if (!page.isEmpty())
-        parts << "p. " + page;
-    return parts.isEmpty() ? QString() : "(" + parts.join(", ") + ")";
+    std::optional<std::array<double, 4>> rect;
+    if (!place.isNull())
+        rect = std::array<double, 4>{place.left(), place.top(), place.right(), place.bottom()};
+    auto label = view_->document() && page >= 0 ? view_->document()->pageLabel(page) : std::string();
+    return referenceTo(AppContext::get().library(), libraryId_, ss(key_), page + 1, label, rect);
+}
+
+Reference ReaderTab::annotationReference(const Json& annotation) const
+{
+    if (AppContext::get().library().item(libraryId_, jstr(annotation, "key")))
+        return referenceTo(AppContext::get().library(), libraryId_, jstr(annotation, "key"));
+    auto position = annotation.value("annotationPosition", Json::object());
+    int page = position.is_object() ? position.value("pageIndex", -1) : -1;
+    return reference(page);
+}
+
+void ReaderTab::copyReference(const Reference& ref, const QString& quote)
+{
+    auto* mime = new QMimeData;
+    mime->setHtml(qs(referenceHtml(ref, ss(quote))));
+    mime->setText(qs(referenceText(ref, ss(quote))));
+    QApplication::clipboard()->setMimeData(mime);
 }
 
 void ReaderTab::addToNote(const QString& html)
@@ -928,16 +969,16 @@ void ReaderTab::addNoteFromAnnotations()
                    ")</h1>";
     for (auto& a : anns) {
         auto type = jqs(a, "annotationType");
-        auto text = jqs(a, "annotationText");
+        auto text = jstr(a, "annotationText");
         auto comment = jqs(a, "annotationComment");
-        auto cite = citationFor(a).toHtmlEscaped();
+        auto ref = annotationReference(a);
         if (type == "highlight" || type == "underline") {
-            html += "<p>“" + text.toHtmlEscaped() + "” " + cite;
+            html += "<p>" + qs(referenceHtml(ref, text));
             if (!comment.isEmpty())
                 html += " " + comment.toHtmlEscaped();
             html += "</p>";
         } else if (!comment.isEmpty()) {
-            html += "<p>" + comment.toHtmlEscaped() + " " + cite + "</p>";
+            html += "<p>" + comment.toHtmlEscaped() + " " + qs(referenceHtml(ref)) + "</p>";
         }
     }
     auto note = lib.createNote(libraryId_, "<div data-schema-version=\"9\">" + ss(html) + "</div>", ss(parentKey_));

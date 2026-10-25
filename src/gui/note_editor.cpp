@@ -28,6 +28,7 @@
 #include <QTextList>
 #include <QTextTable>
 #include <QToolBar>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -37,6 +38,7 @@
 #include <utility>
 
 #include "core/hash.h"
+#include "core/links.h"
 #include "core/schema.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
@@ -52,6 +54,23 @@
 namespace on::gui {
 
 // --- NoteTextEdit -----------------------------------------------------------------------
+
+namespace {
+
+// What is typed after a link: not more of it, in its colour, underlined.
+QTextCharFormat withoutLink(QTextCharFormat f)
+{
+    if (!f.isAnchor())
+        return f;
+    f.setAnchor(false);
+    for (int p : {int(QTextFormat::AnchorHref), int(QTextFormat::AnchorName), int(QTextFormat::FontUnderline),
+                  int(QTextFormat::TextUnderlineStyle)})
+        f.clearProperty(p);
+    f.clearForeground();
+    return f;
+}
+
+} // namespace
 
 NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
 {
@@ -76,6 +95,19 @@ NoteTextEdit::NoteTextEdit(QWidget* parent) : QTextEdit(parent)
             commitMathEdits(false);
         editingMath_ = runAtCursor().has_value();
         updateMathPreview();
+    });
+    // at the end of a link (a reference pasted, say), what is typed is not more of it
+    connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
+        auto c = textCursor();
+        if (c.hasSelection() || c.atBlockStart() || !c.charFormat().isAnchor())
+            return;
+        if (!c.atBlockEnd()) {
+            QTextCursor next(c);
+            next.movePosition(QTextCursor::NextCharacter);
+            if (next.charFormat().anchorHref() == c.charFormat().anchorHref())
+                return;  // (inside it)
+        }
+        setCurrentCharFormat(withoutLink(c.charFormat()));
     });
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &NoteTextEdit::updateMathPreview);
     setUpPictures();
@@ -1843,6 +1875,15 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     static const QRegularExpression markdownRe(
         R"(^(#{1,6} |\s*[-*+] |\s*\d+[.)] |> |```)|^ {0,3}\|? *:?-+:? *\|[ :|-]*$|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))",
         QRegularExpression::MultilineOption);
+    // a link to something in a library alone (as ournotes-cli link prints it): its words, linked
+    if (auto text = source->text().trimmed();
+        !fromNote && !source->hasHtml() && describeLink && text.startsWith(kItemLinkPrefix.data(), Qt::CaseInsensitive) &&
+        !text.contains(QRegularExpression("\\s"))) {
+        if (auto words = describeLink(text).first; !words.isEmpty()) {
+            insertLink(words, text);
+            return;
+        }
+    }
     // Markdown, or text with LaTeX in it: formulas, formatting and lines as such
     bool markdown = markdown_ && markdownRe.match(source->text()).hasMatch();
     if (!fromNote && !source->hasHtml() && source->hasText() && (markdown || latexInText().match(source->text()).hasMatch())) {
@@ -1980,6 +2021,13 @@ void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
         QDesktopServices::openUrl(QUrl(href));
         return;
     }
+    // a link to something in a library: a click opens it (not one ending a selection)
+    if (href.startsWith(kItemLinkPrefix.data(), Qt::CaseInsensitive) && e->button() == Qt::LeftButton &&
+        !(e->modifiers() & Qt::ShiftModifier) && (e->position().toPoint() - pressPos_).manhattanLength() < 4) {
+        QTextEdit::mouseReleaseEvent(e);
+        QTimer::singleShot(0, this, [href] { QDesktopServices::openUrl(QUrl(href)); });  // (once this click is done)
+        return;
+    }
     QTextEdit::mouseReleaseEvent(e);
     // a click (not a drag) on a formula opens it for editing right here
     if (e->button() == Qt::LeftButton && (e->position().toPoint() - pressPos_).manhattanLength() < 4) {
@@ -1991,15 +2039,37 @@ void NoteTextEdit::mouseReleaseEvent(QMouseEvent* e)
     }
 }
 
+void NoteTextEdit::insertLink(const QString& words, const QString& url)
+{
+    auto c = textCursor();
+    auto plain = withoutLink(textFormatOf(c.charFormat()));  // (after a picture or a formula: text)
+    auto linked = plain;
+    linked.setAnchor(true);
+    linked.setAnchorHref(url);
+    linked.setFontUnderline(true);
+    linked.setForeground(palette().link());
+    c.insertText(words, linked);
+    setTextCursor(c);
+    setCurrentCharFormat(plain);  // (what is typed next is not linked)
+}
+
 void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
 {
     if (pictureMouseMove(e))
         return;
-    bool overLink = !anchorAt(e->pos()).isEmpty() && (e->modifiers() & Qt::ControlModifier);
+    auto href = anchorAt(e->pos());
+    bool reference = href.startsWith(kItemLinkPrefix.data(), Qt::CaseInsensitive);
+    bool overLink = !href.isEmpty() && (e->modifiers() & Qt::ControlModifier || reference);
     bool overMath = !isReadOnly() && !mathAt(e->pos()).isNull();
     viewport()->setCursor(overLink || overMath ? Qt::PointingHandCursor : Qt::IBeamCursor);
-    if (overMath)
+    if (overMath) {
         viewport()->setToolTip(tr("Click to edit the formula"));
+    } else if (reference) {
+        auto opens = describeLink ? describeLink(href).second : QString();
+        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : tr("Click to open %1").arg(opens));
+    } else {
+        viewport()->setToolTip({});
+    }
     QTextEdit::mouseMoveEvent(e);
 }
 
@@ -2043,6 +2113,31 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
             auto path = lib.attachmentFile(libraryId_, *att);
             if (!path.empty())
                 QDesktopServices::openUrl(QUrl::fromLocalFile(qpath(path)));
+        }
+    };
+    edit_->describeLink = [](const QString& url) -> std::pair<QString, QString> {
+        auto& lib = AppContext::get().library();
+        auto link = parseItemLink(ss(url));
+        auto target = link ? linkTarget(lib, *link) : std::nullopt;
+        if (!target)
+            return {};
+        try {
+            int64_t id = target->libraryId;
+            bool annotation = !link->annotation.empty() && lib.item(id, link->annotation);
+            auto ref = referenceTo(lib, id, annotation ? link->annotation : link->key, link->page, {}, link->rect);
+            // what it opens: a note by its title, a PDF (an annotation in it) by its item's
+            auto titled = target->item;
+            for (int up = 0; up < 2 && jstr(titled, "itemType") != "note" && !jstr(titled, "parentItem").empty(); ++up)
+                if (auto parent = lib.item(id, jstr(titled, "parentItem")))
+                    titled = *parent;
+            auto title = jstr(titled, "itemType") == "note" ? qs(noteTitle(jstr(titled, "note"))) : jqs(titled, "title");
+            if (link->page > 0)
+                title = tr("“%1”, page %2").arg(title).arg(link->page);
+            else
+                title = "“" + title + "”";
+            return {qs(ref.text), title};
+        } catch (const std::exception&) {
+            return {};
         }
     };
     edit_->setMarkdownShortcuts(true);
@@ -2564,10 +2659,14 @@ void NoteEditor::insertLink()
     auto cursor = edit_->textCursor();
     bool ok = false;
     auto current = cursor.charFormat().anchorHref();
-    auto url = QInputDialog::getText(this, tr("Insert Link"), tr("URL:"), QLineEdit::Normal,
-                                     current.isEmpty() ? "https://" : current, &ok);
+    auto url = QInputDialog::getText(this, tr("Insert Link"), tr("URL (a web address, or a link copied in OurNotes):"),
+                                     QLineEdit::Normal, current.isEmpty() ? "https://" : current, &ok);
     if (!ok)
         return;
+    if (auto words = edit_->describeLink(url.trimmed()).first; !words.isEmpty() && !cursor.hasSelection()) {
+        edit_->insertLink(words, url.trimmed());  // (one to an item: its words, as when pasted)
+        return;
+    }
     QTextCharFormat f;
     if (url.trimmed().isEmpty() || url == "https://") {
         f.setAnchor(false);

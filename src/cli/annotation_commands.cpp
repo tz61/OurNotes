@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include "cli/commands.h"
+#include "core/links.h"
 #include "core/schema.h"
 #include "pdf/document.h"
 
@@ -349,50 +350,36 @@ std::string today()
 }
 
 // "(Author, Year, p. N)" for an annotation of the item `parent`'s PDF, as the reader cites
-std::string citation(Library& lib, int64_t id, const std::string& parent, const Json& a)
+// As the reader's Add to Note: the annotation's text in quotes and where it is from (a link to
+// it), then its comment.
+std::string annotationHtml(Library& lib, int64_t id, const Json& a)
 {
-    std::vector<std::string> parts;
-    if (auto p = lib.item(id, parent)) {
-        parts.push_back(creatorSummary(p->value("creators", Json::array()), schema::primaryCreatorType(jstr(*p, "itemType"))));
-        parts.push_back(yearOf(jstr(*p, "date")));
-    }
-    if (!jstr(a, "annotationPageLabel").empty())
-        parts.push_back("p. " + jstr(a, "annotationPageLabel"));
-    std::string out;
-    for (auto& s : parts)
-        if (!s.empty())
-            out += (out.empty() ? "(" : ", ") + s;
-    return out.empty() ? out : out + ")";
-}
-
-// As the reader's Add to Note: the annotation's text in quotes and where it is from, then
-// its comment.
-std::string annotationHtml(Library& lib, int64_t id, const std::string& parent, const Json& a)
-{
+    auto ref = referenceTo(lib, id, jstr(a, "key"));
+    auto text = jstr(a, "annotationText"), comment = jstr(a, "annotationComment");
     std::string html;
-    if (auto text = jstr(a, "annotationText"); !text.empty())
-        html += "<p>\u201c" + htmlEscape(text) + "\u201d " + htmlEscape(citation(lib, id, parent, a)) + "</p>";
-    if (auto comment = jstr(a, "annotationComment"); !comment.empty())
-        html += "<p>" + htmlEscape(comment) + "</p>";
+    if (!text.empty())
+        html += "<p>" + referenceHtml(ref, text) + "</p>";
+    if (!comment.empty())
+        html += "<p>" + htmlEscape(comment) + (text.empty() ? " " + referenceHtml(ref) : std::string()) + "</p>";
     return html;
 }
 
 // As the app's "Add Item Note from Annotations": each highlight's text in quotes, then
-// (Author, Year, p. N) and its comment; each other annotation's comment.
-std::string annotationsHtml(Library& lib, int64_t id, const std::string& parent, const std::vector<Json>& pdfs)
+// (Author, Year, p. N) linked to it and its comment; each other annotation's comment.
+std::string annotationsHtml(Library& lib, int64_t id, const std::vector<Json>& pdfs)
 {
-    auto cite = [&](const Json& a) { return citation(lib, id, parent, a); };
     std::string html = "<h1>Annotations<br>(" + today() + ")</h1>";
     for (auto& pdf : pdfs)
         for (auto& a : lib.annotations(id, jstr(pdf, "key"))) {
             auto type = jstr(a, "annotationType"), text = jstr(a, "annotationText"), comment = jstr(a, "annotationComment");
+            auto ref = referenceTo(lib, id, jstr(a, "key"));
             if (type == "highlight" || type == "underline") {
-                html += "<p>“" + htmlEscape(text) + "” " + htmlEscape(cite(a));
+                html += "<p>" + referenceHtml(ref, text);
                 if (!comment.empty())
                     html += " " + htmlEscape(comment);
                 html += "</p>";
             } else if (!comment.empty()) {
-                html += "<p>" + htmlEscape(comment) + " " + htmlEscape(cite(a)) + "</p>";
+                html += "<p>" + htmlEscape(comment) + " " + referenceHtml(ref) + "</p>";
             }
         }
     return html;
@@ -422,7 +409,7 @@ int cmdNoteFromAnnotations(Library& lib, Args& args)
         throw Error(jstr(item, "key") + " is a " + jstr(item, "itemType") + ": give a PDF, the item it is under, or an annotation");
     }
     requireEditable(lib, id);
-    auto html = single.empty() ? annotationsHtml(lib, id, parent, pdfs) : annotationHtml(lib, id, parent, item);
+    auto html = single.empty() ? annotationsHtml(lib, id, pdfs) : annotationHtml(lib, id, item);
     if (auto to = args.option("--to"); !to.empty()) {  // added to that note
         auto [nid, note] = findItem(lib, to, id);
         if (jstr(note, "itemType") != "note")

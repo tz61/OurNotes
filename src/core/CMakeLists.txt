@@ -3,6 +3,7 @@ add_library(ournotes_core STATIC
     fulltext.cpp
     hash.cpp
     library.cpp
+    links.cpp
     schema.cpp
     sqlite.cpp
     util.cpp

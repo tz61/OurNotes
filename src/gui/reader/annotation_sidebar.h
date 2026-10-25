@@ -54,6 +54,7 @@ signals:
     void changed(const on::Json& data);
     void deleted(const QString& key);
     void addToNote(const on::Json& data);
+    void referenceCopied(const on::Json& data);  // "Copy Reference"
 
 protected:
     void mousePressEvent(QMouseEvent* e) override;
@@ -89,6 +90,7 @@ signals:
     void changed(const on::Json& data);
     void deleted(const QString& key);
     void addToNote(const on::Json& data);
+    void referenceCopied(const on::Json& data);  // "Copy Reference"
 
 private:
     void applyFilter();

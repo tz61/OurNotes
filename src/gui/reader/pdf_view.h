@@ -15,6 +15,7 @@
 #include "pdf/document.h"
 
 class QPlainTextEdit;
+class QVariantAnimation;
 
 namespace on::gui {
 
@@ -23,6 +24,13 @@ class RenderWorker;
 class SelectionPopup;
 
 enum class ReaderTool { Select, Highlight, Underline, Note, Text, Area, Ink, Eraser };
+
+// Text selected on a page: where it is (the union of its lines, points from the page's top left).
+struct PdfQuote {
+    QString text;
+    int page = -1;
+    QRectF place;
+};
 
 // Continuous-scroll PDF view with an annotation overlay. Annotations are passed
 // in as Zotero-style item data and edits are reported through signals; the
@@ -38,6 +46,9 @@ public:
     int pageCount() const { return (int)pageSizes_.size(); }
     int currentPage() const;
     void goToPage(int page, double yPoints = -1);
+    // A place on a page (points from its top left), as a link to it names: scrolled to, and
+    // marked for a moment.
+    void showPlace(int page, const QRectF& place);
 
     double zoom() const;  // 1.0 = 100 %
     void setZoom(double zoom, QPointF anchor = {-1, -1});
@@ -74,6 +85,7 @@ public:
 
     bool hasTextSelection() const { return selPage_ >= 0 && selFrom_ >= 0; }
     QString selectedText() const;
+    PdfQuote selectedQuote() const;
     void clearTextSelection();
     void copySelection();
 
@@ -110,7 +122,9 @@ signals:
     void annotationSelected(const QString& key);
     void findStatus(int current, int total);
     void thumbnailRendered(int page, const QImage& image);
-    void addToNote(const QString& html);
+    void quoteToNote(const on::gui::PdfQuote& quote);       // the selection, "Add to Note"
+    void referenceCopied(const on::gui::PdfQuote& quote);   // "Copy Reference": the selection's
+    void annotationReferenceCopied(const QString& key);      // an annotation's
     void toolChangeRequested(on::gui::ReaderTool tool);
     void libraryRequested();  // H: back to the library
     void panelToggleRequested(bool right);  // [ and ]: the panel on the left, on the right
@@ -253,6 +267,11 @@ private:
     int pressedLinkPage_ = -1;
     double pressedLinkY_ = 0;
     std::map<int, std::vector<pdf::Link>> links_;
+
+    int placePage_ = -1;  // a place shown (showPlace), fading
+    QRectF place_;
+    double placeShown_ = 0;
+    QVariantAnimation* placeFade_ = nullptr;
 
     QString findText_;
     bool findCaseSensitive_ = false;

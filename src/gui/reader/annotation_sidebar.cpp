@@ -124,6 +124,7 @@ AnnotationCard::AnnotationCard(const Json& data, bool editable, QWidget* parent)
         auto text = jqs(data_, "annotationText");
         QApplication::clipboard()->setText(text.isEmpty() ? jqs(data_, "annotationComment") : text);
     });
+    menu->addAction(icon("type-link"), tr("Copy Reference"), this, [this] { emit referenceCopied(data_); });
     auto* note = menu->addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit addToNote(data_); });
     menu->addSeparator();
     menu->addAction(icon("trash"), tr("Delete"), this, [this] { emit deleted(jqs(data_, "key")); });
@@ -299,6 +300,7 @@ void AnnotationSidebar::setAnnotations(const std::vector<Json>& annotations, boo
             connect(card, &AnnotationCard::changed, this, &AnnotationSidebar::changed);
             connect(card, &AnnotationCard::deleted, this, &AnnotationSidebar::deleted);
             connect(card, &AnnotationCard::addToNote, this, &AnnotationSidebar::addToNote);
+            connect(card, &AnnotationCard::referenceCopied, this, &AnnotationSidebar::referenceCopied);
             card->update(a, canEdit);
             cards_.insert(key, card);
         } else if (card->data() != a) {

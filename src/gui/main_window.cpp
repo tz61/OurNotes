@@ -35,6 +35,7 @@
 #include <thread>
 #include <utility>
 
+#include "core/links.h"
 #include "core/schema.h"
 #include "core/zotero_importer.h"
 #include "ournotes/version.h"
@@ -235,10 +236,11 @@ MainWindow::MainWindow()
         QTimer::singleShot(3000, sync_, &SyncController::syncNow);
     updateTabActions();
     QTimer::singleShot(0, this, &MainWindow::restoreSession);  // once the window is shown
+    QDesktopServices::setUrlHandler("ournotes", this, "openLink");  // links in notes
     connect(qApp, &QCoreApplication::aboutToQuit, this, &MainWindow::shutDown);
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() { QDesktopServices::unsetUrlHandler("ournotes"); }
 
 void MainWindow::setStatus(const QString& text, int timeoutMs)
 {
@@ -582,7 +584,8 @@ void MainWindow::restoreSession()
         tabs_->setCurrentIndex(selected);
 }
 
-void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page, const QString& annotation)
+void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page, const QString& annotation,
+                                const QRectF& place)
 {
     auto& lib = AppContext::get().library();
     auto att = lib.item(libraryId, ss(key));
@@ -638,11 +641,44 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
         tabs_->setTabToolTip(i, title);
     }
     tabs_->setCurrentWidget(reader);
-    if (page >= 0)
+    if (page >= 0 && !place.isNull())
+        reader->showPlace(page, place);
+    else if (page >= 0)
         reader->goToPage(page);
     if (!annotation.isEmpty())
         reader->selectAnnotation(annotation);
     reader->view()->setFocus();
+}
+
+void MainWindow::openLink(const QUrl& url)
+{
+    auto link = parseItemLink(ss(url.toString(QUrl::FullyEncoded)));
+    if (!link)
+        return;
+    auto target = linkTarget(AppContext::get().library(), *link);
+    if (!target) {
+        QMessageBox::information(this, tr("Open Link"),
+                                 tr("What this link leads to is not in your libraries: it was deleted, or it has "
+                                    "not been synced to this computer yet."));
+        return;
+    }
+    auto libraryId = target->libraryId;
+    auto& item = target->item;
+    auto key = qs(link->key);
+    auto type = jstr(item, "itemType");
+    if (type == "note") {
+        openNote(libraryId, key);
+    } else if (type == "annotation") {
+        openAttachment(libraryId, jqs(item, "parentItem"), -1, key);
+    } else if (type == "attachment") {
+        QRectF place;
+        if (auto& r = link->rect)
+            place = QRectF(QPointF((*r)[0], (*r)[1]), QPointF((*r)[2], (*r)[3])).normalized();
+        openAttachment(libraryId, key, link->page - 1, qs(link->annotation), place);
+    } else {
+        tabs_->setCurrentIndex(0);
+        library_->selectItem(key, libraryId);
+    }
 }
 
 void MainWindow::openNote(int64_t libraryId, const QString& key)

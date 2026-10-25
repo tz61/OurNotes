@@ -21,6 +21,7 @@
 #include "cli/agent_guide.h"
 #include "cli/commands.h"
 #include "core/hash.h"
+#include "core/links.h"
 #include "core/schema.h"
 #include "formats/metadata.h"
 #include "ournotes/version.h"
@@ -251,6 +252,63 @@ int cmdShow(Library& lib, Args& args)
     for (auto& c : lib.children(id, jstr(item, "key")))
         std::cout << "child " << jstr(c, "itemType") << " " << jstr(c, "key") << ": "
                   << (jstr(c, "itemType") == "note" ? noteTitle(jstr(c, "note")) : jstr(c, "title")) << "\n";
+    return 0;
+}
+
+// A link that opens an item, a note, a PDF (at --page) or an annotation in the app, as notes
+// have them (ournotes://item/...); --markdown, --html: with the words a note shows for it, after
+// a --quote.
+int cmdLink(Library& lib, Args& args)
+{
+    requirePositionals(args, 1);
+    auto [id, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
+    int page = 0;
+    std::string label;
+    if (auto v = args.option("--page"); !v.empty()) {
+        if (schema::isRegularType(jstr(item, "itemType"))) {  // its PDF
+            auto best = lib.bestAttachment(id, jstr(item, "key"));
+            if (!best)
+                throw Error("item " + jstr(item, "key") + " has no PDF");
+            item = *best;
+        }
+        if (jstr(item, "itemType") != "attachment")
+            throw Error("--page is for a PDF, or the item it is under");
+        try {
+            page = std::stoi(v);
+        } catch (const std::exception&) {
+        }
+        if (page < 1)
+            throw Error("no page " + v);
+        int pages = 0;  // (the page as the PDF calls it, when its file is here)
+        try {
+            auto file = lib.attachmentFile(id, item);
+            std::error_code ec;
+            if (!file.empty() && fs::exists(file, ec)) {
+                auto doc = pdf::Document::open(file);
+                pages = doc->pageCount();
+                if (page <= pages)
+                    label = doc->pageLabel(page - 1);
+            }
+        } catch (const std::exception&) {
+        }
+        if (pages > 0 && page > pages)
+            throw Error("no page " + v + ": the PDF has " + std::to_string(pages));
+    }
+    auto ref = referenceTo(lib, id, jstr(item, "key"), page, label);
+    auto quote = args.option("--quote");
+    if (args.flag("--json"))
+        std::cout << Json{{"url", ref.url},
+                          {"text", ref.text},
+                          {"markdown", referenceMarkdown(ref, quote)},
+                          {"html", referenceHtml(ref, quote)}}
+                         .dump(2)
+                  << "\n";
+    else if (args.flag("--markdown"))
+        std::cout << referenceMarkdown(ref, quote) << "\n";
+    else if (args.flag("--html"))
+        std::cout << referenceHtml(ref, quote) << "\n";
+    else
+        std::cout << ref.url << "\n";
     return 0;
 }
 
@@ -930,6 +988,7 @@ void registerAgentCommands(CommandMap& commands, Config& config)
     commands["collections"] = cmdCollections;
     commands["items"] = cmdItems;
     commands["show"] = cmdShow;
+    commands["link"] = cmdLink;
     commands["text"] = cmdText;
     commands["annotations"] = cmdAnnotations;
     commands["set"] = cmdSet;

@@ -3,6 +3,9 @@
 #include <QAction>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QApplication>
+#include <QMimeData>
+#include <QClipboard>
 #include <QPainter>
 #include <QDir>
 #include <QDateTime>
@@ -22,6 +25,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "core/links.h"
 #include "core/schema.h"
 #include "gui/app_context.h"
 #include "gui/collection_tree.h"
@@ -1081,6 +1085,23 @@ void LibraryView::showItemMenu(const QPoint& pos)
             }
         });
     }
+    // links that open them (pasted into a note: their references, "(Smith, 2020)", notes' titles)
+    menu.addAction(icon("type-link"), single ? tr("Copy Link") : tr("Copy Links"), this, [&lib, id = s.libraryId, keys] {
+        QStringList html, urls;
+        for (auto& key : keys) {
+            try {
+                auto ref = referenceTo(lib, id, ss(key));
+                html << qs(referenceHtml(ref));
+                urls << qs(ref.url);
+            } catch (const std::exception&) {
+                // (gone meanwhile)
+            }
+        }
+        auto* mime = new QMimeData;
+        mime->setHtml(html.join("; "));
+        mime->setText(urls.join('\n'));
+        QApplication::clipboard()->setMimeData(mime);
+    });
     if (s.kind == ScopeKind::Trash) {
         menu.addSeparator();
         menu.addAction(tr("Restore to Library"), this, &LibraryView::restoreSelected)->setEnabled(editable);

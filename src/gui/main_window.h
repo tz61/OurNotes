@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QRectF>
 #include <QTimer>
 
 #include <vector>
@@ -26,7 +27,10 @@ public:
     MainWindow();
     ~MainWindow() override;
 
-    void openAttachment(int64_t libraryId, const QString& key, int page = -1, const QString& annotation = {});
+    // A PDF in a tab, at a page (from 0), at a place on it (see PdfView::showPlace), or at
+    // an annotation.
+    void openAttachment(int64_t libraryId, const QString& key, int page = -1, const QString& annotation = {},
+                        const QRectF& place = {});
     // A note in a tab of its own (see NoteTab), or its tab if it has one.
     void openNote(int64_t libraryId, const QString& key);
     void openFiles(const QStringList& files);
@@ -36,6 +40,12 @@ public:
     // Moves the tabs and everything below them down by this much: in macOS full screen,
     // for the menu and title bar macOS shows over the window (see followTitleBar()).
     void setTitleBarOverlap(int pixels);
+
+public slots:
+    // A link to something in a library (ournotes://item/..., see core/links.h; any the app
+    // opens comes here): a note opened, a PDF at its page and place or annotation, an item
+    // shown in the library.
+    void openLink(const QUrl& url);
 
 protected:
     bool event(QEvent* e) override;  // the minimum size, see followMinimumSize()

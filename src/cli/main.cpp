@@ -56,6 +56,10 @@ Reading:
   types [TYPE] [--json]             item types; a type's fields and kinds of authors
   tags [--library L] [--json]       tags, how many items have each, their colours
   related KEY [--json]              the items related to an item
+  link KEY [--page N] [--quote TEXT] [--markdown | --html | --json]
+                                    a link that opens an item, a note, a PDF at a page or an
+                                    annotation in the app (ournotes://...); --markdown: as
+                                    a note's reference, such as (Smith, 2020, p. 3)
   duplicates [--library L] [--json] items that look like the same one
   open KEY [--folder]               an item's file (or link) opened by the system's program
 

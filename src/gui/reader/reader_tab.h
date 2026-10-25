@@ -3,9 +3,12 @@
 #include <QTimer>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
+#include <vector>
 
 #include "core/json.h"
+#include "core/links.h"
 #include "gui/reader/pdf_view.h"
 
 class QActionGroup;
@@ -50,8 +53,10 @@ public:
     QString attachmentKey() const { return key_; }
     QString title() const { return title_; }
     PdfView* view() const { return view_; }
+    // (in a tab just opened: once the view is back where it was left)
     void goToPage(int page);
     void selectAnnotation(const QString& key);
+    void showPlace(int page, const QRectF& place);  // see PdfView::showPlace
     void focusFind();
     void exportPdf();
 
@@ -81,6 +86,11 @@ private:
     void deleteAnnotation(const QString& key);
     void addToNote(const QString& html);
     void addNoteFromAnnotations();
+    // A link to a page of this PDF (from 0), at a place on it; to an annotation (the page of
+    // one not in the library). See core/links.h.
+    Reference reference(int page, const QRectF& place = {}) const;
+    Reference annotationReference(const Json& annotation) const;
+    void copyReference(const Reference& ref, const QString& quote);  // pasted in a note: “quote” (link)
     void updatePageLabel(int page);
     void setTool(ReaderTool tool);
     void savePosition();
@@ -90,7 +100,6 @@ private:
     bool forwardUndoToText(bool undo);
     void useColor(const QString& color);  // for the annotations made from now on
     void updatePalette();
-    QString citationFor(const Json& annotation) const;
 
     int64_t libraryId_;
     QString key_;
@@ -125,6 +134,7 @@ private:
     QTimer positionTimer_;  // the synced last page, after page changes
     QTimer stateTimer_;     // the local view state, after scrolling or zooming
     bool restored_ = false;
+    std::vector<std::function<void()>> whenRestored_;  // where it was asked to go meanwhile
     QUndoStack* undo_;
     bool thumbnailsRequested_ = false;
     QAction* darkPages_ = nullptr;

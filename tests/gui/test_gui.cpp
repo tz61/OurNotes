@@ -61,6 +61,7 @@
 #include "../pdf/sample_pdf.h"
 #include "core/config.h"
 #include "core/library.h"
+#include "core/links.h"
 #include "core/schema.h"
 #include "core/sync/engine.h"
 #include "gui/app_context.h"
@@ -2899,6 +2900,208 @@ TEST_CASE("notes: a hidden editor saves at once; a read-only note takes no short
         CHECK(imports == 0);
         CHECK(text->toPlainText().contains("$$"));
     }
+}
+
+namespace {
+
+Json smithPaper(Env& env)
+{
+    return env.library.createItem(env.lib, Json{{"itemType", "journalArticle"},
+                                                 {"title", "A Paper"},
+                                                 {"date", "2020"},
+                                                 {"creators", Json::array({Json{{"creatorType", "author"},
+                                                                                {"firstName", "Ann"},
+                                                                                {"lastName", "Smith"}}})}});
+}
+
+// Where the first character of `words` is drawn in a note.
+QPoint wordsAt(NoteTextEdit* edit, const QString& words)
+{
+    auto found = edit->document()->find(words);
+    REQUIRE(!found.isNull());
+    QTextCursor c(edit->document());
+    c.setPosition(found.selectionStart() + 1);
+    return edit->cursorRect(c).center();
+}
+
+} // namespace
+
+TEST_CASE("links: a click on a link in a note opens what it leads to: a note, a PDF at a page and place, an item")
+{
+    app();
+    Env env;
+    auto file = env.dir.path / "pages.pdf";
+    writeManyPagesPdf(file, 6);
+    auto paper = jstr(smithPaper(env), "key");
+    auto pdf = jstr(env.library.importAttachment(env.lib, file, paper), "key");
+    auto other = jstr(env.library.createNote(env.lib, "<p>Other note</p>"), "key");
+    auto toPage = referenceTo(env.library, env.lib, pdf, 4, {}, std::array<double, 4>{72, 150, 300, 200});
+    auto toNote = referenceTo(env.library, env.lib, other);
+    auto toItem = referenceTo(env.library, env.lib, paper);
+    CHECK(toPage.text == "(Smith, 2020, p. 4)");
+    auto note = jstr(env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>See " + referenceHtml(toPage, "a quote") +
+                                                         ", then " + referenceHtml(toNote) + ", then " +
+                                                         referenceHtml(toItem) + ".</p></div>"),
+                     "key");
+
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto openFirst = [&] {
+        window.openNote(env.lib, qs(note));
+        QApplication::processEvents();
+        auto* edit = tabs->currentWidget()->findChild<NoteTextEdit*>();
+        REQUIRE(edit);
+        return edit;
+    };
+    auto click = [&](NoteTextEdit* edit, QPoint at) {
+        QTest::mouseClick(edit->viewport(), Qt::LeftButton, {}, at);
+        QTest::qWait(50);  // (opened once the click is done)
+    };
+    auto* edit = openFirst();
+    // over one: a hand, and what it opens
+    QTest::mouseMove(edit->viewport(), wordsAt(edit, "Other note"));
+    CHECK(edit->viewport()->cursor().shape() == Qt::PointingHandCursor);
+    CHECK(edit->viewport()->toolTip() == "Click to open “Other note”");
+    QTest::mouseMove(edit->viewport(), wordsAt(edit, "See"));
+    CHECK(edit->viewport()->cursor().shape() == Qt::IBeamCursor);
+    // a selection dragged over one opens nothing
+    auto noteTab = tabs->currentIndex();
+    drag(edit->viewport(), wordsAt(edit, "then"), wordsAt(edit, "Other note"));
+    QTest::qWait(50);
+    CHECK(tabs->currentIndex() == noteTab);
+
+    // the note, in its tab
+    click(edit, wordsAt(edit, "Other note"));
+    auto* opened = qobject_cast<NoteTab*>(tabs->currentWidget());
+    REQUIRE(opened);
+    CHECK(opened->noteKey() == qs(other));
+
+    // the PDF, at the page and the place on it (once the tab is back where it was left)
+    edit = openFirst();
+    click(edit, wordsAt(edit, "(Smith, 2020, p. 4)"));
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    CHECK(reader->attachmentKey() == qs(pdf));
+    QTest::qWait(100);
+    CHECK(reader->view()->currentPage() == 3);
+    auto place = reader->view()->pageToViewport(3, {72, 150});
+    CHECK(place.y() > 0);
+    CHECK(place.y() < reader->view()->viewport()->height() / 2);
+    // again, from page 1: there again
+    reader->view()->goToPage(0);
+    edit = openFirst();
+    click(edit, wordsAt(edit, "(Smith, 2020, p. 4)"));
+    CHECK(reader->view()->currentPage() == 3);
+
+    // the item, in the library
+    edit = openFirst();
+    click(edit, wordsAt(edit, "(Smith, 2020)."));
+    CHECK(tabs->currentIndex() == 0);
+    CHECK(window.findChild<LibraryView*>()->selectedKeys() == QStringList{qs(paper)});
+
+    // one that leads nowhere here: says so
+    QString said;
+    QTimer::singleShot(100, [&] {
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            said = box->text();
+            box->accept();
+        }
+    });
+    window.openLink(QUrl("ournotes://item/elsewhere/ZZZZZZZZ"));
+    CHECK(said.startsWith("What this link leads to is not in your libraries"));
+}
+
+TEST_CASE("links: references made in the reader, pasted into a note, added to one; a link pasted alone")
+{
+    app();
+    Env env;
+    auto file = env.dir.path / "sample.pdf";
+    writeSamplePdf(file);
+    auto paper = jstr(smithPaper(env), "key");
+    auto pdf = jstr(env.library.importAttachment(env.lib, file, paper), "key");
+    auto uid = env.library.library(env.lib)->uid;
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    window.openAttachment(env.lib, qs(pdf));
+    QTest::qWait(100);
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    auto* view = reader->view();
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 8).toPoint());
+    REQUIRE(view->selectedText() == "World");
+
+    // Copy Reference: the words in quotes, then where they are from, a link to their place
+    QToolButton* copyReference = nullptr;
+    QToolButton* addToNote = nullptr;
+    for (auto* b : view->findChildren<QToolButton*>()) {
+        if (b->toolTip().startsWith("Copy Reference"))
+            copyReference = b;
+        if (b->toolTip() == "Add to Note")
+            addToNote = b;
+    }
+    REQUIRE(copyReference);
+    REQUIRE(addToNote);
+    copyReference->click();
+    auto* copied = QApplication::clipboard()->mimeData();
+    CHECK(copied->text() == "“World” (Smith, 2020, p. 1)");
+    auto html = copied->html();
+    static const QRegularExpression href("href=\"([^\"]+)\"");
+    auto url = href.match(html).captured(1).replace("&amp;", "&");
+    auto link = parseItemLink(ss(url));
+    REQUIRE(link);
+    CHECK(link->library == uid);
+    CHECK(link->key == pdf);
+    CHECK(link->page == 1);
+    REQUIRE(link->rect);
+    auto& box = view->document()->text(0).chars[8].box;  // (around the word)
+    CHECK((*link->rect)[0] <= box.x0 + 0.1);
+    CHECK((*link->rect)[3] >= box.y1 - 0.1);
+    CHECK(html.contains("(Smith, 2020, p. 1)</a>"));
+
+    // pasted into the note beside the PDF: the same, linked
+    auto* noteEditor = reader->findChild<NoteEditor*>();
+    REQUIRE(noteEditor);
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 8).toPoint());
+    addToNote->click();  // (a note made for it, under the paper)
+    QApplication::processEvents();
+    auto* edit = noteEditor->findChild<NoteTextEdit*>();
+    REQUIRE(edit);
+    auto anchors = [&] {
+        QStringList out;
+        for (auto block = edit->document()->begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (auto f = it.fragment().charFormat(); f.isAnchor())
+                    out << it.fragment().text() + " -> " + f.anchorHref();
+        return out;
+    };
+    CHECK(edit->toPlainText().contains("“World” (Smith, 2020, p. 1)"));
+    CHECK(anchors() == QStringList{"(Smith, 2020, p. 1) -> " + url});
+    edit->moveCursor(QTextCursor::End);
+    edit->paste();  // (Copy Reference's)
+    QTest::keyClicks(edit, " and");  // (not more of the link)
+    CHECK(anchors().size() == 2);
+    CHECK(anchors().back() == "(Smith, 2020, p. 1) -> " + url);
+    CHECK(edit->toPlainText().endsWith("(Smith, 2020, p. 1) and"));
+
+    // a link alone (as ournotes-cli link prints it): its words, linked; what is typed next is not
+    auto bare = referenceTo(env.library, env.lib, pdf, 1);
+    QApplication::clipboard()->setText(qs(bare.url));
+    edit->insertPlainText(" ");
+    edit->paste();
+    QTest::keyClicks(edit, " ok");
+    CHECK(anchors().back() == "(Smith, 2020, p. 1) -> " + qs(bare.url));
+    CHECK(edit->toPlainText().endsWith("(Smith, 2020, p. 1) ok"));
+    // saved as links
+    noteEditor->flush();
+    auto saved = env.library.children(env.lib, paper, "note");
+    REQUIRE(saved.size() == 1);
+    CHECK(jstr(saved[0], "note").find("<a href=\"" + bare.url + "\">(Smith, 2020, p. 1)</a> ok") != std::string::npos);
 }
 
 TEST_CASE("main window: File > New Note from a note's tab shows the new note in the library")

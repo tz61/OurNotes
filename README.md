@@ -45,6 +45,15 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   pages. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
+  References: *Copy Reference* on text selected in a PDF (its context menu, or the button
+  over the selection) or on an annotation, pasted into a note, is the text in quotes and
+  (Smith, 2020, p. 3), a link back to that place; *Add to Note* and *Add Note from
+  Annotations* make the same. *Copy Link* in the library's context menu links to items and
+  notes, and the Link button and pasting take such links too. A click on one in a note
+  opens it: a note in its tab, the PDF at the page with the passage marked for a moment,
+  the annotation, or the item in the library. The links (`ournotes://item/…`) name the
+  library by an ID that is the same on every computer it syncs to; `ournotes-cli link`
+  makes them for agents.
   LaTeX math: type `$…$`, or `$$` to start a formula (on an empty line: a display
   formula) and type its LaTeX in place with a live preview; Ctrl+M / Ctrl+Shift+M do the
   same. Click a formula to edit it in the note; leaving it (arrow keys, Enter, Esc, the
@@ -266,6 +275,7 @@ ournotes-cli new-item book title="Deep Learning"          ournotes-cli creators 
 ournotes-cli attach KEY slides.pdf      ournotes-cli merge KEY KEY      ournotes-cli rename-tag todo later
 ournotes-cli annotate KEY --quote "Theorem 2" --comment "check"       ournotes-cli export-pdf KEY -o a.pdf
 ournotes-cli render INK_KEY -o doodle.png          ournotes-cli add-image NOTE figure.png
+ournotes-cli link KEY --page 3 --markdown           # [(Smith, 2020, p. 3)](ournotes://...), for a note
 ournotes-cli add-server https://host:8642 --user alice    ournotes-cli sync
 ournotes-cli help                      # every command
 ```

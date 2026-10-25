@@ -180,6 +180,25 @@ It prints the picture's path; `--dpi` (150), `--rect X0,Y0,X1,Y1` for a part of 
 Areas (`--type image --rect X0,Y0,X1,Y1`) and drawings (`--type ink --ink "X,Y X,Y"`)
 are made too; `view-state KEY --page N --zoom 150` sets where the app opens a PDF.
 
+## Links to items, notes and pages
+
+A note can link to an item, another note, a page of a PDF or an annotation; in the app a
+click on such a link opens it (an item is shown in the library). `link` prints one:
+
+```sh
+ournotes-cli link ABCD2345                     # ournotes://item/<library>/ABCD2345
+ournotes-cli link ABCD2345 --page 3 --markdown # [(Smith and Jones, 2020, p. 3)](ournotes://...): its PDF, page 3
+ournotes-cli link ANNO2345 --markdown --quote "attention is all"  # “attention is all” [(...)](...)
+ournotes-cli link NOTE2345 --markdown          # [the note's title](ournotes://...)
+```
+
+Put the Markdown into a note's text (`add-note`, `edit-note --append`) and it shows as the
+app's own references do: “quote” (Smith and Jones, 2020, p. 3), the reference a link.
+`--page` counts the PDF's pages from 1 (not by the numbers printed on them, which the words
+use when the PDF has them), and on an item means its PDF. `--html` prints it as HTML,
+`--json` all of these. A link names its library by an ID that is the same on every computer
+the library syncs to. `note-from-annotations` links each quote to its annotation.
+
 ## Recipes
 
 **A summary of each paper in a collection, as a note under it**

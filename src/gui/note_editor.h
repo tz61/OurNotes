@@ -64,6 +64,12 @@ public:
     // beside one puts the cursor there. Pictures alone on a line are a row, all as high; one
     // made larger or smaller makes the row so.
     std::function<void(const QString& name)> openPicture;  // a picture's resource name
+    // A link to something in a library (ournotes://item/..., see core/links.h): the words a
+    // note shows for it ("(Smith, 2020, p. 3)", a note's title) and what it opens (its title,
+    // the page); empty when it leads nowhere here. Such links open with a click (others with
+    // Ctrl+click), and one pasted alone is put as its words, linked.
+    std::function<std::pair<QString, QString>(const QString& url)> describeLink;
+    void insertLink(const QString& words, const QString& url);  // linked words at the cursor
     // A picture of another note, pasted from it, by its resource name ("attachment:KEY"):
     // this note keeps a copy of its own (storeImage).
     std::function<QImage(const QString& name)> loadPicture;
