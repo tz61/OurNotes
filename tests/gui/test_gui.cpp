@@ -6621,6 +6621,8 @@ TEST_CASE("sync: what another computer changed shows in the open PDF, beside it 
     other.updateItem(there, paperKey, [](Json& d) { d["title"] = "Paper, retitled"; });
     syncThere();
     syncHere();
+    // (reloaded on a timer, which a busy computer runs late)
+    QTest::qWaitFor([&] { return tab.findChild<QListWidget*>()->count() == notes + 1; }, 5000);
     CHECK(!view->commentBadgeRect(qs(annKey)).isEmpty());
     auto cards = tab.findChildren<AnnotationCard*>();
     REQUIRE(cards.size() == 1);

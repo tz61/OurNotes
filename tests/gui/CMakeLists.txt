@@ -1,6 +1,9 @@
 # The GUI tests need their own main() so the QApplication is owned by main.
 find_package(Qt6 REQUIRED COMPONENTS Test)
 add_executable(test_gui test_gui.cpp)
+if(MSVC)
+    target_compile_options(test_gui PRIVATE /bigobj)  # (more sections than an object file holds by default)
+endif()
 target_link_libraries(test_gui PRIVATE on_doctest ournotes_gui Qt6::Test)
 target_compile_definitions(test_gui PRIVATE OURNOTES_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 # A window's pixels as painted (not drawn anew) take Qt's private backing store; without its
