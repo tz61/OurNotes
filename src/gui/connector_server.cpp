@@ -8,6 +8,7 @@
 #include <chrono>
 #include <fstream>
 #include <future>
+#include <tuple>
 
 #include "core/hash.h"
 #include "core/library.h"
@@ -96,6 +97,16 @@ int64_t number(const std::string& s)
     } catch (const std::exception&) {
         return 0;
     }
+}
+
+// Tags as the popup sends them (a list of names): as items have them.
+Json tagsFrom(const Json& names)
+{
+    Json tags = Json::array();
+    for (auto& t : names.is_array() ? names : Json::array())
+        if (auto tag = text(t, 250); !tag.empty() && tags.size() < 100)
+            tags.push_back(Json{{"tag", tag}});
+    return tags;
 }
 
 } // namespace
@@ -252,9 +263,16 @@ bool ConnectorServer::start(int port)
         sendJson(res, Json{{"app", "OurNotes"}, {"version", OURNOTES_VERSION}, {"api", 1}});
     });
 
+    svr.Get("/connector/targets", [=](const httplib::Request&, httplib::Response& res) {
+        guarded(res, [&] { sendJson(res, onGui([this] { return allTargets(); })); });
+    });
+
     svr.Post("/connector/save", [=](const httplib::Request& req, httplib::Response& res) {
         guarded(res, [&] {
-            auto item = jsonBody(req).value("item", Json());
+            auto body = jsonBody(req);
+            auto item = body.value("item", Json());
+            auto target = text(body.value("target", Json()), 200);
+            auto tags = body.value("tags", Json());
             if (!item.is_object())
                 throw Refused("no item", 400);
             // a page that names a DOI or arXiv id but says little else: ask Crossref / arXiv
@@ -276,7 +294,7 @@ bool ConnectorServer::start(int port)
                     }
                 }
             }
-            auto saved = onGui([this, item] { return save(item); });
+            auto saved = onGui([this, item, target, tags] { return save(item, target, tags); });
             sendJson(res, saved);
         });
     });
@@ -290,9 +308,12 @@ bool ConnectorServer::start(int port)
             auto file = tmp.dir / u8path(pdfFilename(url, title));
             std::ofstream(file, std::ios::binary).write(req.body.data(), (std::streamsize)req.body.size());
             int64_t lib = number(req.get_param_value("library"));
-            auto parent = req.get_param_value("parent");
+            auto parent = req.get_param_value("parent"), target = req.get_param_value("target");
+            auto tags = Json::parse(req.get_param_value("tags"), nullptr, false);
             // copies: when OurNotes closes, the request may end before the GUI gets to it
-            sendJson(res, onGui([this, file, lib, parent, url, title] { return addPdf(file, lib, parent, url, title); }));
+            sendJson(res, onGui([this, file, lib, parent, url, title, target, tags] {
+                return addPdf(file, lib, parent, url, title, target, tags);
+            }));
         });
     });
 
@@ -310,8 +331,11 @@ bool ConnectorServer::start(int port)
                 throw Refused(std::string("could not download the PDF: ") + e.what(), 502);
             }
             int64_t lib = body.value("library", int64_t(0));
-            auto parent = text(body.value("parent", Json()), 64);
-            sendJson(res, onGui([this, file, lib, parent, url, title] { return addPdf(file, lib, parent, url, title); }));
+            auto parent = text(body.value("parent", Json()), 64), target = text(body.value("target", Json()), 200);
+            auto tags = body.value("tags", Json());
+            sendJson(res, onGui([this, file, lib, parent, url, title, target, tags] {
+                return addPdf(file, lib, parent, url, title, target, tags);
+            }));
         });
     });
 
@@ -374,43 +398,69 @@ Json ConnectorServer::targets(int64_t libraryId) const
     return out;
 }
 
-Json ConnectorServer::save(const Json& page)
+std::pair<int64_t, std::string> ConnectorServer::place(const std::string& target) const
 {
     auto& ctx = AppContext::get();
     auto& lib = ctx.library();
-    Scope scope = targetScope ? targetScope() : Scope{};
-    if (!scope.libraryId || !lib.library(scope.libraryId) || !ctx.editable(scope.libraryId))
-        scope = Scope{lib.defaultLibrary(), ScopeKind::Library, {}};
-    std::string collection = scope.kind == ScopeKind::Collection ? scope.collectionKey : std::string();
+    if (target.empty()) {  // where the library tab's selection is
+        Scope scope = targetScope ? targetScope() : Scope{};
+        if (!scope.libraryId || !lib.library(scope.libraryId) || !ctx.editable(scope.libraryId))
+            scope = Scope{lib.defaultLibrary(), ScopeKind::Library, {}};
+        return {scope.libraryId, scope.kind == ScopeKind::Collection ? scope.collectionKey : std::string()};
+    }
+    auto slash = target.find('/');
+    int64_t libraryId = number(target.substr(0, slash));
+    if (!lib.library(libraryId) || !ctx.editable(libraryId))
+        throw Refused("no such library, or it cannot be changed", 404);
+    std::string collection = slash == std::string::npos ? std::string() : target.substr(slash + 1);
+    if (!collection.empty() && !lib.collection(libraryId, collection))
+        throw Refused("no such collection", 404);
+    return {libraryId, collection};
+}
+
+Json ConnectorServer::allTargets() const
+{
+    auto& ctx = AppContext::get();
+    auto [libraryId, collection] = place({});
+    Json all = Json::array();
+    for (auto& info : ctx.library().libraries())
+        if (ctx.editable(info.id))
+            for (auto& t : targets(info.id))
+                all.push_back(t);
+    return Json{{"target", collection.empty() ? std::to_string(libraryId) : std::to_string(libraryId) + "/" + collection},
+                {"targets", all}};
+}
+
+Json ConnectorServer::save(const Json& page, const std::string& target, const Json& tags)
+{
+    auto& lib = AppContext::get().library();
+    auto [libraryId, collection] = place(target);
     Json data = connectorItem(page);
     if (!collection.empty())
         data["collections"] = Json::array({collection});
-    auto item = lib.createItem(scope.libraryId, data);
+    if (tags.is_array())  // (as the popup has them: the page's, changed there)
+        data["tags"] = tagsFrom(tags);
+    auto item = lib.createItem(libraryId, data);
     auto key = jstr(item, "key");
-    emit saved(scope.libraryId, qs(key), jqs(item, "title"));
+    emit saved(libraryId, qs(key), jqs(item, "title"));
     return Json{{"key", key},
-                {"libraryId", scope.libraryId},
+                {"libraryId", libraryId},
                 {"title", jstr(item, "title")},
                 {"itemType", jstr(item, "itemType")},
-                {"target", collection.empty() ? std::to_string(scope.libraryId)
-                                              : std::to_string(scope.libraryId) + "/" + collection},
-                {"targets", targets(scope.libraryId)}};
+                {"target", collection.empty() ? std::to_string(libraryId) : std::to_string(libraryId) + "/" + collection},
+                {"targets", targets(libraryId)}};
 }
 
 Json ConnectorServer::addPdf(const fs::path& file, int64_t libraryId, const std::string& parentKey,
-                             const std::string& url, const std::string& title)
+                             const std::string& url, const std::string& title, const std::string& target,
+                             const Json& tags)
 {
     auto& ctx = AppContext::get();
     auto& lib = ctx.library();
     Json response;
     std::string collection;
     if (parentKey.empty()) {  // a PDF on its own: where pages go
-        Scope scope = targetScope ? targetScope() : Scope{};
-        if (!scope.libraryId || !lib.library(scope.libraryId) || !ctx.editable(scope.libraryId))
-            scope = Scope{lib.defaultLibrary(), ScopeKind::Library, {}};
-        libraryId = scope.libraryId;
-        if (scope.kind == ScopeKind::Collection)
-            collection = scope.collectionKey;
+        std::tie(libraryId, collection) = place(target);
     } else if (!lib.item(libraryId, parentKey) || !ctx.editable(libraryId)) {
         throw Refused("no such item", 404);
     }
@@ -424,6 +474,8 @@ Json ConnectorServer::addPdf(const fs::path& file, int64_t libraryId, const std:
         }
         if (!collection.empty())
             d["collections"] = Json::array({collection});
+        if (parentKey.empty() && tags.is_array())
+            d["tags"] = tagsFrom(tags);
     });
     if (parentKey.empty()) {
         emit saved(libraryId, qs(key), qs(jstr(att, "title")));
@@ -461,13 +513,8 @@ Json ConnectorServer::update(const Json& body)
     lib.updateItem(libraryId, key, [&](Json& d) {
         if (!target.empty() && jstr(d, "parentItem").empty())
             d["collections"] = collection.empty() ? Json::array() : Json::array({collection});
-        if (body.contains("tags") && body["tags"].is_array()) {
-            Json tags = Json::array();
-            for (auto& t : body["tags"])
-                if (auto tag = text(t, 250); !tag.empty())
-                    tags.push_back(Json{{"tag", tag}});
-            d["tags"] = tags;
-        }
+        if (body.contains("tags") && body["tags"].is_array())
+            d["tags"] = tagsFrom(body["tags"]);
     });
     return Json{{"key", key}, {"target", target}};
 }

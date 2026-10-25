@@ -89,8 +89,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Browser extension** — the OurNotes Connector (`browser/chrome`, for Chrome and other
   Chromium browsers) saves the page you are reading to OurNotes with Alt+Shift+O or its
   button: the item from the page's citation tags (or JSON-LD, Dublin Core, Open Graph)
-  and its PDF, as the browser fetched it, into the collection selected in OurNotes. See
-  [docs/browser-connector.md](docs/browser-connector.md).
+  and its PDF, as the browser fetched it, into the collection selected in OurNotes or
+  another one picked in its popup, with tags. Nothing is saved until *Done*: Cancel or
+  clicking elsewhere saves nothing. See [docs/browser-connector.md](docs/browser-connector.md).
 - **Citing** — export BibTeX, RIS, CSL JSON; bibliographies and in-text citations in
   APA, Chicago (author-date), IEEE, MLA, Harvard, Nature and Vancouver.
 - **Search** — title/creator/year, all fields and tags, or everything including the

@@ -7338,6 +7338,55 @@ TEST_CASE("connector: the browser extension saves pages, and nothing else gets i
     CHECK(jstr(*env.library.item(env.lib, alone), "parentItem").empty());
     CHECK(env.library.collectionItemKeys(env.lib, reading).count(alone));
     CHECK(lookUp == QStringList{qs(alone)});
+
+    // The popup sends nothing until Done: first it asks where things may go (every library
+    // that can be changed, and their collections) and where they go unless told
+    auto group = env.library.createLibrary("Group", "group");
+    auto groupShelf = jstr(env.library.createCollection(group, "Shelf"), "key");
+    auto [targetsStatus, targetsBody] = call([&](httplib::Client& c) { return c.Get("/connector/targets", ext); });
+    REQUIRE(targetsStatus == 200);
+    auto places = Json::parse(targetsBody);
+    CHECK(places["target"] == std::to_string(env.lib) + "/" + reading);
+    QStringList offered;
+    for (auto& t : places["targets"])
+        offered << qs(jstr(t, "id"));
+    CHECK(offered.contains(qs(std::to_string(env.lib) + "/" + other)));
+    CHECK(offered.contains(qs(std::to_string(group))));
+    CHECK(offered.contains(qs(std::to_string(group) + "/" + groupShelf)));
+    // then, with Done: where the popup says, with its tags (the page's, changed there)
+    Json chosen = page;
+    chosen["item"]["title"] = "Chosen";
+    chosen["item"]["tags"] = Json::array({"from-the-page"});
+    chosen["target"] = std::to_string(group) + "/" + groupShelf;
+    chosen["tags"] = Json::array({"ml", "exam"});
+    auto [chosenStatus, chosenBody] = call([&](httplib::Client& c) { return c.Post("/connector/save", ext, chosen.dump(), "application/json"); });
+    REQUIRE(chosenStatus == 200);
+    auto into = Json::parse(chosenBody);
+    CHECK(into["libraryId"] == group);
+    auto put = env.library.item(group, jstr(into, "key"));
+    REQUIRE(put);
+    CHECK(env.library.collectionItemKeys(group, groupShelf).count(jstr(into, "key")));
+    CHECK((*put)["tags"] == Json::array({Json{{"tag", "ml"}}, Json{{"tag", "exam"}}}));
+    // a PDF on its own, where the popup says, tagged
+    auto [chosenPdfStatus, chosenPdfBody] = call([&](httplib::Client& c) {
+        return c.Post("/connector/attachment?url=https%3A%2F%2Fx.org%2Fa.pdf&target=" + std::to_string(group) +
+                          "&tags=%5B%22later%22%5D",
+                      ext, bytes, "application/pdf");
+    });
+    REQUIRE(chosenPdfStatus == 200);
+    auto chosenPdf = env.library.item(group, jstr(Json::parse(chosenPdfBody), "key"));
+    REQUIRE(chosenPdf);
+    CHECK((*chosenPdf)["tags"] == Json::array({Json{{"tag", "later"}}}));
+    // nowhere that does not exist, nor into a library that cannot be changed
+    chosen["target"] = std::to_string(group) + "/NOSUCHCO";
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/save", ext, chosen.dump(), "application/json"); }).first == 404);
+    auto readOnly = env.library.createLibrary("Read only", "group");
+    env.library.setLibraryEditable(readOnly, false);
+    chosen["target"] = std::to_string(readOnly);
+    CHECK(call([&](httplib::Client& c) { return c.Post("/connector/save", ext, chosen.dump(), "application/json"); }).first == 404);
+    places = Json::parse(call([&](httplib::Client& c) { return c.Get("/connector/targets", ext); }).second);
+    for (auto& t : places["targets"])
+        CHECK(jstr(t, "id") != std::to_string(readOnly));
     server.stop();
 }
 

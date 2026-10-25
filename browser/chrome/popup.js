@@ -1,8 +1,9 @@
-// Saves the page in the current tab to OurNotes, which must be running: OurNotes
-// listens on 127.0.0.1:23120 for this extension (Preferences → Advanced).
+// Shows what the page in the current tab would be saved as, and where to, in OurNotes.
+// Nothing is saved until Done: Cancel, Esc or clicking elsewhere in the browser (which
+// closes the popup) leave the library as it was. Done hands it to background.js, which
+// saves it even if the popup closes meanwhile.
 'use strict';
 
-const BASE = 'http://127.0.0.1:23120/connector';
 const $ = (id) => document.getElementById(id);
 
 const typeLabels = {
@@ -19,72 +20,21 @@ const typeLabels = {
   attachment: 'PDF',
 };
 
-async function call(path, {json, body, contentType} = {}) {
-  const init = {method: json || body ? 'POST' : 'GET', headers: {'X-OurNotes-Connector': '1'}};
-  if (json) {
-    init.headers['Content-Type'] = 'application/json';
-    init.body = JSON.stringify(json);
-  } else if (body) {
-    init.headers['Content-Type'] = contentType;
-    init.body = body;
-  }
-  const res = await fetch(BASE + path, init);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `OurNotes answered ${res.status}`);
-  return data;
-}
+let job = null;  // what Done saves: {page, title}
+let saving = false;
 
 function problem(text) {
   $('status').textContent = 'Not saved';
-  $('saved').hidden = true;
+  $('form').hidden = true;
   $('problem').hidden = false;
   $('problemText').textContent = text;
-}
-
-let saved = null;  // {key, libraryId, ...} of what was saved
-
-function showSaved(result, title, itemType) {
-  saved = result;
-  $('status').textContent = 'Saved to OurNotes';
-  $('problem').hidden = true;
-  $('saved').hidden = false;
-  $('title').textContent = result.title || title;
-  $('kind').textContent = typeLabels[itemType || result.itemType] || '';
-  const select = $('target');
-  select.textContent = '';
-  for (const t of result.targets || []) {
-    const option = document.createElement('option');
-    option.value = t.id;
-    option.textContent = ' '.repeat(t.depth) + t.name;  // collections indented under their library
-    select.append(option);
-  }
-  select.value = result.target;
+  $('done').disabled = true;
 }
 
 function pdfStatus(text, failed) {
   $('pdf').hidden = false;
   $('pdf').textContent = text;
   $('pdf').classList.toggle('failed', !!failed);
-}
-
-// The PDF as this browser gets it (with the site's sign-in), else fetched by OurNotes.
-async function savePdf(url, parent, libraryId, title) {
-  let bytes = null;
-  try {
-    const res = await fetch(url, {credentials: 'include'});
-    if (res.ok) {
-      const buf = await res.arrayBuffer();
-      const head = new Uint8Array(buf.slice(0, 5));
-      if (String.fromCharCode(...head) === '%PDF-') bytes = buf;
-    }
-  } catch (e) {
-    // another site, without this extension's access: OurNotes tries
-  }
-  if (bytes) {
-    const q = new URLSearchParams({parent, library: libraryId || '', url, title});
-    return call(`/attachment?${q}`, {body: bytes, contentType: 'application/pdf'});
-  }
-  return call('/attachmentUrl', {json: {parent, library: libraryId || 0, url, title}});
 }
 
 async function readPage(tab) {
@@ -117,63 +67,85 @@ async function arxivPaper(pdfUrl) {
   }
 }
 
-async function save() {
-  $('status').textContent = 'Saving to OurNotes…';
+// The page read and where it may go asked of OurNotes: shown, to be saved with Done.
+async function prepare() {
+  job = null;
+  $('status').textContent = 'Reading the page…';
   $('problem').hidden = true;
+  $('done').disabled = true;
+  $('target').disabled = $('tags').disabled = false;
   const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
   if (!tab || !/^(https?|file):/.test(tab.url || '')) {
     problem('Only web pages and PDFs can be saved.');
     return;
   }
   try {
-    await call('/ping');
+    await ourNotesCall('/ping');
   } catch (e) {
     problem('OurNotes is not running, or its browser connector is off (Preferences → Advanced). Start it and try again.');
     return;
   }
+  let places;
+  try {
+    places = await ourNotesCall('/targets');
+  } catch (e) {
+    problem('This OurNotes is older than the extension: update OurNotes.');
+    return;
+  }
   let page = await readPage(tab);
   if (page.isPdf) page = (await arxivPaper(page.pdfUrl)) || page;
-  try {
-    if (page.isPdf) {
-      pdfStatus('Saving the PDF…');
-      const result = await savePdf(page.pdfUrl, '', 0, page.title || tab.title);
-      showSaved(result, page.title || tab.title, 'attachment');
-      pdfStatus('OurNotes is looking up its details.');
-      return;
-    }
-    const result = await call('/save', {json: {item: page.item}});
-    showSaved(result, page.item.title, page.item.itemType);
-    $('tags').value = (page.item.tags || []).join(', ');
-    if (page.pdfUrl) {
-      pdfStatus('Saving the PDF…');
-      try {
-        await savePdf(page.pdfUrl, result.key, result.libraryId, page.item.title);
-        pdfStatus('PDF saved.');
-      } catch (e) {
-        pdfStatus(`No PDF: ${e.message}`, true);
-      }
-    }
-  } catch (e) {
-    problem(e.message);
+  const title = page.isPdf ? page.title || tab.title : page.item.title;
+  job = {page, title};
+  $('status').textContent = 'Save to OurNotes';
+  $('form').hidden = false;
+  $('title').textContent = title;
+  $('kind').textContent = typeLabels[page.isPdf ? 'attachment' : page.item.itemType] || '';
+  const select = $('target');
+  select.textContent = '';
+  for (const t of places.targets || []) {
+    const option = document.createElement('option');
+    option.value = t.id;
+    option.textContent = ' '.repeat(t.depth) + t.name;  // collections indented under their library
+    select.append(option);
   }
+  select.value = places.target;
+  $('tags').value = page.isPdf ? '' : (page.item.tags || []).join(', ');
+  if (page.isPdf) pdfStatus('The PDF; OurNotes looks up its details.');
+  else if (page.pdfUrl) pdfStatus('With its PDF.');
+  else $('pdf').hidden = true;
+  $('done').disabled = false;
+  $('done').focus();
 }
 
-async function update() {
-  if (!saved) return;
+async function save() {
+  if (!job || saving) return;
+  saving = true;
+  for (const id of ['done', 'target', 'tags']) $(id).disabled = true;
+  $('status').textContent = 'Saving to OurNotes…';
   const tags = $('tags').value.split(',').map((t) => t.trim()).filter(Boolean);
+  let answer;
   try {
-    await call('/update', {json: {key: saved.key, library: saved.libraryId, target: $('target').value, tags}});
-    saved.target = $('target').value;
+    answer = await chrome.runtime.sendMessage({type: 'save', job: {...job, target: $('target').value, tags}});
   } catch (e) {
-    pdfStatus(e.message, true);
+    answer = {ok: false, error: e.message};
   }
+  saving = false;
+  if (!answer || !answer.ok) {
+    problem(answer ? answer.error : 'Not saved.');
+    return;
+  }
+  $('status').textContent = 'Saved to OurNotes';
+  if (answer.result.pdf) pdfStatus(answer.result.pdf, answer.result.pdfFailed);
+  setTimeout(() => window.close(), answer.result.pdfFailed ? 3000 : 800);
 }
 
-$('target').addEventListener('change', update);
-$('tags').addEventListener('change', update);
-$('tags').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') update().then(() => window.close());
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === 'progress' && saving) pdfStatus(message.text);
 });
-$('retry').addEventListener('click', save);
-$('done').addEventListener('click', () => update().then(() => window.close()));
-save();
+$('done').addEventListener('click', save);
+$('cancel').addEventListener('click', () => window.close());
+$('tags').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') save();
+});
+$('retry').addEventListener('click', prepare);
+prepare();

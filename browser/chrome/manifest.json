@@ -17,6 +17,9 @@
       "32": "icons/32.png"
     }
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": {

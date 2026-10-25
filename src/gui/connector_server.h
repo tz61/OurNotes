@@ -23,10 +23,15 @@ namespace on::gui {
 // becomes an item in the collection selected in the library, as in Zotero.
 //
 //   GET  /connector/ping             {app, version, api}
-//   POST /connector/save             {item}: a Zotero-style item read from the page
-//   POST /connector/attachment       a PDF's bytes; ?parent=&library=&url=&title=
-//   POST /connector/attachmentUrl    {parent, library, url, title}: OurNotes fetches it
-//   POST /connector/update           {key, library, target, tags}: another collection
+//   GET  /connector/targets          {target, targets}: where it may go, where it goes unless told
+//   POST /connector/save             {item, target, tags}: a Zotero-style item read from the page
+//   POST /connector/attachment       a PDF's bytes; ?parent=&library=&url=&title= (a PDF on its
+//                                    own: &target=&tags=, the tags a JSON list)
+//   POST /connector/attachmentUrl    {parent, library, url, title, target, tags}: OurNotes fetches it
+//   POST /connector/update           {key, library, target, tags}: another collection (older popups)
+//
+// A target is "<library ID>" or "<library ID>/<collection key>"; none: the library's selection.
+// The popup sends nothing until its Done is clicked.
 //
 // Requests are served on their own thread; the library is used on the GUI thread.
 class ConnectorServer : public QObject {
@@ -51,11 +56,14 @@ signals:
     void metadataWanted(qint64 libraryId, const QStringList& attachmentKeys);
 
 private:
-    Json save(const Json& item);
+    Json save(const Json& item, const std::string& target, const Json& tags);
     Json addPdf(const fs::path& file, int64_t libraryId, const std::string& parentKey, const std::string& url,
-                const std::string& title);
+                const std::string& title, const std::string& target, const Json& tags);
     Json update(const Json& body);
-    Json targets(int64_t libraryId) const;
+    Json targets(int64_t libraryId) const;  // the library and its collections
+    Json allTargets() const;                // {target, targets}: every library that may be changed
+    // Where a target leads: a library and a collection ("" for none); "" for the selection.
+    std::pair<int64_t, std::string> place(const std::string& target) const;
 
     // Runs f on the GUI thread and waits for it (gives up when the server stops).
     template <typename F>

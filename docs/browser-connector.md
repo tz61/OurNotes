@@ -18,9 +18,14 @@ on unless turned off in *Preferences → Advanced*.
 ## Saving a page
 
 Click the OurNotes button, or press **Alt+Shift+O** (changeable at
-`chrome://extensions/shortcuts`). The page goes into the library or collection selected
-in OurNotes' library tab; the popup shows where, and lets you pick another collection
-and add tags. *Done* (or Enter in the tags field) keeps your changes.
+`chrome://extensions/shortcuts`). The popup shows what the page would be saved as and
+where: the library or collection selected in OurNotes' library tab, or another one (of
+any library you can change), with the page's keywords as tags, which you can change.
+Nothing is saved until you click **Done** (or press Enter in the tags field): *Cancel*,
+Esc, or clicking elsewhere in the browser (which closes the popup) saves nothing, so a
+click on the button by mistake costs nothing. Once Done is clicked the page is saved
+even if the popup closes meanwhile; if saving fails, the button shows a red **!** and its
+tooltip says why.
 
 What is saved comes from what the page says about itself, in this order:
 
@@ -53,10 +58,14 @@ can run), on this computer only:
 | Request | |
 |---|---|
 | `GET /connector/ping` | `{app, version, api}` |
-| `POST /connector/save` | `{item}`, a Zotero-style item; answers `{key, libraryId, target, targets}` |
-| `POST /connector/attachment?parent=&library=&url=&title=` | the PDF's bytes (`application/pdf`); without a parent, a PDF on its own |
-| `POST /connector/attachmentUrl` | `{parent, library, url, title}`: OurNotes fetches the PDF |
-| `POST /connector/update` | `{key, library, target, tags}`: another collection (`"<library>/<collection key>"` or `"<library>"`), tags |
+| `GET /connector/targets` | `{target, targets}`: where things may go (each library that can be changed and its collections), and where they go unless told |
+| `POST /connector/save` | `{item, target, tags}`, a Zotero-style item; answers `{key, libraryId, target, targets}` |
+| `POST /connector/attachment?parent=&library=&url=&title=` | the PDF's bytes (`application/pdf`); without a parent, a PDF on its own (`&target=&tags=`, the tags a JSON list) |
+| `POST /connector/attachmentUrl` | `{parent, library, url, title, target, tags}`: OurNotes fetches the PDF |
+| `POST /connector/update` | `{key, library, target, tags}`: another collection, tags (for older versions of the extension) |
+
+A target is `"<library ID>"` or `"<library ID>/<collection key>"`; without one, the library
+tab's selection.
 
 Only browser extensions get in. A web page cannot use it to add things to your
 library: requests carrying a web page's `Origin` are refused, as are requests for any

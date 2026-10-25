@@ -75,6 +75,7 @@ input {
 footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   padding: 12px 14px;
 }
 button {
@@ -90,4 +91,10 @@ button {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

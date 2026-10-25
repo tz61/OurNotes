@@ -8,9 +8,9 @@
 <body>
   <header>
     <img src="icons/32.png" width="20" height="20" alt="">
-    <span id="status">Saving to OurNotes…</span>
+    <span id="status">Reading the page…</span>
   </header>
-  <main id="saved" hidden>
+  <main id="form" hidden>
     <p id="title"></p>
     <p id="kind"></p>
     <label for="target">In</label>
@@ -24,9 +24,11 @@
     <button id="retry" type="button">Try Again</button>
   </main>
   <footer>
-    <button id="done" type="button">Done</button>
+    <button id="cancel" type="button">Cancel</button>
+    <button id="done" type="button" disabled>Done</button>
   </footer>
   <script src="extract.js"></script>
+  <script src="save.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
