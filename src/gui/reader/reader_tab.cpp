@@ -919,14 +919,22 @@ Reference ReaderTab::reference(int page, const QRectF& place) const
     std::optional<std::array<double, 4>> rect;
     if (!place.isNull())
         rect = std::array<double, 4>{place.left(), place.top(), place.right(), place.bottom()};
-    auto label = view_->document() && page >= 0 ? view_->document()->pageLabel(page) : std::string();
-    return referenceTo(AppContext::get().library(), libraryId_, ss(key_), page + 1, label, rect);
+    try {
+        auto label = view_->document() && page >= 0 ? view_->document()->pageLabel(page) : std::string();
+        return referenceTo(AppContext::get().library(), libraryId_, ss(key_), page + 1, label, rect);
+    } catch (const std::exception&) {
+        return {};  // (the PDF gone from the library meanwhile: the quote alone)
+    }
 }
 
 Reference ReaderTab::annotationReference(const Json& annotation) const
 {
-    if (AppContext::get().library().item(libraryId_, jstr(annotation, "key")))
-        return referenceTo(AppContext::get().library(), libraryId_, jstr(annotation, "key"));
+    try {
+        if (AppContext::get().library().item(libraryId_, jstr(annotation, "key")))
+            return referenceTo(AppContext::get().library(), libraryId_, jstr(annotation, "key"));
+    } catch (const std::exception&) {
+        // (its PDF gone: by its page)
+    }
     auto position = annotation.value("annotationPosition", Json::object());
     int page = position.is_object() ? position.value("pageIndex", -1) : -1;
     return reference(page);

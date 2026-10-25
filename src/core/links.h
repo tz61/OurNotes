@@ -54,7 +54,8 @@ struct Reference {
 Reference referenceTo(Library& lib, int64_t libraryId, const std::string& key, int page = 0,
                       const std::string& pageLabel = {}, const std::optional<std::array<double, 4>>& rect = {});
 
-// “quote” (Smith, 2020, p. 3), the reference a link; without a quote, the link alone.
+// “quote” (Smith, 2020, p. 3), the reference a link; without a quote, the link alone; a
+// reference without a url: its words, not linked.
 std::string referenceHtml(const Reference& ref, const std::string& quote = {});
 std::string referenceMarkdown(const Reference& ref, const std::string& quote = {});
 std::string referenceText(const Reference& ref, const std::string& quote = {});

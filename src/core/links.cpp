@@ -171,24 +171,35 @@ Reference referenceTo(Library& lib, int64_t libraryId, const std::string& key, i
     return {itemLinkUrl(link), citation(*item, {})};
 }
 
+namespace {
+
+// “quote” and then the reference; either alone
+std::string quoted(const std::string& quote, const std::string& reference)
+{
+    if (quote.empty())
+        return reference;
+    return "“" + quote + "”" + (reference.empty() ? std::string() : " " + reference);
+}
+
+} // namespace
+
 std::string referenceHtml(const Reference& ref, const std::string& quote)
 {
-    std::string link = "<a href=\"" + htmlEscape(ref.url) + "\">" + htmlEscape(ref.text) + "</a>";
-    return quote.empty() ? link : "“" + htmlEscape(quote) + "” " + link;
+    if (ref.url.empty())  // (one that could not be made: the words alone)
+        return quoted(htmlEscape(quote), htmlEscape(ref.text));
+    return quoted(htmlEscape(quote), "<a href=\"" + htmlEscape(ref.url) + "\">" + htmlEscape(ref.text) + "</a>");
 }
 
 std::string referenceMarkdown(const Reference& ref, const std::string& quote)
 {
+    if (ref.url.empty())
+        return quoted(quote, ref.text);
     std::string text;
     for (char c : ref.text)  // (a bracket would end the link's words)
         text += c == '[' ? '(' : c == ']' ? ')' : c;
-    std::string link = "[" + text + "](" + ref.url + ")";
-    return quote.empty() ? link : "“" + quote + "” " + link;
+    return quoted(quote, "[" + text + "](" + ref.url + ")");
 }
 
-std::string referenceText(const Reference& ref, const std::string& quote)
-{
-    return quote.empty() ? ref.text : "“" + quote + "” " + ref.text;
-}
+std::string referenceText(const Reference& ref, const std::string& quote) { return quoted(quote, ref.text); }
 
 } // namespace on

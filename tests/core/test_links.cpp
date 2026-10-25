@@ -93,4 +93,9 @@ TEST_CASE("links: references to an item, a note, a PDF's page and an annotation"
     CHECK(referenceMarkdown(ref, "quoted") == "“quoted” [(Smith and Jones, 2020, p. 5)](" + ref.url + ")");
     CHECK(referenceText(ref, "quoted") == "“quoted” (Smith and Jones, 2020, p. 5)");
     CHECK(referenceMarkdown({"ournotes://item/l/ABCD2345", "[draft] plan"}) == "[(draft) plan](ournotes://item/l/ABCD2345)");
+    // one that could not be made: the quote, the words, not linked
+    CHECK(referenceHtml({}, "a < b") == "\u201ca &lt; b\u201d");
+    CHECK(referenceHtml({"", "(Smith)"}, "q") == "\u201cq\u201d (Smith)");
+    CHECK(referenceMarkdown({}, "q") == "\u201cq\u201d");
+    CHECK(referenceText({}, "q") == "\u201cq\u201d");
 }
