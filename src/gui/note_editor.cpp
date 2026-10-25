@@ -1928,8 +1928,8 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
         for (auto& fragment : fragments) {
             auto f = fragment.charFormat();
             useNoteFont(f);
-            if (f.isAnchor())
-                f.clearForeground();  // (a link's own colour: neither saved nor shown, in either palette)
+            if (f.isAnchor())  // (its own colour neither saved nor shown, in either palette: as links in a note opened)
+                f.setForeground(palette().link());
             else if (!isPicture(f))
                 hideUnreadable(f, base);
             f.clearProperty(QTextFormat::FontPointSize);

@@ -3047,6 +3047,8 @@ TEST_CASE("links: references made in the reader, pasted into a note, added to on
     }
     REQUIRE(copyReference);
     REQUIRE(addToNote);
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        window.grab().save(dir + "/reader-copy-reference.png");
     copyReference->click();
     auto* copied = QApplication::clipboard()->mimeData();
     CHECK(copied->text() == "“World” (Smith, 2020, p. 1)");
@@ -3068,8 +3070,12 @@ TEST_CASE("links: references made in the reader, pasted into a note, added to on
     auto* noteEditor = reader->findChild<NoteEditor*>();
     REQUIRE(noteEditor);
     QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 8).toPoint());
+    auto* contextTabs = reader->findChild<QTabWidget*>("readerContextTabs");
+    REQUIRE(contextTabs);
+    contextTabs->setCurrentIndex(0);  // (Info in front)
     addToNote->click();  // (a note made for it, under the paper)
     QApplication::processEvents();
+    CHECK(contextTabs->currentIndex() == 1);  // (the note it went into in sight)
     auto* edit = noteEditor->findChild<NoteTextEdit*>();
     REQUIRE(edit);
     auto anchors = [&] {
@@ -3097,6 +3103,8 @@ TEST_CASE("links: references made in the reader, pasted into a note, added to on
     QTest::keyClicks(edit, " ok");
     CHECK(anchors().back() == "(Smith, 2020, p. 1) -> " + qs(bare.url));
     CHECK(edit->toPlainText().endsWith("(Smith, 2020, p. 1) ok"));
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        window.grab().save(dir + "/note-references.png");
     // saved as links
     noteEditor->flush();
     auto saved = env.library.children(env.lib, paper, "note");
@@ -5462,6 +5470,9 @@ TEST_CASE("notes: pasted from elsewhere in dark mode, a link's own colour is not
     auto html = documentToNoteHtml(note.doc());
     CHECK(html.contains("<a href=\"https://example.org/\">link</a>"));
     CHECK(!html.contains("#0645ad"));
+    auto link = note.doc()->find("link");
+    REQUIRE(link.charFormat().isAnchor());
+    CHECK(link.charFormat().foreground().color() == edit.palette().link().color());  // (as in a note opened)
 
     auto added = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>Text</p></div>");
     NoteEditor editor;

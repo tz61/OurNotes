@@ -952,6 +952,10 @@ void ReaderTab::addToNote(const QString& html)
 {
     if (!AppContext::get().editable(libraryId_))
         return;
+    if (!parentKey_.isEmpty()) {  // the note it goes into in sight, as N shows it
+        paneToggle_->setChecked(true);
+        chooseInfoNotesTab(contextTabs_, 1);
+    }
     if (!noteEditor_->key().isEmpty()) {
         if (!html.isEmpty())
             noteEditor_->appendHtml(html);
