@@ -213,12 +213,22 @@ struct CaptionKept {
     int caption = -1;
 };
 
+// Too near the background to read (dark on dark). Not a colour of the colour menu: those are
+// read on either background (Green is no lighter than 90 above the dark one, but is read).
+bool unreadableOn(const QColor& color, const QColor& base)
+{
+    for (auto& c : schema::kAnnotationColors)
+        if (color.rgb() == QColor(c.hex).rgb())
+            return false;
+    return std::abs(color.lightness() - base.lightness()) < 90;
+}
+
 // A colour too near the background to read (dark on dark): shown in the text's colour, kept
 // (as adaptColors does).
 bool hideUnreadable(QTextCharFormat& f, const QColor& base)
 {
     if (f.isAnchor() || f.hasProperty(kOriginalForegroundProperty) || !f.hasProperty(QTextFormat::ForegroundBrush) ||
-        std::abs(f.foreground().color().lightness() - base.lightness()) >= 90)
+        !unreadableOn(f.foreground().color(), base))
         return false;  // (a link's own colour is not kept: shown, nor saved, in either palette)
     f.setProperty(kOriginalForegroundProperty, f.foreground().color());
     f.clearForeground();
@@ -709,7 +719,7 @@ void NoteTextEdit::adaptColors()
             if (!hidden && !f.hasProperty(QTextFormat::ForegroundBrush))
                 continue;
             QColor original = hidden ? f.property(kOriginalForegroundProperty).value<QColor>() : f.foreground().color();
-            bool unreadable = std::abs(original.lightness() - base.lightness()) < 90;
+            bool unreadable = unreadableOn(original, base);
             if (unreadable && !hidden) {
                 f.setProperty(kOriginalForegroundProperty, original);
                 f.clearForeground();

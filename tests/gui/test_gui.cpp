@@ -5915,7 +5915,7 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     edit.resize(400, 200);
     edit.show();
     QString note = "<div data-schema-version=\"9\"><p><span style=\"color: #000000\">Black text</span> "
-                   "<span class=\"math\">$\\frac{a}{b}$</span></p></div>";
+                   "<span class=\"math\">$\\frac{a}{b}$</span></p><p><span style=\"color: #5fb236\">Green</span></p></div>";
     edit.setHtml(noteHtmlForEditor(note, env.lib, edit.document()));
     edit.prepareDocument();
     QApplication::processEvents();
@@ -5925,6 +5925,10 @@ TEST_CASE("appearance: dark mode, formula colour and readable note text")
     CHECK(!first.hasProperty(QTextFormat::ForegroundBrush));
     CHECK(documentToNoteHtml(edit.document()).contains("color: #000000"));
     CHECK(!edit.document()->isModified());
+    // the colour menu's colours are shown as they are (Green, by HSL lightness near the
+    // background, was shown in the text colour)
+    auto green = edit.document()->lastBlock().begin().fragment().charFormat();
+    CHECK(green.foreground().color() == QColor("#5fb236"));
 
     // formulas are drawn in the text colour (light on dark) unless a colour is set
     auto brightest = [&](auto pred) {
@@ -6622,7 +6626,7 @@ TEST_CASE("sync: what another computer changed shows in the open PDF, beside it 
     syncThere();
     syncHere();
     // (reloaded on a timer, which a busy computer runs late)
-    QTest::qWaitFor([&] { return tab.findChild<QListWidget*>()->count() == notes + 1; }, 5000);
+    CHECK(QTest::qWaitFor([&] { return tab.findChild<QListWidget*>()->count() == notes + 1; }, 5000));
     CHECK(!view->commentBadgeRect(qs(annKey)).isEmpty());
     auto cards = tab.findChildren<AnnotationCard*>();
     REQUIRE(cards.size() == 1);
