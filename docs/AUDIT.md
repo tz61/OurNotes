@@ -195,9 +195,6 @@ Found, not verified (left for review; each is a lead, not a confirmed defect):
 
 - `sync/store.cpp` `Store::changes`, `Store::push`: every row's JSON parsed while holding the server-wide mutex; each pushed object's stored JSON parsed only to compare versions.
 - `core/sync/engine.cpp` `syncFiles`: every sync downloads and parses the full file list of every library, even when nothing changed.
-- `cli/extra_commands.cpp` `index`, `empty-trash`: every item of every library parsed to find PDFs; `cite`/`export` drop unknown keys silently and exit 0.
-- `search_field.cpp`: the Aa toggle made 18×16, drawn into 16×16; `metadata_progress.cpp`: rows keep the old theme's text colour.
-- `search_field.cpp`: the search history popup outlives its tab; `storage_window.cpp`: Refresh starts new scans without cancelling the old.
 
 ## Round 6: the leads of round 5, verified
 
@@ -213,3 +210,20 @@ limits; `syncFiles` asking for the file list at each sync: one small request).
 | rendering / data | `note_editor.cpp` `adaptColors` | From a light theme to a dark one, links (coloured with the palette's link colour) were taken for text of a colour of their own and shown in the text colour. They take the new palette's link colour. |
 | rendering | `item_pane.cpp` `AutoTextEdit::sizeHint` | Lines are laid out at their height rounded up, measured rounded to nearest: a pixel short a line, so long abstracts, titles and comments lost their last lines. |
 | rendering | `item_pane.cpp` `RelatedBox` | A related item's long title made the Info page wider than the pane, cutting off every field's right side. |
+
+## Round 7: the rest of round 5's leads
+
+| Kind | Where | What |
+|---|---|---|
+| leak | `search_field.cpp` `showList` | The find field's history list was made a child of the main window: every closed tab whose find field had shown it left it behind (up to 1000 entries) for the session. It goes with its field. |
+| rendering | `search_field.cpp` `updateCaseButton` | The Aa toggle was drawn 18×16 for a 16×16 place: scaled twice, out of proportion, blurred. Square now. |
+| rendering | `metadata_progress.cpp` | A found title kept the text colour of the theme it was found in: invisible after switching light ↔ dark with the dialog open. It takes the list's own. |
+
+Left, as a decision for the owner: `ournotes-cli cite` and `export` given keys leave
+out, without a word and with exit 0, those not in the library or not regular items (a
+typo, a note): an agent gets part of what it asked for. Failing instead would change
+what scripts can rely on.
+
+Not defects after all: `storage_window.cpp` already drops an earlier Refresh's answers
+(a generation counter), and `index`/`empty-trash` reading every item once is a one-off
+command's cost.
