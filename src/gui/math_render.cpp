@@ -1,14 +1,15 @@
 #include "gui/math_render.h"
 
+#include <QCache>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QFontMetricsF>
-#include <QHash>
 #include <QPainter>
 #include <QRegularExpression>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
@@ -45,9 +46,12 @@ QString findResources()
     return {};
 }
 
-QHash<QString, MathImage>& cache()
+// The formulas drawn last, by their size in KB: room for the largest one drawn (see
+// renderMath), and thousands of the usual ones. (Emptied at 500 formulas, a note with more
+// rendered all of them again each time it was laid out, and large ones could take gigabytes.)
+QCache<QString, MathImage>& cache()
 {
-    static QHash<QString, MathImage> c;
+    static QCache<QString, MathImage> c(160 * 1024);
     return c;
 }
 
@@ -197,11 +201,8 @@ static bool bracesBalanced(const QString& tex)
 MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const QColor& color, qreal dpr)
 {
     QString key = QString("%1|%2|%3|%4|%5").arg(display).arg(pixelSize).arg(color.rgba()).arg(dpr).arg(latex);
-    auto it = cache().find(key);
-    if (it != cache().end())
-        return *it;
-    if (cache().size() > 500)
-        cache().clear();
+    if (auto* cached = cache().object(key))
+        return *cached;
 
     MathImage m;
     if (!initialise()) {
@@ -261,7 +262,7 @@ MathImage renderMath(const QString& latex, bool display, qreal pixelSize, const 
             m = sourceImage(latex, display, pixelSize, dpr, QString::fromLocal8Bit(e.what()));
         }
     }
-    cache().insert(key, m);
+    cache().insert(key, new MathImage(m), std::max<qsizetype>(1, m.image.sizeInBytes() / 1024));
     return m;
 }
 

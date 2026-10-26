@@ -363,27 +363,39 @@ QTextCharFormat NoteTextEdit::sourceFormat(bool display, QTextCharFormat base) c
     return base;
 }
 
+std::vector<NoteTextEdit::MathRun> NoteTextEdit::mathRuns(const QTextBlock& block) const
+{
+    std::vector<MathRun> runs;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        auto frag = it.fragment();
+        int kind = frag.charFormat().property(kMathSourceProperty).toInt();
+        if (!kind)
+            continue;
+        if (!runs.empty() && runs.back().end == frag.position() && runs.back().display == (kind == 2))
+            runs.back().end = frag.position() + frag.length();
+        else
+            runs.push_back({frag.position(), frag.position() + frag.length(), kind == 2});
+    }
+    return runs;
+}
+
 std::vector<NoteTextEdit::MathRun> NoteTextEdit::mathRuns() const
 {
     std::vector<MathRun> runs;
-    for (auto block = document()->begin(); block.isValid(); block = block.next())
-        for (auto it = block.begin(); !it.atEnd(); ++it) {
-            auto frag = it.fragment();
-            int kind = frag.charFormat().property(kMathSourceProperty).toInt();
-            if (!kind)
-                continue;
-            if (!runs.empty() && runs.back().end == frag.position() && runs.back().display == (kind == 2))
-                runs.back().end = frag.position() + frag.length();
-            else
-                runs.push_back({frag.position(), frag.position() + frag.length(), kind == 2});
-        }
+    for (auto block = document()->begin(); block.isValid(); block = block.next()) {
+        auto inBlock = mathRuns(block);
+        runs.insert(runs.end(), inBlock.begin(), inBlock.end());
+    }
     return runs;
 }
 
 std::optional<NoteTextEdit::MathRun> NoteTextEdit::runAtCursor() const
 {
-    int p = textCursor().position();
-    for (auto& r : mathRuns())
+    // (a run is within a block, the separator between two being none of it: the cursor's
+    // block is enough, and not the whole note at each key and each move of the cursor)
+    auto cursor = textCursor();
+    int p = cursor.position();
+    for (auto& r : mathRuns(cursor.block()))
         if (p > r.start && p < r.end)
             return r;
     return std::nullopt;

@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
 
 #include "gui/icons.h"
 #include "gui/note_editor.h"
@@ -250,6 +251,12 @@ void NoteTextEdit::setUpPictures()
     connect(this, &QTextEdit::cursorPositionChanged, this, [this] {
         if (!composeTo_.isNull() && textCursor().block() != composeTo_.block())
             endComposing();
+        // an empty caption's "Add a caption", beside the cursor (see paintEvent): shown and gone
+        // with it (Qt repaints only where the cursor was and is, and left it there, or not drawn)
+        auto block = textCursor().block();
+        bool captionHint = isCaption(block) && block.length() <= 1;
+        if (std::exchange(captionHint_, captionHint) || captionHint)
+            viewport()->update();
         if (picking_)
             return;
         unpickPicture();
@@ -735,8 +742,12 @@ void NoteTextEdit::startPictureDrag()
     auto* drag = new QDrag(this);
     drag->setMimeData(mime);
     auto image = document()->resource(QTextDocument::ImageResource, QUrl(formatAt(document(), p).name())).value<QImage>();
-    if (!image.isNull())
-        drag->setPixmap(QPixmap::fromImage(image.scaled(160, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    if (!image.isNull()) {  // (as sharp as the screen is: 160 by 120 at most, in its points)
+        qreal dpr = devicePixelRatioF();
+        auto thumb = image.scaled(QSize(160, 120) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        thumb.setDevicePixelRatio(dpr);
+        drag->setPixmap(QPixmap::fromImage(thumb));
+    }
     drag->exec(Qt::MoveAction | Qt::CopyAction, Qt::MoveAction);
     dragged_ = QTextCursor();
     if (dropAt_ >= 0) {  // (let go elsewhere, or not at all)
