@@ -129,4 +129,11 @@ and no leak in OurNotes' own code. In MicroTeX, which OurNotes builds and patche
 | perf | `hash.cpp` `pbkdf2Sha256` | The padded password was hashed again in each of a login's 120k iterations. Hashed once; each iteration copies the two states. 211 ms → 113 ms per login or `useradd` (output unchanged: RFC 7914's 80,000-iteration vector added to the tests). |
 | perf | `library.cpp` schema 4, `tags()` | The tag list (rebuilt after every item change, a note's autosave too) looked up each tag's item in `items`, whose rows carry the item's whole data: a deep tree to walk for each. An index `items(library_id, key, trashed)` answers it: `tags()` 38 → 24 ms, the tag selector 51 → 37 ms (5,000 papers, 15,000 tags on them). Older versions of the app open the database as before. |
 
+Fuzzed (libFuzzer, ASan + UBSan, leaks checked, 20 minutes, seeded with the formats
+tests' samples): `importBibtex`, `importRis`, `importCslJson`, `detectFormat`,
+`latexToUnicode`, and what they import written back out (`exportBibtex`, `exportRis`,
+`exportCslJson`, APA, Chicago and IEEE citations), ~970,000 inputs; `htmlToText`,
+`noteTitle`, `yearOf`, `normalize`, `searchTokens`, the date helpers, `safeFilename` and
+`parseItemLink`, ~4.9 million inputs. No crash, no memory error, no leak.
+
 Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.
