@@ -42,7 +42,7 @@ void ChangeWatcher::run()
         bool failed = false;
         try {
             transport = hooks_.connect();
-            watch(*transport, asked);
+            watch(*transport, asked, retry);
         } catch (const std::exception&) {
             failed = true;
         }
@@ -56,7 +56,7 @@ void ChangeWatcher::run()
 }
 
 // Until an error (or the end): as long as the target is reachable, with one transport.
-void ChangeWatcher::watch(Transport& transport, std::string& asked)
+void ChangeWatcher::watch(Transport& transport, std::string& asked, int& retry)
 {
     while (!stopping_) {
         uint64_t synced = idle();
@@ -64,6 +64,7 @@ void ChangeWatcher::watch(Transport& transport, std::string& asked)
             return;
         auto now = transport.awaitLibraries({}, 0);
         end();
+        retry = 0;  // reached: the next error waits as the first did, not as long as the last
         if (!now) {
             unsupported_ = true;
             pause(timing_.unsupportedSeconds);

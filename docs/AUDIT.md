@@ -79,7 +79,6 @@ formats tests, with no reports before or after.
 | perf | `note_html.cpp` `noteHtmlForEditor` | Each save reloads every other editor showing the note, decoding all its pictures from disk. Needs a shared image cache. |
 | behaviour | `note_editor.cpp` `adaptColors` | `setUndoRedoEnabled(false)` on a theme/palette change wipes the undo history. |
 | perf | `TagSelector`, `ItemNotesPanel`, `LocationBox` | Rebuilt on any item change (including note autosave), hidden ones too. |
-| behaviour | `sync/change_watcher.cpp` `run` | The reconnect back-off is never reset after a successful reconnect: after one outage, every later error waits up to 300 s. |
 | robustness | `server/main.cpp` `cmdServe` | An exception between starting the watcher thread and joining it ends in `std::terminate`. |
 | perf | `sync/server_api.cpp` `LoginLimiter::failed` | With more than 10k live addresses the whole map is scanned on each failure and still grows (PBKDF2 limits the rate). |
 | perf | `cli/extra_commands.cpp` `import` | Each imported item commits on its own; one transaction would hold the write lock long enough for the GUI's 15 s busy timeout. |
@@ -125,5 +124,7 @@ and no leak in OurNotes' own code. In MicroTeX, which OurNotes builds and patche
 | crash | `util.cpp` `safeFilename` | A name over 200 characters whose "extension" was over 200 (a synced attachment's filename, read at every sync) made `200 - ext.size()` wrap round and read past the end. Test in `test_util.cpp`. |
 | crash | `core/json.h` `parseExternalJson` | JSON nested ~100k deep parses, then overflows the stack when copied or dumped. Requests to the sync server and the connector, and the server's responses to the app, refuse nesting over 256. Test in `test_util.cpp`. (Commit d72c4d3 says "not yet built or tested": it was, afterwards, and passes.) |
 | perf | `items_model.cpp` `reload`, `library.cpp` `itemRows` | Each reload (after every change, a note's autosave too) read and parsed every attachment's JSON to see whether its file is there. `itemRows` now gives an attachment's filename and path. 5,000 papers with a PDF each: 227 ms → ~100 ms per reload. |
+
+| behaviour | `sync/change_watcher.cpp` `run`, `watch` | The reconnect back-off was never reset: after one outage, every later error waited up to 300 s before the next try. Reset once the target answers. |
 
 Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.

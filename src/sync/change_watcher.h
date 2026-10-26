@@ -46,7 +46,7 @@ public:
 
 private:
     void run();
-    void watch(Transport& transport, std::string& asked);
+    void watch(Transport& transport, std::string& asked, int& retry);  // retry: 0 once the target answers
     uint64_t idle();  // waits for a running sync to end; its count then
     bool behind(const LibrariesState& remote);
     void pause(int seconds);
