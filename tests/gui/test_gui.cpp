@@ -7263,6 +7263,37 @@ TEST_CASE("main window: what another program changes shows at once; its own sync
     REQUIRE(QTest::qWaitFor([&] { return done; }, 20000));
     QTest::qWait(2500);
     CHECK(elsewhere == 1);
+
+    // while the app writes on other connections for long (the full-text index): what it
+    // writes is its own, what ournotes-cli writes meanwhile is seen at once
+    auto shown = [&](const char* title) {
+        return [&, title] {
+            for (int r = 0; r < model->rowCount(); ++r)
+                if (model->index(r, 0).data().toString() == title)
+                    return true;
+            return false;
+        };
+    };
+    auto cliRetitles = [&](const char* title) {
+        Library cli(env.library.dataDir());
+        cli.setOrigin("ournotes-cli");  // as its main() does
+        cli.updateItem(env.lib, paper, [&](Json& d) { d["title"] = title; });
+    };
+    env.context.beginOwnWrites();
+    {
+        Library own(env.library.dataDir());
+        own.updateItem(env.lib, paper, [](Json& d) { d["title"] = "Own"; });
+    }
+    QTest::qWait(2500);
+    CHECK(elsewhere == 1);
+    cliRetitles("By an agent");
+    CHECK(QTest::qWaitFor([&] { return elsewhere == 2; }, 5000));
+    CHECK(QTest::qWaitFor(shown("By an agent"), 3000));
+    // just before the app's own writes end: seen after
+    cliRetitles("By an agent again");
+    env.context.endOwnWrites();
+    CHECK(QTest::qWaitFor([&] { return elsewhere == 3; }, 5000));
+    CHECK(QTest::qWaitFor(shown("By an agent again"), 3000));
 }
 
 TEST_CASE("sync history: filled by the syncs the app runs")

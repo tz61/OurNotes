@@ -120,6 +120,7 @@ public:
 
     int64_t lastInsertId() const;
     int changes() const;
+    int64_t totalChanges() const;  // rows changed through this connection since it opened
     int userVersion();
     void setUserVersion(int v);
 

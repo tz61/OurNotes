@@ -130,7 +130,8 @@ public:
     FulltextIndex& fulltext();
     // The program changing the library through this instance, when not the app:
     // "ournotes-cli". Each object it changes keeps that name until the change is synced,
-    // for the sync history (see changedBy).
+    // for the sync history (see changedBy); when it is done (this instance goes), that it
+    // wrote is counted (programWrites).
     void setOrigin(std::string name) { origin_ = std::move(name); }
 
     // --- change notification ---------------------------------------------------------
@@ -283,6 +284,9 @@ public:
     // Changes when another connection (another program, another thread) has written to
     // the database since this one last asked (SQLite's PRAGMA data_version).
     int64_t dataVersion();
+    // How many times a program (with an origin) was done after writing to the library:
+    // for the app to tell their writes from those of its own threads, while they write.
+    int64_t programWrites();
     std::vector<Tombstone> tombstones(int64_t lib);
     std::optional<Tombstone> tombstone(int64_t lib, const std::string& type, const std::string& key);
     void clearTombstone(int64_t lib, const std::string& type, const std::string& key);

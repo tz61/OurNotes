@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 
 #include "core/config.h"
 #include "core/fulltext.h"
@@ -179,6 +180,34 @@ TEST_CASE("sync bookkeeping: dirty objects, tombstones, markPushed")
     auto k2 = jstr(lib.createItem(id, Json{{"itemType", "book"}}), "key");
     lib.eraseItems(id, {k2});
     CHECK(lib.tombstones(id).size() == 1);
+}
+
+TEST_CASE("libraries: a program done writing is counted, for the app writing at the same time")
+{
+    TempDir tmp;
+    Library app(tmp.path);
+    auto id = app.defaultLibrary();
+    auto key = jstr(app.createItem(id, Json{{"itemType", "book"}, {"title", "A"}}), "key");
+    CHECK(app.programWrites() == 0);
+    auto program = [&](const std::function<void(Library&)>& does) {
+        Library cli(tmp.path);
+        cli.setOrigin("ournotes-cli");
+        does(cli);
+    };
+    program([&](Library& cli) { cli.updateItem(id, key, [](Json& d) { d["title"] = "B"; }); });
+    CHECK(app.programWrites() == 1);
+    program([&](Library& cli) { CHECK(cli.item(id, key)); });  // read only
+    CHECK(app.programWrites() == 1);
+    program([&](Library& cli) {
+        cli.updateItem(id, key, [](Json& d) { d["title"] = "C"; });
+        cli.createItem(id, Json{{"itemType", "book"}});
+    });
+    CHECK(app.programWrites() == 2);
+    {
+        Library thread(tmp.path);  // the app's, on another connection
+        thread.updateItem(id, key, [](Json& d) { d["title"] = "D"; });
+    }
+    CHECK(app.programWrites() == 2);
 }
 
 TEST_CASE("duplicates and merge")

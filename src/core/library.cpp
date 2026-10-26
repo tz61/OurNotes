@@ -258,7 +258,17 @@ Library::Library(const fs::path& dataDir) : dataDir_(dataDir)
     migrate();
 }
 
-Library::~Library() = default;
+Library::~Library()
+{
+    if (origin_.empty() || !db_.isOpen() || db_.totalChanges() == 0)
+        return;
+    try {
+        db_.run("INSERT INTO meta(key, value) VALUES('program writes', 1) "
+                "ON CONFLICT(key) DO UPDATE SET value = value + 1");
+    } catch (const std::exception&) {
+        // (the app then takes them for its own if they came while it wrote too)
+    }
+}
 
 void Library::migrate()
 {
@@ -1791,6 +1801,11 @@ void Library::setObjectVersion(int64_t lib, const std::string& type, const std::
 }
 
 int64_t Library::dataVersion() { return db_.scalarInt("PRAGMA data_version").value_or(0); }
+
+int64_t Library::programWrites()
+{
+    return db_.scalarInt("SELECT value FROM meta WHERE key='program writes'").value_or(0);
+}
 
 std::vector<DirtyObject> Library::dirtyObjects(int64_t lib)
 {

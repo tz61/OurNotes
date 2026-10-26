@@ -133,6 +133,7 @@ void Db::exec(std::string_view sql)
 
 int64_t Db::lastInsertId() const { return sqlite3_last_insert_rowid(db_); }
 int Db::changes() const { return sqlite3_changes(db_); }
+int64_t Db::totalChanges() const { return sqlite3_total_changes64(db_); }
 int Db::userVersion() { return (int)scalarInt("PRAGMA user_version").value_or(0); }
 void Db::setUserVersion(int v) { exec("PRAGMA user_version=" + std::to_string(v)); }
 

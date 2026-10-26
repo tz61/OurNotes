@@ -29,7 +29,7 @@ public:
     // is looked at every 2 seconds, and then the views reload and changedElsewhere().
     void watchDatabase();
     // Around the app's own writes on other connections (a sync's thread): taken in as the
-    // app's, without a signal.
+    // app's, without a signal; but for those of programs that count theirs (ournotes-cli).
     void beginOwnWrites();
     void endOwnWrites();
 
@@ -52,6 +52,7 @@ private:
     int listener_ = 0;
     QTimer* databaseTimer_ = nullptr;
     int64_t dataVersion_ = 0;
+    int64_t programWrites_ = 0;  // Library::programWrites() when last looked at
     int ownWrites_ = 0;  // writes of the app's own going on elsewhere
 };
 
