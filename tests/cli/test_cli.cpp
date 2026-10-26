@@ -916,10 +916,9 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
     CHECK(html.find("<img data-attachment-key=\"" + jstr(picture, "key") + "\" alt=\"the first page\">") != npos);
 
     // more at the end: a file, and a data: URI
-    auto bytes = readFile(figure);
-    std::string b64;
-    {
+    auto base64 = [](const std::string& bytes) {
         static const char* digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string b64;
         size_t i = 0;
         for (; i + 2 < bytes.size(); i += 3) {
             unsigned v = (unsigned char)bytes[i] << 16 | (unsigned char)bytes[i + 1] << 8 | (unsigned char)bytes[i + 2];
@@ -933,7 +932,10 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
             b64 += i + 1 < bytes.size() ? digits[(v >> 6) & 63] : '=';
             b64 += '=';
         }
-    }
+        return b64;
+    };
+    auto bytes = readFile(figure);
+    auto b64 = base64(bytes);
     CHECK(cli.run({"add-image", note, pathString(figure), "data:image/png;base64," + b64, "--width", "200"}).first == 0);
     pictures = lib.children(mine, note, "attachment");
     REQUIRE(pictures.size() == 3);
@@ -978,4 +980,13 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
         return "<p>" + img(a) + img(b) + "</p><p class=\"caption\">Two &lt;figures&gt;</p></div>";
     };
     CHECK_MESSAGE((html.find(row(keys[0], keys[1])) != npos || html.find(row(keys[1], keys[0])) != npos), html);
+
+    // a picture of some 40 KB as data: (std::regex read the tags, and overflowed the stack
+    // from about 20 KB)
+    auto large = cli.dir.path / "large.png";
+    REQUIRE(cli.run({"render", pdf, "--dpi", "600", "-o", pathString(large)}).first == 0);
+    auto largeData = "data:image/png;base64," + base64(readFile(large));
+    REQUIRE(largeData.size() > 30000);
+    CHECK(cli.run({"add-image", note, largeData}).first == 0);
+    CHECK(cli.run({"add-note", paper, "![large](" + largeData + ")"}).first == 0);
 }

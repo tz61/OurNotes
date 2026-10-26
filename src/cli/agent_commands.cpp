@@ -2,11 +2,11 @@
 // (see docs/agents.md): libraries and collections by name, JSON output, a PDF's text,
 // fields, tags, notes, collections and the trash.
 
+#include <cctype>
 #include <cmath>
 #include <iostream>
 #include <iterator>
 #include <optional>
-#include <regex>
 #include <set>
 
 #if defined(_WIN32)
@@ -325,21 +325,69 @@ std::pair<int64_t, Json> pdfOf(Library& lib, const Args& args)
     return {id, item};
 }
 
+bool isWordChar(char c) { return std::isalnum((unsigned char)c) || c == '_'; }
+
+// The <img ...> tags of a note's HTML (with `anyCase`, <IMG too): where each begins, its
+// length. Read by hand, as the attributes in them: std::regex recurses through each character
+// it repeats over, and an <img> with a data: picture of some 20 KB overflowed the stack.
+std::vector<std::pair<size_t, size_t>> imgTags(const std::string& html, bool anyCase)
+{
+    std::vector<std::pair<size_t, size_t>> out;
+    for (size_t at = 0; (at = html.find('<', at)) != std::string::npos; ++at) {
+        auto name = std::string_view(html).substr(at + 1, 3);
+        if (!(anyCase ? iequals(name, "img") : name == "img") || (at + 4 < html.size() && isWordChar(html[at + 4])))
+            continue;
+        auto close = html.find('>', at);
+        if (close == std::string::npos)
+            break;
+        out.push_back({at, close + 1 - at});
+        at = close;
+    }
+    return out;
+}
+
+// `name="value"` or `name='value'` at `at` in a tag (in any case, spaces about the =, not the
+// end of a longer word): its value, and in `end` where it ends.
+std::optional<std::string> attributeAt(const std::string& t, size_t at, std::string_view name, size_t& end)
+{
+    if ((at > 0 && isWordChar(t[at - 1])) || !iequals(std::string_view(t).substr(at, name.size()), name))
+        return std::nullopt;
+    auto i = t.find_first_not_of(" \t\n\v\f\r", at + name.size());
+    if (i == std::string::npos || t[i] != '=' || (i = t.find_first_not_of(" \t\n\v\f\r", i + 1)) == std::string::npos ||
+        (t[i] != '"' && t[i] != '\''))
+        return std::nullopt;
+    auto close = t.find(t[i], i + 1);
+    if (close == std::string::npos)
+        return std::nullopt;
+    end = close + 1;
+    return t.substr(i + 1, close - i - 1);
+}
+
 int cmdText(Library& lib, Args& args)
 {
     auto [id, item] = findItem(lib, args.positional(0), libraryOption(lib, args));
     if (jstr(item, "itemType") == "note") {
         // its pictures as where their files are, to be looked at
-        static const std::regex picture(R"re(<img\b[^>]*?data-attachment-key="([A-Za-z0-9]+)"[^>]*>)re");
         auto html = jstr(item, "note");
         std::string shown;
         size_t last = 0;
-        for (auto it = std::sregex_iterator(html.begin(), html.end(), picture); it != std::sregex_iterator(); ++it) {
-            auto att = lib.item(id, (*it)[1].str());
+        for (auto [at, length] : imgTags(html, false)) {
+            auto t = html.substr(at, length);
+            std::string key;  // its first data-attachment-key="..." of letters and digits
+            const std::string attr = "data-attachment-key=\"";
+            for (auto k = t.find(attr); k != std::string::npos && key.empty(); k = t.find(attr, k + 1)) {
+                auto from = k + attr.size();
+                auto end = t.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", from);
+                if (end != std::string::npos && end > from && t[end] == '"')
+                    key = t.substr(from, end - from);
+            }
+            if (key.empty())
+                continue;
+            auto att = lib.item(id, key);
             auto path = att ? lib.attachmentFile(id, *att) : fs::path();
-            shown += html.substr(last, it->position() - last) + "<p>[picture: " +
-                     htmlEscape(path.empty() ? (*it)[1].str() : pathString(path)) + "]</p>";
-            last = it->position() + it->length();
+            shown += html.substr(last, at - last) + "<p>[picture: " + htmlEscape(path.empty() ? key : pathString(path)) +
+                     "]</p>";
+            last = at + length;
         }
         std::cout << htmlToText(shown + html.substr(last)) << "\n";
         return 0;
@@ -503,20 +551,25 @@ struct NotePicture {
 
 std::vector<NotePicture> notePictures(const std::string& html, const fs::path& scratch)
 {
-    static const std::regex tag(R"(<img\b[^>]*>)", std::regex::icase);
-    static const std::regex source(R"re(\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'))re", std::regex::icase);
-    static const std::regex kept(R"re(\b(?:width|height|alt)\s*=\s*(?:"[^"]*"|'[^']*'))re", std::regex::icase);
     std::vector<NotePicture> out;
     int n = 0;
-    for (auto it = std::sregex_iterator(html.begin(), html.end(), tag); it != std::sregex_iterator(); ++it) {
-        auto t = it->str();
-        std::smatch m;
-        if (t.find("data-attachment-key") != std::string::npos || !std::regex_search(t, m, source))
+    for (auto [at, length] : imgTags(html, true)) {
+        auto t = html.substr(at, length);
+        std::optional<std::string> source;
+        size_t end = 0;
+        for (size_t i = 0; i < t.size() && !source; ++i)
+            source = attributeAt(t, i, "src", end);
+        if (t.find("data-attachment-key") != std::string::npos || !source)
             continue;  // stored already, or showing nothing
-        auto src = htmlUnescape(m[1].matched ? m[1].str() : m[2].str());
-        NotePicture p{(size_t)it->position(), (size_t)it->length(), {}, {}};
-        for (auto k = std::sregex_iterator(t.begin(), t.end(), kept); k != std::sregex_iterator(); ++k)
-            p.attrs += " " + k->str();
+        auto src = htmlUnescape(*source);
+        NotePicture p{at, length, {}, {}};
+        for (size_t i = 0; i < t.size(); ++i)
+            for (auto attr : {"width", "height", "alt"})
+                if (attributeAt(t, i, attr, end)) {
+                    p.attrs += " " + t.substr(i, end - i);
+                    i = end - 1;
+                    break;
+                }
         auto name = scratch / ("picture-" + std::to_string(++n));
         if (startsWith(src, "data:")) {
             auto comma = src.find(',');
