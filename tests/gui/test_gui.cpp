@@ -7366,7 +7366,7 @@ TEST_CASE("sync: another computer's push is pulled by itself, at once")
     // here, nobody syncing: it comes in a few seconds (a folder is looked at every 3)
     REQUIRE(QTest::qWaitFor([&] { return jstr(*env.library.item(env.lib, paperKey), "title") == "Changed there"; },
                             sync::LocalTransport::kPollSeconds * 1000 + 5000));
-    CHECK(syncs == 2);
+    CHECK(QTest::qWaitFor([&] { return syncs == 2; }, 5000));  // (its end is told after what it pulled is in)
     // and its own sync (nothing new) is not taken for another computer's
     QTest::qWait(sync::LocalTransport::kPollSeconds * 1000 + 500);
     CHECK(syncs == 2);

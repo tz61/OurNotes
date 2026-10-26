@@ -10,7 +10,7 @@ programs pass before and after. Also: the suite under ASan + UBSan + LeakSanitiz
 libFuzzer on the import parsers and string helpers, timings of the hot paths changed,
 and each finding of the later rounds given to a skeptic told to refute it.
 
-In short: 56 findings fixed (some rows cover several places), each with the suite green
+In short: 59 findings fixed (some rows cover several places), each with the suite green
 after it, and new tests where a test could show it. The ones that mattered most:
 
 - **Crashes from what others sync.** Text that looks like HTML (a library's, tag's,
@@ -28,7 +28,8 @@ after it, and new tests where a test could show it. The ones that mattered most:
 - **CLI.** A 20 KB picture overflowed the stack (`std::regex`); a quote not in a PDF could
   be "found" across a page break and a wrong highlight saved (rounds 4, 5).
 
-Reported but not fixed, with the reasons, at the end of round 1 and in round 5's list.
+Reported but not fixed, with the reasons, at the end of round 1, in round 5's list and in
+round 7.
 
 > Note for anyone repeating this: with conda-forge's FreeType 2.14, `test_gui` crashed
 > in `QFontEngineFT::loadGlyph` ("render glyph failed err=62") while MicroTeX drew a
@@ -227,3 +228,7 @@ what scripts can rely on.
 Not defects after all: `storage_window.cpp` already drops an earlier Refresh's answers
 (a generation counter), and `index`/`empty-trash` reading every item once is a one-off
 command's cost.
+
+Also: the test "sync: another computer's push is pulled by itself, at once" failed once
+under `ctest -j2` (passing alone): it counted the syncs finished as soon as the pulled
+title was there, while the sync's end is told a moment later. It waits for it now.
