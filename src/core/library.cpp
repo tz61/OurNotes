@@ -1131,10 +1131,10 @@ std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<s
         }
     }
 
-    BatchGuard batch(*this);
-    std::vector<std::string> out;
-    for (auto d : copies) {
+    std::vector<std::string> oldKeys;
+    for (auto& d : copies) {
         auto oldKey = jstr(d, "key");
+        oldKeys.push_back(oldKey);
         d["key"] = newKeys[oldKey];
         auto parent = newKeys.find(jstr(d, "parentItem"));
         if (parent != newKeys.end())
@@ -1165,20 +1165,59 @@ std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<s
             }
             d["note"] = html;
         }
-        if (schema::isStoredLinkMode(jstr(d, "linkMode"))) {  // its own copy of the file
+    }
+
+    // the files, then the items at once (the database not held while files are copied); a
+    // failure leaves neither
+    std::vector<fs::path> folders;  // made for the copies' files
+    try {
+        for (size_t i = 0; i < copies.size(); ++i) {
+            auto& d = copies[i];
+            if (!schema::isStoredLinkMode(jstr(d, "linkMode")))
+                continue;
             Json old = d;
-            old["key"] = oldKey;
+            old["key"] = oldKeys[i];
             auto src = attachmentFile(fromLib, old), dest = attachmentFile(toLib, d);
             std::error_code ec;
-            if (!src.empty() && !dest.empty() && fs::is_regular_file(src, ec)) {
-                fs::create_directories(dest.parent_path());
-                fs::copy_file(src, dest, fs::copy_options::overwrite_existing);
-            }
+            if (src.empty() || dest.empty() || !fs::is_regular_file(src, ec))
+                continue;  // not on this computer (filesNotHere)
+            folders.push_back(storageDir() / jstr(d, "key"));
+            fs::create_directories(dest.parent_path());
+            fs::copy_file(src, dest, fs::copy_options::overwrite_existing);
         }
-        createItem(toLib, d);
+        BatchGuard batch(*this);
+        sql::Transaction tx(db_);
+        for (auto& d : copies)
+            createItem(toLib, d);
+        tx.commit();
+    } catch (...) {
+        std::error_code ec;
+        for (auto& folder : folders)
+            fs::remove_all(folder, ec);
+        throw;
     }
+    std::vector<std::string> out;
     for (auto& key : tops)
         out.push_back(newKeys[key]);
+    return out;
+}
+
+std::vector<std::string> Library::filesNotHere(int64_t lib, const std::vector<std::string>& keys)
+{
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    std::function<void(const Json&)> look = [&](const Json& d) {
+        auto key = jstr(d, "key");
+        if (!seen.insert(key).second || jbool(d, "deleted"))
+            return;
+        if (schema::isStoredLinkMode(jstr(d, "linkMode")) && !attachmentFileExists(lib, d))
+            out.push_back(key);
+        for (auto& child : children(lib, key))
+            look(child);
+    };
+    for (auto& key : keys)
+        if (auto d = item(lib, key))
+            look(*d);
     return out;
 }
 

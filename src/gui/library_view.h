@@ -71,6 +71,7 @@ signals:
     void newLibraryRequested();
     void deleteLibraryRequested(qint64 libraryId);
     void selectionChanged();
+    void statusMessage(const QString& text);  // for the status bar; empty: done
 
 protected:
     bool eventFilter(QObject* watched, QEvent* e) override;

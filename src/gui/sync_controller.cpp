@@ -217,6 +217,39 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
     }).detach();
 }
 
+void SyncController::downloadFiles(qint64 libraryId, const std::vector<std::string>& keys, QObject* context,
+                                   std::function<void(const std::map<std::string, std::string>& failed)> done)
+{
+    auto target = AppContext::get().config().activeTarget();
+    if (!target) {
+        done({});
+        return;
+    }
+    auto dataDir = AppContext::get().library().dataDir();
+    AppContext::get().beginOwnWrites();
+    QPointer<QObject> here(context);  // (see downloadFile)
+    std::thread([here, dataDir, t = *target, libraryId, keys, done = std::move(done)] {
+        std::map<std::string, std::string> failed;
+        try {
+            Library lib(dataDir);
+            auto transport = makeTransport(t);
+            failed = sync::SyncEngine(lib, *transport, t.id).downloadAttachments(libraryId, keys);
+        } catch (const std::exception& e) {
+            for (auto& key : keys)
+                failed[key] = e.what();
+        }
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [here, failed, done] {
+                if (auto* app = AppContext::tryGet())
+                    app->endOwnWrites();
+                if (here)
+                    done(failed);
+            },
+            Qt::QueuedConnection);
+    }).detach();
+}
+
 void SyncController::deleteRemoteLibrary(qint64 libraryId)
 {
     auto target = AppContext::get().config().activeTarget();

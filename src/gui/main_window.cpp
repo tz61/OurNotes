@@ -169,6 +169,7 @@ MainWindow::MainWindow()
             [this](qint64 lib, const QStringList& keys) { retrieveMetadata(lib, keys); });
     connect(library_, &LibraryView::newLibraryRequested, this, &MainWindow::newLibrary);
     connect(library_, &LibraryView::deleteLibraryRequested, this, [this](qint64 id) { deleteLibrary(id); });
+    connect(library_, &LibraryView::statusMessage, this, [this](const QString& text) { setStatus(text); });
     connect(sync_, &SyncController::started, this, [this] {
         syncButton_->setIcon(icon("sync"));
         syncButton_->setEnabled(false);

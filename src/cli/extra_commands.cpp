@@ -54,13 +54,6 @@ std::string readPassword(const std::string& prompt)
     return pw;
 }
 
-std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& t)
-{
-    if (t.kind == "local")
-        return std::make_unique<sync::LocalTransport>(u8path(t.path));
-    return std::make_unique<sync::HttpTransport>(t.url, t.token, t.verifyTls);
-}
-
 // Top-level regular items of a library (optionally one collection), with child notes
 // and attachment paths for exporters.
 std::vector<Json> collectItems(Library& lib, int64_t id, const std::string& collection, const std::vector<std::string>& keys)
@@ -266,6 +259,13 @@ Json preferenceValue(const Preference& p, const std::string& text)
 }
 
 } // namespace
+
+std::unique_ptr<sync::Transport> makeTransport(const SyncTarget& t)
+{
+    if (t.kind == "local")
+        return std::make_unique<sync::LocalTransport>(u8path(t.path));
+    return std::make_unique<sync::HttpTransport>(t.url, t.token, t.verifyTls);
+}
 
 void registerExtraCommands(CommandMap& commands, Config& config)
 {

@@ -67,6 +67,11 @@ public:
     void deleteRemoteLibrary(const std::string& uid);
     // Fetch one attachment file (for "on demand" file mode).
     bool downloadAttachment(int64_t libraryId, const std::string& key);
+    // Fetch attachment files (to copy them: Library::filesNotHere). One the target does not
+    // have, while it has their library, is left as it is (as is each of a library not synced
+    // with it); for each that could not be fetched otherwise, why (the target out of reach,
+    // or without the library: a folder's drive not there).
+    std::map<std::string, std::string> downloadAttachments(int64_t libraryId, const std::vector<std::string>& keys);
 
 private:
     void pull(LibraryInfo& lib, SyncReport& report);

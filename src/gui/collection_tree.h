@@ -29,6 +29,7 @@ signals:
     void newLibraryRequested();
     void deleteLibraryRequested(qint64 libraryId);
     void filesDropped(const Scope& scope, const QStringList& files);  // from outside the app
+    void statusMessage(const QString& text);  // empty: done
 
 protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
@@ -57,6 +58,9 @@ private:
     void dragScroll();
     void stopDragScroll();
 
+    // Items dragged onto another library or one of its collections: copied there, with
+    // their files (those not on this computer downloaded first).
+    void copyItems(qint64 from, const std::vector<std::string>& keys, const Scope& to);
     void newCollection(int64_t lib, const std::string& parentKey);
     void renameItem(QTreeWidgetItem* item);
     void deleteCollection(QTreeWidgetItem* item, bool trashItems);

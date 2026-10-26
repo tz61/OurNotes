@@ -479,6 +479,42 @@ TEST_CASE("cli: files and links attached, notes moved, items copied elsewhere, d
     CHECK(!lib.item(mine, book));
 }
 
+TEST_CASE("cli: items copied to another library take their files, one not on this computer downloaded first")
+{
+    constexpr auto npos = std::string::npos;
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto group = lib.createLibrary("Group");
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = lib.importAttachment(mine, pdfPath, paper);
+    auto usb = cli.dir.path / "usb";
+    REQUIRE(cli.run({"add-folder", pathString(usb)}).first == 0);
+    REQUIRE(cli.run({"sync"}).first == 0);
+    auto here = lib.attachmentFile(mine, pdf);
+    fs::remove_all(here.parent_path());  // synced, not downloaded (files on demand)
+
+    // the target's drive not there: nothing copied (the copy would be without its file for good)
+    fs::rename(usb, cli.dir.path / "usb-away");
+    auto [failed, failedOut] = cli.run({"copy", paper, "--to-library", "Group"});
+    INFO(failedOut);
+    CHECK(failed == 1);
+    CHECK(failedOut.find("nothing was copied") != npos);
+    CHECK(lib.allItems(group).empty());
+    fs::remove_all(usb);
+    fs::rename(cli.dir.path / "usb-away", usb);
+    // there: downloaded, then copied with it
+    auto [code, out] = cli.run({"copy", paper, "--to-library", "Group"});
+    INFO(out);
+    REQUIRE(code == 0);
+    auto copies = lib.children(group, trim(out));
+    REQUIRE(copies.size() == 1);
+    CHECK(lib.attachmentFileExists(group, copies[0]));
+    CHECK(fs::exists(here));
+}
+
 TEST_CASE("cli: tags listed, renamed, coloured and deleted; items by tag, unfiled or in the trash")
 {
     Cli cli;

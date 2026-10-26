@@ -601,4 +601,30 @@ bool SyncEngine::downloadAttachment(int64_t libraryId, const std::string& key)
     return true;
 }
 
+std::map<std::string, std::string> SyncEngine::downloadAttachments(int64_t libraryId,
+                                                                   const std::vector<std::string>& keys)
+{
+    std::map<std::string, std::string> failed;
+    auto lib = library_.library(libraryId);
+    if (!lib || lib->syncTarget != targetId_ || keys.empty())
+        return failed;
+    auto remote = transport_.libraries();
+    if (std::none_of(remote.begin(), remote.end(), [&](const RemoteLibrary& r) { return r.uid == lib->uid; })) {
+        for (auto& key : keys)
+            failed[key] = "the sync target does not have this library";
+        return failed;
+    }
+    for (auto& key : keys) {
+        try {
+            downloadAttachment(libraryId, key);
+        } catch (const SyncError& e) {
+            if (e.status != 404)  // (the library there, not the file: nothing to wait for)
+                failed[key] = e.what();
+        } catch (const std::exception& e) {
+            failed[key] = e.what();
+        }
+    }
+    return failed;
+}
+
 } // namespace on::sync

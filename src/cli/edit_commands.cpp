@@ -23,6 +23,8 @@ extern char** environ;
 
 #include "cli/commands.h"
 #include "core/schema.h"
+#include "core/sync/engine.h"
+#include "core/sync/protocol.h"
 
 using namespace on;
 
@@ -446,7 +448,7 @@ int cmdMove(Library& lib, Args& args)
     return 0;
 }
 
-int cmdCopy(Library& lib, Args& args)
+int cmdCopy(Library& lib, Args& args, Config& config)
 {
     auto keys = keysFrom(args);
     std::vector<Json> items;
@@ -472,6 +474,25 @@ int cmdCopy(Library& lib, Args& args)
     if (to == from)  // as in the app: within a library, items are filed, not copied
         throw Error("that is the items' own library: put them into a collection with file, or make a copy with duplicate");
     requireEditable(lib, to);
+    // files synced but not downloaded (on demand): downloaded first, as the app does
+    auto missing = lib.filesNotHere(from, keys);
+    auto target = config.activeTarget();
+    if (!missing.empty() && target) {
+        auto transport = makeTransport(*target);
+        auto failed = sync::SyncEngine(lib, *transport, target->id).downloadAttachments(from, missing);
+        if (!failed.empty()) {
+            std::string why;
+            for (auto& [key, error] : failed)
+                why += "\n  " + key + ": " + error;
+            throw Error("nothing was copied: the files of these could not be downloaded (copies would be "
+                        "without them for good)" +
+                        why);
+        }
+        missing = lib.filesNotHere(from, keys);
+    }
+    for (auto& key : missing)
+        std::cerr << "warning: the file of " << key
+                  << " is not on this computer, and could not be downloaded: its copy has none either\n";
     for (auto& k : lib.copyItems(from, keys, to, collection))
         std::cout << k << "\n";
     return 0;
@@ -755,7 +776,7 @@ int cmdTagColor(Library& lib, Args& args)
 
 std::string annotationColorValue(const std::string& spec) { return colorValue(spec); }
 
-void registerEditCommands(CommandMap& commands, Config&)
+void registerEditCommands(CommandMap& commands, Config& config)
 {
     commands["new-library"] = cmdNewLibrary;
     commands["rename-library"] = cmdRenameLibrary;
@@ -771,7 +792,7 @@ void registerEditCommands(CommandMap& commands, Config&)
     commands["duplicates"] = cmdDuplicates;
     commands["merge"] = cmdMerge;
     commands["move"] = cmdMove;
-    commands["copy"] = cmdCopy;
+    commands["copy"] = [&config](Library& lib, Args& args) { return cmdCopy(lib, args, config); };
     commands["delete"] = cmdDelete;
     commands["empty-trash"] = cmdEmptyTrash;
     commands["attach"] = cmdAttach;

@@ -350,6 +350,7 @@ LibraryView::LibraryView(QWidget* parent) : QWidget(parent)
             [this](const Scope& s) { emit bibliographyRequested(s, {}); });
     connect(tree_, &CollectionTree::newLibraryRequested, this, &LibraryView::newLibraryRequested);
     connect(tree_, &CollectionTree::deleteLibraryRequested, this, &LibraryView::deleteLibraryRequested);
+    connect(tree_, &CollectionTree::statusMessage, this, &LibraryView::statusMessage);
     connect(tree_, &CollectionTree::filesDropped, this, &LibraryView::importFilesInto);
     connect(tags_, &TagSelector::selectionChanged, this, [this](const QStringList& tags) {
         model_->setTagFilter(tags);

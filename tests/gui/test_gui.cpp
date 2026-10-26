@@ -7650,6 +7650,55 @@ TEST_CASE("library: items dragged onto another library or one of its collections
     CHECK(env.library.item(env.lib, jstr(paper, "key")));
     CHECK(env.library.item(env.lib, jstr(lone, "key")));
     CHECK(env.library.children(env.lib, jstr(paper, "key")).size() == 1);
+
+    // a PDF synced, not downloaded (files on demand): downloaded first, then copied with it
+    auto usb = tmp.path / "usb";
+    SyncTarget target;
+    target.id = "usb";
+    target.name = "USB stick";
+    target.kind = "local";
+    target.path = pathString(usb);
+    env.config.upsertTarget(target);
+    env.config.setActiveTarget("usb");
+    env.config.set("/sync/auto", false);
+    {
+        sync::LocalTransport transport(usb);
+        REQUIRE(sync::SyncEngine(env.library, transport, "usb").syncAll().errors.empty());
+    }
+    auto pdf = env.library.children(env.lib, jstr(paper, "key"))[0];
+    fs::remove_all(env.library.attachmentFile(env.lib, pdf).parent_path());
+    QStringList said;
+    QObject::connect(&view, &LibraryView::statusMessage, [&](const QString& text) { said << text; });
+    QString warning;
+    QTimer closer;  // answers the message that says why nothing was copied
+    QObject::connect(&closer, &QTimer::timeout, [&] {
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            warning = box->text();
+            box->accept();
+        }
+    });
+    closer.start(20);
+    // its drive not there: nothing copied, and why
+    fs::rename(usb, tmp.path / "usb-away");
+    drop(rowOf("Paper"), node("Group"));
+    REQUIRE(QTest::qWaitFor([&] { return !warning.isEmpty(); }, 10000));
+    CHECK(warning.contains("Nothing was copied"));
+    CHECK(warning.contains("paper.pdf"));
+    CHECK(inGroup("Paper").size() == 1);
+    fs::remove_all(usb);
+    fs::rename(tmp.path / "usb-away", usb);
+    // there
+    said.clear();
+    drop(rowOf("Paper"), node("Group"));
+    REQUIRE(QTest::qWaitFor([&] { return inGroup("Paper").size() == 2; }, 10000));
+    CHECK(said.value(0) == "Downloading 1 file to copy…");
+    CHECK(said.value(1).isEmpty());
+    for (auto& copy : inGroup("Paper")) {
+        auto pdfs = env.library.children(group, jstr(copy, "key"));
+        REQUIRE(pdfs.size() == 1);
+        CHECK(env.library.attachmentFileExists(group, pdfs[0]));
+    }
+    CHECK(env.library.attachmentFileExists(env.lib, pdf));
 }
 
 TEST_CASE("collections: a drag within four rows of the top or bottom scrolls, faster nearer the edge")

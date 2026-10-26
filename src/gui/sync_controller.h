@@ -4,8 +4,12 @@
 #include <QTimer>
 
 #include <atomic>
+#include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "core/config.h"
 
@@ -35,6 +39,11 @@ public:
     bool isWatching() const { return watcher_ != nullptr; }  // for other computers' changes
     void reloadSettings();
     const sync::SyncHistory& history() const { return *history_; }
+    // Download attachment files from the active target on a thread of its own (to copy
+    // them: see SyncEngine::downloadAttachments), then done(those that could not be, with
+    // why) on the GUI thread, if `context` is still there.
+    static void downloadFiles(qint64 libraryId, const std::vector<std::string>& keys, QObject* context,
+                              std::function<void(const std::map<std::string, std::string>& failed)> done);
 
 public slots:
     void syncNow();

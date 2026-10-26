@@ -4,6 +4,10 @@
 #include <fstream>
 #include <functional>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "core/config.h"
 #include "core/fulltext.h"
 #include "core/library.h"
@@ -428,6 +432,56 @@ TEST_CASE("items copied into another library, with their notes, images, files an
     CHECK(lib.children(from, paperKey).size() == 3);
     CHECK(lib.relatedKeys(from, paperKey) == std::vector<std::string>{other});
     CHECK(jstr(*lib.item(from, jstr(lone, "key")), "parentItem") == other);
+}
+
+TEST_CASE("items copied into another library: files not here listed first; one that cannot be copied leaves no copies")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto from = lib.defaultLibrary();
+    auto to = lib.createLibrary("Group");
+    auto paper = jstr(lib.createItem(from, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto file = tmp.path / "paper.pdf";
+    std::ofstream(file, std::ios::binary) << "%PDF-1.4 the paper";
+    auto first = lib.importAttachment(from, file, paper);
+    auto second = lib.importAttachment(from, file, paper);
+    auto linked = lib.createItem(from, Json{{"itemType", "attachment"},
+                                            {"parentItem", paper},
+                                            {"linkMode", "linked_file"},
+                                            {"path", pathString(tmp.path / "elsewhere.pdf")}});
+    CHECK(lib.filesNotHere(from, {paper}).empty());
+    // synced, not downloaded: its folder not here (a linked file is not the library's to fetch)
+    fs::remove_all(lib.attachmentFile(from, second).parent_path());
+    CHECK(lib.filesNotHere(from, {paper}) == std::vector<std::string>{jstr(second, "key")});
+    CHECK(lib.filesNotHere(from, {jstr(second, "key"), paper}) == std::vector<std::string>{jstr(second, "key")});
+    CHECK(lib.filesNotHere(from, {jstr(first, "key"), jstr(linked, "key")}).empty());
+    lib.trashItems(from, {jstr(second, "key")});
+    CHECK(lib.filesNotHere(from, {paper}).empty());  // (not copied either)
+    lib.trashItems(from, {jstr(second, "key")}, false);
+
+#ifndef _WIN32
+    if (geteuid() != 0) {  // (root reads it all the same)
+        // the second's file there again, but not to be read: nothing copied, no files left
+        fs::create_directories(lib.attachmentFile(from, second).parent_path());
+        std::ofstream(lib.attachmentFile(from, second), std::ios::binary) << "%PDF-1.4 locked";
+        fs::permissions(lib.attachmentFile(from, second), fs::perms::none);
+        auto folders = [&] {
+            size_t n = 0;
+            for (auto& e : fs::directory_iterator(lib.storageDir()))
+                n += e.is_directory();
+            return n;
+        };
+        auto before = folders();
+        CHECK_THROWS(lib.copyItems(from, {paper}, to));
+        fs::permissions(lib.attachmentFile(from, second), fs::perms::owner_all);
+        CHECK(lib.allItems(to).empty());
+        CHECK(folders() == before);
+        // and once it can be read, all of it
+        REQUIRE(lib.copyItems(from, {paper}, to).size() == 1);
+        CHECK(lib.allItems(to).size() == 4);
+        CHECK(folders() == before + 2);
+    }
+#endif
 }
 
 TEST_CASE("disk usage: each library's items and files, the databases, the disk")

@@ -20,6 +20,7 @@
 #include "gui/app_context.h"
 #include "gui/common.h"
 #include "gui/icons.h"
+#include "gui/sync_controller.h"
 
 namespace on::gui {
 
@@ -448,6 +449,46 @@ void CollectionTree::drawRow(QPainter* painter, const QStyleOptionViewItem& opti
     QTreeWidget::drawRow(painter, o, index);
 }
 
+void CollectionTree::copyItems(qint64 from, const std::vector<std::string>& keys, const Scope& to)
+{
+    auto copy = [this, from, keys, to] {
+        try {
+            AppContext::get().library().copyItems(from, keys, to.libraryId,
+                                                  to.kind == ScopeKind::Collection ? to.collectionKey : std::string());
+        } catch (const std::exception& e) {  // (a full disk): none copied
+            QMessageBox::warning(this, tr("Copy Items"),
+                                 asPlainText(tr("The items could not be copied: %1").arg(qs(e.what()))));
+        }
+    };
+    // synced but not downloaded (files on demand): downloaded first, or copies would be
+    // without them for good (the target has them under these items' keys only)
+    auto missing = AppContext::get().library().filesNotHere(from, keys);
+    if (missing.empty() || !AppContext::get().config().activeTarget()) {
+        copy();
+        return;
+    }
+    emit statusMessage(missing.size() == 1 ? tr("Downloading 1 file to copy…")
+                                           : tr("Downloading %1 files to copy…").arg(missing.size()));
+    auto downloaded = [this, copy, from](const std::map<std::string, std::string>& failed) {
+        emit statusMessage({});
+        if (failed.empty()) {
+            copy();
+            return;
+        }
+        auto& lib = AppContext::get().library();
+        QStringList lines;
+        for (auto& [key, error] : failed) {
+            auto att = lib.item(from, key);
+            lines << (att ? jqs(*att, "filename") : qs(key)) + ": " + qs(error);
+        }
+        QMessageBox::warning(this, tr("Copy Items"),
+                             asPlainText(tr("Nothing was copied: these files could not be downloaded, and copies "
+                                            "would be without them for good.\n\n%1")
+                                             .arg(lines.join("\n"))));
+    };
+    SyncController::downloadFiles(from, missing, this, downloaded);
+}
+
 void CollectionTree::dropEvent(QDropEvent* e)
 {
     stopDragScroll();
@@ -471,9 +512,9 @@ void CollectionTree::dropEvent(QDropEvent* e)
         for (auto k : obj["keys"].toArray())
             keys.push_back(ss(k.toString()));
         if (qint64 from = obj["library"].toInteger(); from != s.libraryId) {
-            lib.copyItems(from, keys, s.libraryId, s.kind == ScopeKind::Collection ? s.collectionKey : std::string());
             e->setDropAction(Qt::CopyAction);  // where they came from, they stay
             e->accept();
+            copyItems(from, keys, s);
             return;
         }
         if (s.kind == ScopeKind::Trash)

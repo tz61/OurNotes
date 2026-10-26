@@ -117,6 +117,12 @@ std::string annotationColorValue(const std::string& spec);
 
 using CommandMap = std::map<std::string, std::function<int(on::Library&, Args&)>>;
 
+namespace on::sync {
+class Transport;
+}
+// A connection to a sync target (extra_commands.cpp).
+std::unique_ptr<on::sync::Transport> makeTransport(const on::SyncTarget& t);
+
 // Every command of ournotes-cli.
 void registerAllCommands(CommandMap& commands, on::Config& config);
 // Commands implemented in other translation units (sync, export, full-text index).

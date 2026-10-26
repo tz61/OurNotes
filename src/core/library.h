@@ -198,9 +198,14 @@ public:
     // with their images, attachments with their files, annotations; with new keys, into
     // collectionKey (if given), without relations. A note or attachment copied without its
     // parent stands on its own; what is in the trash is left out. Returns the new keys of
-    // the copies of `keys`, in that order.
+    // the copies of `keys`, in that order. All or none: a file that cannot be copied (a full
+    // disk) leaves no copies, and throws. A file not on this computer (filesNotHere) is not
+    // copied: download it first.
     std::vector<std::string> copyItems(int64_t fromLib, const std::vector<std::string>& keys, int64_t toLib,
                                        const std::string& collectionKey = {});
+    // The attachments among these items and under them (as copyItems takes them) whose
+    // files are kept in storage but are not on this computer: synced, not downloaded.
+    std::vector<std::string> filesNotHere(int64_t lib, const std::vector<std::string>& keys);
     // Merge `others` into `master`: moves children, collections, tags, relations; trashes others.
     void mergeItems(int64_t lib, const std::string& master, const std::vector<std::string>& others);
 
