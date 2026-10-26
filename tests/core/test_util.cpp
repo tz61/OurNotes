@@ -51,6 +51,12 @@ TEST_CASE("string helpers")
     CHECK(parseExternalJson(R"({"a": [1, {"b": "]]]"}]})").is_object());
     CHECK(parseExternalJson(std::string(100000, '[') + std::string(100000, ']')).is_discarded());
     CHECK(parseExternalJson(R"(["\"[[[[", "{{{"])", 2).is_array());
+    // a response has room for an object a request brought, a few levels further in
+    auto nested = [](size_t depth) { return std::string(depth, '[') + std::string(depth, ']'); };
+    CHECK(parseExternalJson(nested(kMaxRequestDepth)).is_array());
+    CHECK(parseExternalJson(nested(kMaxRequestDepth + 4)).is_discarded());
+    CHECK(parseExternalJson(nested(kMaxRequestDepth + 4), kMaxResponseDepth).is_array());
+    CHECK(parseExternalJson(nested(kMaxResponseDepth + 1), kMaxResponseDepth).is_discarded());
     CHECK(isoToEpoch("1970-01-02T00:00:00Z") == 86400);
     CHECK(epochToIso(86400) == "1970-01-02T00:00:00Z");
     CHECK(isValidKey(newKey()));

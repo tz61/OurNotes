@@ -10,11 +10,18 @@ namespace on {
 // and keeps diffs/conflict views readable).
 using Json = nlohmann::ordered_json;
 
+// How deep JSON from elsewhere may be nested: a request to the server; a response from it,
+// a few levels more, as it can carry an object a request brought, further in (a conflict's
+// "current" is one level deeper than the push it answers: as deep a limit both ways, an
+// object stored within it made the other computer's next push fail).
+constexpr size_t kMaxRequestDepth = 256;
+constexpr size_t kMaxResponseDepth = kMaxRequestDepth + 16;
+
 // JSON from elsewhere (a request, a response): discarded when it is not JSON or is nested
 // deeper than anything OurNotes writes. Parsed, a hundred thousand nested [ took the
 // program down when copied or written out (nlohmann does both recursively): a push to the
 // server did, and a response to the app.
-inline Json parseExternalJson(std::string_view s, size_t maxDepth = 256)
+inline Json parseExternalJson(std::string_view s, size_t maxDepth = kMaxRequestDepth)
 {
     size_t depth = 0;
     bool inString = false, escaped = false;
