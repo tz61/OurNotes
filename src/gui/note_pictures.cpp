@@ -214,18 +214,20 @@ void insertPictureLine(QTextCursor& c, const QList<QTextImageFormat>& pictures)
     }
     auto original = block.blockFormat();
     auto originalChars = block.charFormat();
+    // theirs: no code either (a code block is text only: a picture in one was saved as nothing)
+    auto own = textAfter(original);
+    own.clearProperty(QTextFormat::BlockNonBreakableLines);
     bool text = block.length() > 1 && pictureRow(block).empty();
     if (text && c.atBlockStart()) {
         c.insertBlock(original, originalChars);
         c.movePosition(QTextCursor::PreviousBlock);
-        c.setBlockFormat(textAfter(original));
+        c.setBlockFormat(own);
     } else if (text) {
-        c.insertBlock(textAfter(original), QTextCharFormat());
+        c.insertBlock(own, QTextCharFormat());
     } else if (block.length() <= 1) {  // (a paragraph: no heading, no caption)
-        auto f = textAfter(original);
         if (original.hasProperty(QTextFormat::BlockAlignment))
-            f.setAlignment(original.alignment());
-        c.setBlockFormat(f);
+            own.setAlignment(original.alignment());
+        c.setBlockFormat(own);
     }
     for (auto& f : pictures)
         c.insertImage(f);

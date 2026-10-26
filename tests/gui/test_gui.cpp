@@ -6390,6 +6390,27 @@ TEST_CASE("notes: a line of pictures with sizes no picture has is saved with siz
     }
 }
 
+TEST_CASE("notes: a picture put into a code block goes on a line of its own that is no code")
+{
+    app();
+    // at the end of a code line, in its middle, on an empty one
+    for (auto [html, at] : std::vector<std::pair<QString, int>>{{"<pre>int x;</pre><p>after</p>", 6},
+                                                                 {"<pre>int x;</pre><p>after</p>", 3},
+                                                                 {"<pre>a</pre><pre></pre><p>after</p>", 2}}) {
+        CAPTURE(html.toStdString());
+        CAPTURE(at);
+        PictureNote note({700, 600}, html);
+        note.caretAt(at);
+        note.edit.insertPictures({filled(300, 200, Qt::red)});
+        QApplication::processEvents();
+        auto saved = documentToNoteHtml(note.doc()).toStdString();
+        CAPTURE(saved);
+        CHECK(saved.find("<img src=\"test:1\"") != std::string::npos);  // (inside <pre>: U+FFFC, the picture gone)
+        CHECK(saved.find("\xEF\xBF\xBC") == std::string::npos);
+        CHECK((saved.find("int") == std::string::npos || saved.find("<pre>int") != std::string::npos));  // (code still)
+    }
+}
+
 TEST_CASE("notes: picture files pasted or dropped together are one row")
 {
     app();
