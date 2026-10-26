@@ -927,14 +927,15 @@ void PdfView::paintAnnotations(QPainter& p, int page)
     if (drag_ == Drag::Moving && dragPage_ == page)
         delta = dragNow_ - dragStart_;
     for (auto& a : anns_) {
-        if (a.page != page)
+        bool onNext = a.page == page - 1 && !a.nextRects.empty();  // (its rest, on this page)
+        if (a.page != page && !onNext)
             continue;
         bool selected = a.key == selectedAnn_;
         QPointF d = selected ? delta : QPointF();
         QColor c = a.color;
         auto paths = erasedPaths_.count(a.key) ? erasedPaths_[a.key] : a.paths;
         if (a.type == "highlight" || a.type == "underline") {
-            for (auto& r : a.rects) {
+            for (auto& r : onNext ? a.nextRects : a.rects) {
                 QRectF v = toView(page, r);
                 if (a.type == "highlight") {
                     QColor fill = c;
@@ -994,7 +995,7 @@ void PdfView::paintAnnotations(QPainter& p, int page)
             }
         }
         if (selected) {
-            QRectF b = resizing ? resizedBounds(a) : a.bounds.translated(d);
+            QRectF b = onNext ? a.nextBounds : resizing ? resizedBounds(a) : a.bounds.translated(d);
             QRectF v = toView(page, b).adjusted(-3, -3, 3, 3);
             p.setPen(QPen(palette().color(QPalette::Highlight), 1.5, Qt::DashLine));
             p.setBrush(Qt::NoBrush);
@@ -1098,6 +1099,15 @@ PdfView::AnnView PdfView::makeView(const Json& data) const
         v.rects.push_back(toQ(pr));
         v.bounds = v.bounds.isNull() ? toQ(pr) : v.bounds.united(toQ(pr));
     }
+    if (v.page + 1 < doc_->pageCount())  // (the rest of text across two pages)
+        for (auto& r : pos.value("nextPageRects", Json::array())) {
+            if (!r.is_array() || r.size() != 4)
+                continue;
+            auto pr = doc_->pdfToPage(v.page + 1, pdf::Rect{r[0].get<float>(), r[1].get<float>(), r[2].get<float>(),
+                                                             r[3].get<float>()});
+            v.nextRects.push_back(toQ(pr));
+            v.nextBounds = v.nextBounds.isNull() ? toQ(pr) : v.nextBounds.united(toQ(pr));
+        }
     for (auto& path : pos.value("paths", Json::array())) {
         QPolygonF poly;
         for (size_t i = 0; i + 1 < path.size(); i += 2) {
@@ -1129,6 +1139,10 @@ const PdfView::AnnView* PdfView::annotationAt(int page, QPointF pt) const
     const AnnView* found = nullptr;
     for (auto it = anns_.rbegin(); it != anns_.rend(); ++it) {
         auto& a = *it;
+        if (a.page == page - 1 && !found)  // (the rest of text across two pages, on this page)
+            for (auto& r : a.nextRects)
+                if (r.contains(pt))
+                    found = &a;
         if (a.page != page)
             continue;
         if (a.type == "note" || a.type == "text" || a.type == "image") {
@@ -1217,13 +1231,19 @@ void PdfView::createFromSelection(const QString& type, const QString& color)
 {
     if (!hasTextSelection() || !editable_)
         return;
-    // one on each page the text is on (as Zotero has them), its part of the text there
+    // text across two pages: one annotation, the rest on the next page (as Zotero has it,
+    // nextPageRects); across more, one for each two
     std::vector<Json> made;
-    for (auto& span : selectionSpans()) {
-        auto& text = doc_->text(span.page);
+    auto spans = selectionSpans();
+    auto rectsOf = [&](const SelSpan& span) {
         std::vector<QRectF> rects;
-        for (auto& r : text.rectsOf(span.from, span.to))
+        for (auto& r : doc_->text(span.page).rectsOf(span.from, span.to))
             rects.push_back(toQ(r));
+        return rects;
+    };
+    for (size_t i = 0; i < spans.size(); ++i) {
+        auto& span = spans[i];
+        auto rects = rectsOf(span);
         if (rects.empty())
             continue;
         double top = rects.front().top();
@@ -1231,8 +1251,17 @@ void PdfView::createFromSelection(const QString& type, const QString& color)
             top = std::min(top, r.top());
         auto data = baseAnnotation(type, span.page, span.from, top);
         data["annotationColor"] = ss(color);
-        data["annotationText"] = text.textOf(span.from, span.to);
-        data["annotationPosition"] = positionFromRects(span.page, rects);
+        auto text = qs(doc_->text(span.page).textOf(span.from, span.to));
+        auto position = positionFromRects(span.page, rects);
+        if (i + 1 < spans.size() && spans[i + 1].page == span.page + 1) {
+            auto& next = spans[++i];
+            if (auto more = rectsOf(next); !more.empty()) {
+                position["nextPageRects"] = positionFromRects(next.page, more)["rects"];
+                text = joinedText(text, qs(doc_->text(next.page).textOf(next.from, next.to)));
+            }
+        }
+        data["annotationText"] = ss(text);
+        data["annotationPosition"] = position;
         made.push_back(data);
     }
     clearTextSelection();
@@ -1601,17 +1630,20 @@ std::vector<PdfView::SelSpan> PdfView::selectionSpans() const
     return spans;
 }
 
+QString PdfView::joinedText(QString before, const QString& after)
+{
+    if (before.endsWith('-') && !after.isEmpty() && after[0].isLower())
+        before.chop(1);  // (a word broken at the foot of the page)
+    else if (!before.isEmpty() && !after.isEmpty())
+        before += ' ';
+    return before + after;
+}
+
 QString PdfView::selectedText() const
 {
     QString out;
-    for (auto& span : selectionSpans()) {
-        auto part = qs(doc_->text(span.page).textOf(span.from, span.to));
-        if (out.endsWith('-') && !part.isEmpty() && part[0].isLower())
-            out.chop(1);  // (a word broken at the foot of the page)
-        else if (!out.isEmpty())
-            out += ' ';
-        out += part;
-    }
+    for (auto& span : selectionSpans())
+        out = joinedText(out, qs(doc_->text(span.page).textOf(span.from, span.to)));
     return out;
 }
 

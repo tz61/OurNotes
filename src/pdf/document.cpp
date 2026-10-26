@@ -956,6 +956,13 @@ void Document::writeAnnotations(const std::vector<Json>& annotations, bool exter
         int n = (int)jint(pos, "pageIndex", -1);
         if (n < 0 || n >= pageCount_)
             continue;
+        // the rest of text across two pages (Zotero's nextPageRects): its own on the next page
+        if (auto rest = pos.value("nextPageRects", Json::array()); rest.is_array() && !rest.empty() && n + 1 < pageCount_) {
+            Json next = ann;
+            next["annotationPosition"] = Json{{"pageIndex", n + 1}, {"rects", rest}};
+            next["annotationComment"] = "";
+            writeAnnotations({next}, external);
+        }
         pdf_page* pp = pdf_page_from_fz_page(ctx, (fz_page*)loadPage(n));
         if (!pp)
             continue;

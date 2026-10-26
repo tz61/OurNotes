@@ -1892,7 +1892,7 @@ TEST_CASE("pdf view: links are tinted blue unless that is turned off, in every P
     CHECK(inLink().blue() > inLink().red() + 25);
 }
 
-TEST_CASE("reader: text selected across pages is highlighted on both, one annotation a page, one step to undo")
+TEST_CASE("reader: text highlighted across two pages is one annotation, on both (Zotero's nextPageRects)")
 {
     app();
     Env env;
@@ -1920,15 +1920,39 @@ TEST_CASE("reader: text selected across pages is highlighted on both, one annota
     drag(view->viewport(), charAt(0, 2), charAt(1, 1));
     QApplication::processEvents();
     auto made = env.library.annotations(env.lib, pdf);
-    REQUIRE(made.size() == 2);
-    std::sort(made.begin(), made.end(), [](const Json& a, const Json& b) {
-        return a["annotationPosition"]["pageIndex"] < b["annotationPosition"]["pageIndex"];
-    });
-    CHECK(made[0]["annotationPosition"]["pageIndex"] == 0);
-    CHECK(jstr(made[0], "annotationText") == "ge 1");
-    CHECK(made[1]["annotationPosition"]["pageIndex"] == 1);
-    CHECK(jstr(made[1], "annotationText") == "Pa");
-    // one step to undo
+    REQUIRE(made.size() == 1);
+    auto position = made[0]["annotationPosition"];
+    CHECK(position["pageIndex"] == 0);
+    CHECK(position["rects"].size() == 1);
+    CHECK(position["nextPageRects"].size() == 1);
+    CHECK(jstr(made[0], "annotationText") == "ge 1 Pa");
+    CHECK(tab.findChildren<AnnotationCard*>().size() == 1);
+    // drawn on the next page too, and picked there
+    QTest::qWait(100);
+    auto img = view->viewport()->grab().toImage();
+    auto under = img.pixelColor((charAt(1, 0) * img.devicePixelRatio()).toPoint() + QPoint(0, 4));
+    CHECK(under != QColor(Qt::white));  // (the highlight, over "P")
+    view->setTool(ReaderTool::Select);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, charAt(1, 0).toPoint());
+    CHECK(view->selectedAnnotation() == qs(jstr(made[0], "key")));
+    // a copy of the PDF with it: on both pages
+    auto exported = env.dir.path / "annotated.pdf";
+    view->document()->exportWithAnnotations(exported, env.library.annotations(env.lib, pdf));
+    auto written = pdf::Document::open(exported)->embeddedAnnotations();
+    REQUIRE(written.size() == 2);
+    std::set<int> pages;
+    for (auto& w : written)
+        pages.insert((int)jint(w["annotationPosition"], "pageIndex"));
+    CHECK(pages == std::set<int>{0, 1});
+    // undone, and across three pages: one for the first two, one for the third, one step to undo
+    view->setFocus();
+    QTest::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
+    QApplication::processEvents();
+    REQUIRE(env.library.annotations(env.lib, pdf).empty());
+    view->setTool(ReaderTool::Highlight);
+    drag(view->viewport(), charAt(0, 2), charAt(2, 1));
+    QApplication::processEvents();
+    CHECK(env.library.annotations(env.lib, pdf).size() == 2);
     view->setFocus();
     QTest::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
     QApplication::processEvents();

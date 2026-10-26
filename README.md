@@ -29,7 +29,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   (Shift: across, on into the next pages), Ctrl+wheel zooms it and a drag moves it, until
   the mouse leaves it. Followed, Ctrl+Left (or the mouse's back button) goes back to where
   it was followed from and Ctrl+Right forward again, as in a browser. Text selected across
-  pages is highlighted or underlined on each, one annotation a page (as in Zotero).
+  two pages is highlighted or underlined on both as one annotation, as Zotero keeps it
+  (across more pages: one for each two).
   Annotation tools: highlight, underline, sticky note, text box, area (image), ink and
   eraser, eight colours, comments, move/resize. A click on an annotation selects it (Delete
   deletes it); a comment shows over the page while the mouse rests on its annotation and is

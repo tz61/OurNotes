@@ -174,6 +174,8 @@ private:
         int page = -1;
         QColor color;
         std::vector<QRectF> rects;     // page space (points)
+        std::vector<QRectF> nextRects;  // on the page after: text across two pages (Zotero's nextPageRects)
+        QRectF nextBounds;
         std::vector<QPolygonF> paths;  // ink, page space
         QRectF bounds;
         double width = 2;
@@ -273,6 +275,7 @@ private:
         int page, from, to;
     };
     std::vector<SelSpan> selectionSpans() const;  // in reading order, page by page
+    static QString joinedText(QString before, const QString& after);  // the text of two pages, read on
     Drag drag_ = Drag::None;
     int dragPage_ = -1;
     QPointF dragStart_;  // page space
