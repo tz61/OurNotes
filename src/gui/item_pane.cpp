@@ -27,6 +27,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 
 #include "core/schema.h"
 #include "gui/app_context.h"
@@ -112,7 +113,9 @@ QSize AutoTextEdit::sizeHint() const
     int lines = 0;
     for (auto b = document()->begin(); b.isValid(); b = b.next())
         lines += std::max(1, b.layout() ? b.layout()->lineCount() : 1);
-    int h = fontMetrics().lineSpacing() * std::max(1, lines) + 2 * (int)document()->documentMargin() + 6;
+    // a laid-out line is its height rounded up, where lineSpacing() rounds to nearest: a pixel a line short
+    int line = int(std::ceil(QFontMetricsF(font()).lineSpacing()));
+    int h = line * std::max(1, lines) + 2 * (int)document()->documentMargin() + 6;
     return {200, h};
 }
 
@@ -766,6 +769,7 @@ void RelatedBox::rebuild()
                                      row);
         link->setFlat(true);
         link->setStyleSheet("text-align: left");
+        link->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);  // a long title is cut at the pane's edge, not widening it
         connect(link, &QPushButton::clicked, this, [this, k = qs(k)] { emit itemActivated(k); });
         auto* remove = smallButton(icon("remove"), tr("Remove relation"), row);
         connect(remove, &QToolButton::clicked, this,

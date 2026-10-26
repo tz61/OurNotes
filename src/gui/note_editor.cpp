@@ -764,7 +764,9 @@ void NoteTextEdit::adaptColors()
                 continue;
             QColor original = hidden ? f.property(kOriginalForegroundProperty).value<QColor>() : f.foreground().color();
             bool unreadable = unreadableOn(original, base);
-            if (unreadable && !hidden) {
+            if (unreadable && !hidden && f.isAnchor()) {
+                f.setForeground(palette().link());  // (a link's colour is the palette's, not its own: as when pasted)
+            } else if (unreadable && !hidden) {
                 f.setProperty(kOriginalForegroundProperty, original);
                 f.clearForeground();
             } else if (!unreadable && hidden) {
