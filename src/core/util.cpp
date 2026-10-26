@@ -379,6 +379,8 @@ std::string htmlUnescape(std::string_view s)
                 cp = 0;
             }
             if (cp) {
+                if ((cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF)
+                    cp = 0xFFFD;  // no such character: a browser shows this
                 appendUtf8(out, cp);
                 done = true;
             }

@@ -37,6 +37,10 @@ TEST_CASE("string helpers")
     CHECK(yearOf("12345") == "");
     CHECK(searchTokens("foo \"Bar baz\"  qux") == std::vector<std::string>{"foo", "bar baz", "qux"});
     CHECK(htmlToText("<div><p>Hello &amp; <b>world</b></p><p>Second</p></div>") == "Hello & world\nSecond");
+    // a reference to no character (a surrogate, past U+10FFFF) is U+FFFD, as a browser shows
+    // it: not bytes that are no UTF-8 (JSON could not be written of them)
+    CHECK(htmlUnescape("a&#xD800;b&#x110000;") == "a\xEF\xBF\xBD" "b\xEF\xBF\xBD");
+    CHECK(htmlUnescape("&#x1F600;&#233;&amp;") == "\xF0\x9F\x98\x80\xC3\xA9&");
     CHECK(noteTitle("<h1>Title</h1><p>body</p>") == "Title");
     CHECK(safeFilename("a/b:c?.pdf") == "a_b_c_.pdf");
     // long names are cut, their extension kept; a long "extension" (a synced filename) is

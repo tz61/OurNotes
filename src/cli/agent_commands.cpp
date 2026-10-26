@@ -507,7 +507,7 @@ std::string base64Decode(const std::string& in)
         auto d = c == '-' ? 62 : c == '_' ? 63 : digits.find(c);  // (URL-safe too)
         if (d == std::string::npos)
             throw Error("a data: picture that is not base64");
-        value = (value << 6) | (int)d;
+        value = ((value & 0xff) << 6) | (int)d;  // (only the bits not yet out count)
         if ((bits += 6) >= 8) {
             bits -= 8;
             out += (char)((value >> bits) & 0xff);
