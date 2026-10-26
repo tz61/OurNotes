@@ -621,6 +621,16 @@ TEST_CASE("http: the server's status, for the user's libraries")
     CHECK(l["files"] == 1);
     CHECK(l["fileBytes"] == 3000);
     CHECK(statusOf([&] { HttpTransport(srv.url, "").status(); }) == 401);
+
+    // asked again: as it is now (what is kept, kept for a library's version)
+    auto version = alice.push("LIB1", {put("item", "NOTE3456", 0, Json{{"itemType", "note"}, {"note", "<p>m</p>"}})})
+                       .version;
+    CHECK((*alice.status())["libraries"][0]["notes"] == 2);
+    alice.push("LIB1", {del("item", "ITEM2345", version - 1)});
+    auto again = (*alice.status())["libraries"][0];
+    CHECK(again["items"] == 0);
+    CHECK(again["notes"] == 2);
+    CHECK(again["attachments"] == 1);
 }
 
 TEST_CASE("http: a server before 0.1.11 does not tell its status")

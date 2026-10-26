@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -108,6 +110,9 @@ private:
     fs::path root_;
     sql::Db db_;
     std::mutex mutex_;  // serializes all access to db_ (and blob moves)
+    // For usage: each library's items, notes, attachments and annotations, at its version.
+    std::mutex countsMutex_;
+    std::map<std::string, std::pair<int64_t, std::array<int64_t, 4>>> itemCounts_;
 };
 
 } // namespace on::sync

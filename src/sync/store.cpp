@@ -749,30 +749,43 @@ PushResult Store::push(const std::string& uid, const std::vector<PushObject>& ob
 Json Store::usage(const std::string& username)
 {
     auto libs = libraries(username);
-    std::lock_guard lock(mutex_);
+    // Read on a connection of its own, without the lock: the kinds of items are each item's
+    // JSON read, which for a large library takes a while, and held up everyone's syncs (in
+    // WAL mode, as a server's store is, a reader holds up no writer). Kept, for each library,
+    // until its version changes.
+    sql::Db reader(root_ / "store.sqlite", true);
     Json list = Json::array();
     for (auto& l : libs) {
         Json j = toJson(l);
-        int64_t items = 0, notes = 0, attachments = 0, annotations = 0;
-        auto st = db_.query("SELECT CASE WHEN json_valid(data) THEN json_extract(data, '$.itemType') END, COUNT(*) FROM objects"
-                            " WHERE uid = ? AND type = 'item' AND deleted = 0 GROUP BY 1",
-                            l.uid);
-        while (st.step()) {
-            auto type = st.isNull(0) ? std::string() : st.str(0);
-            auto n = st.i64(1);
-            (type == "note" ? notes : type == "attachment" ? attachments : type == "annotation" ? annotations : items) += n;
+        std::optional<std::array<int64_t, 4>> counts;  // items, notes, attachments, annotations
+        {
+            std::lock_guard lock(countsMutex_);
+            if (auto it = itemCounts_.find(l.uid); it != itemCounts_.end() && it->second.first == l.version)
+                counts = it->second.second;
         }
-        auto f = db_.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE uid = ?", l.uid);
+        if (!counts) {
+            counts.emplace();
+            auto st = reader.query("SELECT CASE WHEN json_valid(data) THEN json_extract(data, '$.itemType') END, "
+                                   "COUNT(*) FROM objects WHERE uid = ? AND type = 'item' AND deleted = 0 GROUP BY 1",
+                                   l.uid);
+            while (st.step()) {
+                auto type = st.isNull(0) ? std::string() : st.str(0);
+                (*counts)[type == "note" ? 1 : type == "attachment" ? 2 : type == "annotation" ? 3 : 0] += st.i64(1);
+            }
+            std::lock_guard lock(countsMutex_);
+            itemCounts_[l.uid] = {l.version, *counts};
+        }
+        auto f = reader.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE uid = ?", l.uid);
         f.step();
-        j["items"] = items;
-        j["notes"] = notes;
-        j["attachments"] = attachments;
-        j["annotations"] = annotations;
+        j["items"] = (*counts)[0];
+        j["notes"] = (*counts)[1];
+        j["attachments"] = (*counts)[2];
+        j["annotations"] = (*counts)[3];
         j["files"] = f.i64(0);
         j["fileBytes"] = f.i64(1);
         list.push_back(j);
     }
-    auto all = db_.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files");
+    auto all = reader.query("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files");
     all.step();
     int64_t database = 0;
     for (auto suffix : {"", "-wal", "-shm", "-journal"})
