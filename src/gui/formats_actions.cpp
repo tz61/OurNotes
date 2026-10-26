@@ -17,6 +17,7 @@
 #include <QTextBrowser>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <atomic>
 #include <thread>
 
@@ -378,16 +379,28 @@ QString applyMetadataMatch(int64_t libraryId, const QString& attachmentKey, cons
     auto att = lib.item(libraryId, ss(attachmentKey));
     if (!att || !jstr(*att, "parentItem").empty())
         return {};
-    // the new parent takes over the attachment's collections
+    // the new parent takes over the attachment's collections and tags (typed for the paper,
+    // as the browser's connector saved its PDF)
     auto collections = att->value("collections", Json::array());
+    auto tags = att->value("tags", Json::array());
     Library::BatchGuard batch(lib);
     auto parent = createFromImport(libraryId, item, {});
-    if (!collections.empty())
-        lib.updateItem(libraryId, jstr(parent, "key"), [&](Json& d) { d["collections"] = collections; });
+    if (!collections.empty() || !tags.empty())
+        lib.updateItem(libraryId, jstr(parent, "key"), [&](Json& d) {
+            if (!collections.empty())
+                d["collections"] = collections;
+            auto& own = d["tags"];
+            if (!own.is_array())
+                own = Json::array();
+            for (auto& t : tags)
+                if (std::none_of(own.begin(), own.end(), [&](const Json& o) { return jstr(o, "tag") == jstr(t, "tag"); }))
+                    own.push_back(t);
+        });
     lib.updateItem(libraryId, ss(attachmentKey), [&](Json& d) {
         d["parentItem"] = jstr(parent, "key");
         d["title"] = "PDF";
         d.erase("collections");
+        d["tags"] = Json::array();
     });
     return jqs(parent, "key");
 }

@@ -1489,10 +1489,16 @@ TEST_CASE("retrieve metadata window: progress, results and parent items")
     Env env;
     TempDir tmp;
     std::vector<MetadataProgressDialog::Job> jobs;
+    auto reading = jstr(env.library.createCollection(env.lib, "Reading"), "key");
     for (auto name : {"found.pdf", "unknown.pdf", "slow.pdf"}) {
         auto file = tmp.path / name;
         writeSamplePdf(file);
         auto att = env.library.importAttachment(env.lib, file);
+        if (std::string(name) == "found.pdf")  // as the browser's connector saves a PDF on its own
+            env.library.updateItem(env.lib, jstr(att, "key"), [&](Json& d) {
+                d["tags"] = Json::array({Json{{"tag", "to read"}}});
+                d["collections"] = Json::array({reading});
+            });
         jobs.push_back({qs(jstr(att, "key")), name, env.library.attachmentFile(env.lib, att)});
     }
     std::atomic<bool> release{false};
@@ -1534,6 +1540,12 @@ TEST_CASE("retrieve metadata window: progress, results and parent items")
             REQUIRE(parent);
             CHECK(jstr(*parent, "title") == "Paper for " + ss(job.name));
             CHECK(jstr(att, "title") == "PDF");
+            if (job.name == "found.pdf") {  // its tags and collections: the paper's now
+                CHECK((*parent)["tags"] == Json::array({Json{{"tag", "to read"}}}));
+                CHECK((*parent)["collections"] == Json::array({reading}));
+                CHECK(att.value("tags", Json::array()).empty());
+                CHECK(att.value("collections", Json::array()).empty());
+            }
         }
     }
 }
