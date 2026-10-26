@@ -127,5 +127,6 @@ and no leak in OurNotes' own code. In MicroTeX, which OurNotes builds and patche
 
 | behaviour | `sync/change_watcher.cpp` `run`, `watch` | The reconnect back-off was never reset: after one outage, every later error waited up to 300 s before the next try. Reset once the target answers. |
 | perf | `hash.cpp` `pbkdf2Sha256` | The padded password was hashed again in each of a login's 120k iterations. Hashed once; each iteration copies the two states. 211 ms → 113 ms per login or `useradd` (output unchanged: RFC 7914's 80,000-iteration vector added to the tests). |
+| perf | `library.cpp` schema 4, `tags()` | The tag list (rebuilt after every item change, a note's autosave too) looked up each tag's item in `items`, whose rows carry the item's whole data: a deep tree to walk for each. An index `items(library_id, key, trashed)` answers it: `tags()` 38 → 24 ms, the tag selector 51 → 37 ms (5,000 papers, 15,000 tags on them). Older versions of the app open the database as before. |
 
 Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.

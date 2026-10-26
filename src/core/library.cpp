@@ -14,7 +14,7 @@ namespace on {
 
 namespace {
 
-constexpr int kSchemaVersion = 3;
+constexpr int kSchemaVersion = 4;
 
 const char* kSchemaSql = R"SQL(
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS items(
     PRIMARY KEY(library_id, key)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS items_parent ON items(library_id, parent_key);
 CREATE INDEX IF NOT EXISTS items_dirty ON items(library_id, synced);
+CREATE INDEX IF NOT EXISTS items_trashed ON items(library_id, key, trashed);
 CREATE TABLE IF NOT EXISTS item_tags(
     library_id INTEGER NOT NULL,
     item_key TEXT NOT NULL,
@@ -268,6 +269,8 @@ void Library::migrate()
     db_.exec(kSchemaSql);
     // 2: the library name last agreed with the sync target (names are synced)
     // 3: changed_by, made by kSchemaSql
+    // 4: items_trashed, made by kSchemaSql: whether an item is in the trash without reading
+    //    its row (whole items with their data: tags() looked up each tag's item, 4x slower)
     if (!db_.scalarInt("SELECT 1 FROM pragma_table_info('libraries') WHERE name='sync_name'"))
         db_.exec("ALTER TABLE libraries ADD COLUMN sync_name TEXT");
     if (!db_.scalarStr("SELECT value FROM meta WHERE key='created'"))
