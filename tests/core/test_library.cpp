@@ -435,3 +435,30 @@ TEST_CASE("disk usage: each library's items and files, the databases, the disk")
     CHECK(usage["disk"]["capacity"].get<int64_t>() > 0);
     CHECK(usage["disk"]["available"].get<int64_t>() <= usage["disk"]["capacity"].get<int64_t>());
 }
+
+TEST_CASE("items: an attachment whose data cannot be read leaves the item list readable")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto id = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(id, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    lib.createItem(id, Json{{"itemType", "attachment"},
+                            {"parentItem", paper},
+                            {"linkMode", "linked_file"},
+                            {"title", "Fine"},
+                            {"filename", "fine.pdf"},
+                            {"path", "/somewhere/fine.pdf"}});
+    // one nested deeper than SQLite reads JSON (from an old build, or a synced folder)
+    Json deep = Json::array();
+    for (int i = 0; i < 1100; ++i)
+        deep = Json::array({deep});
+    lib.createItem(id, Json{{"itemType", "attachment"}, {"parentItem", paper}, {"linkMode", "linked_file"},
+                            {"title", "Deep"}, {"filename", "deep.pdf"}, {"deep", deep}});
+    std::vector<ItemRow> rows;
+    REQUIRE_NOTHROW(rows = lib.itemRows(id));
+    CHECK(rows.size() == 3);
+    bool fine = false;
+    for (auto& r : rows)
+        fine |= r.filename == "fine.pdf" && r.path == "/somewhere/fine.pdf";
+    CHECK(fine);
+}

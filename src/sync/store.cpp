@@ -754,7 +754,7 @@ Json Store::usage(const std::string& username)
     for (auto& l : libs) {
         Json j = toJson(l);
         int64_t items = 0, notes = 0, attachments = 0, annotations = 0;
-        auto st = db_.query("SELECT json_extract(data, '$.itemType'), COUNT(*) FROM objects"
+        auto st = db_.query("SELECT CASE WHEN json_valid(data) THEN json_extract(data, '$.itemType') END, COUNT(*) FROM objects"
                             " WHERE uid = ? AND type = 'item' AND deleted = 0 GROUP BY 1",
                             l.uid);
         while (st.step()) {

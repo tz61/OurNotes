@@ -745,14 +745,16 @@ void Library::emptyTrash(int64_t lib)
     eraseItems(lib, keys);
 }
 
+// (json_valid: data SQLite cannot read, nested deeper than it reads, made json_extract fail
+// the whole list, and the app with it as it started)
 std::vector<ItemRow> Library::itemRows(int64_t lib)
 {
     std::vector<ItemRow> out;
     auto st = db_.query(R"SQL(
         SELECT key, item_type, parent_key, title, creator, year, date, publication, date_added, date_modified,
                content_type, link_mode, trashed,
-               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.filename') END,
-               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.path') END
+               CASE WHEN item_type = 'attachment' AND json_valid(data) THEN json_extract(data, '$.filename') END,
+               CASE WHEN item_type = 'attachment' AND json_valid(data) THEN json_extract(data, '$.path') END
         FROM items WHERE library_id=? AND item_type != 'annotation')SQL",
                         lib);
     while (st.step()) {
