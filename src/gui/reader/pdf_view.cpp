@@ -411,6 +411,7 @@ void PdfView::open(const fs::path& path)
     path_ = path;
     cache_.clear();
     links_.clear();
+    linkGlyphs_.clear();
     pictureRects_.clear();
     startWorker();
     relayout(false);
@@ -1063,14 +1064,27 @@ void PdfView::paintLinks(QPainter& p, int page, const QImage& image, double imag
         return;
     double dpr = devicePixelRatioF(), across = onView.width() / image.width();  // (view units a pixel)
     QColor ink = darkPages_ ? QColor(150, 190, 255) : QColor(20, 100, 235);
+    auto onScreen = [&](const QRectF& r) {  // page points: where the image has them drawn
+        return QRectF(onView.topLeft() + r.topLeft() * imageScale * across, r.size() * imageScale * across);
+    };
+    auto& glyphs = linkGlyphs(page);
     p.save();
-    for (auto& link : links_[page]) {
-        QRectF area = toQ(link.rect);
+    for (size_t i = 0; i < links_[page].size() && i < glyphs.size(); ++i) {
+        QRectF area = toQ(links_[page][i].rect);
         bool onPicture = false;
         for (auto& picture : pictureRects(page))
             if (auto common = picture & area; common.width() * common.height() > 0.3 * area.width() * area.height())
                 onPicture = true;
-        QRect pixels = QRectF(area.topLeft() * imageScale, area.size() * imageScale).toAlignedRect() & image.rect();
+        // its letters, whole (not those its box cuts, nor the next line's), and only they
+        QRectF letters;
+        QPainterPath clip;
+        double height = 0;
+        for (auto& g : glyphs[i]) {
+            letters = letters.isNull() ? g : letters.united(g);
+            clip.addRect(onScreen(g));
+            height += g.height();
+        }
+        QRect pixels = QRectF(letters.topLeft() * imageScale, letters.size() * imageScale).toAlignedRect() & image.rect();
         if (onPicture || pixels.isEmpty())
             continue;
         QImage part = image.copy(pixels).convertToFormat(QImage::Format_RGB32);
@@ -1080,12 +1094,36 @@ void PdfView::paintLinks(QPainter& p, int page, const QImage& image, double imag
             q.fillRect(part.rect(), ink);
         }
         QRectF to(onView.topLeft() + QPointF(pixels.topLeft()) * across, QSizeF(pixels.size()) * across);
+        p.setClipPath(clip);
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
         p.drawImage(to, part);
+        // bold: as much thicker as the letters are high (a pixel or more), the darker (lighter) kept
         p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
-        p.drawImage(to.translated(1 / dpr, 0), part);  // (bold)
+        int bold = std::clamp(int(std::lround(height / glyphs[i].size() * imageScale * across * dpr * 0.04)), 1, 4);
+        for (int k = 1; k <= bold; ++k)
+            p.drawImage(to.translated(k / dpr, 0), part);
     }
     p.restore();
+}
+
+const std::vector<std::vector<QRectF>>& PdfView::linkGlyphs(int page)
+{
+    auto it = linkGlyphs_.find(page);
+    if (it != linkGlyphs_.end())
+        return it->second;
+    auto& text = doc_->text(page);
+    std::vector<std::vector<QRectF>> all;
+    for (auto& link : links_[page]) {
+        QRectF area = toQ(link.rect);
+        std::vector<QRectF> glyphs;
+        for (auto& c : text.chars)
+            if (c.c != ' ' && area.contains(toQ(c.box).center()))
+                glyphs.push_back(toQ(c.box));
+        if (glyphs.empty())  // (no text: the box)
+            glyphs.push_back(area);
+        all.push_back(std::move(glyphs));
+    }
+    return linkGlyphs_[page] = std::move(all);
 }
 
 void PdfView::paintTextSelection(QPainter& p, int page)

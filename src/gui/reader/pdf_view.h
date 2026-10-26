@@ -240,6 +240,9 @@ private:
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
     void paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView);
+    // each link's letters on a page (the characters with their middle in its box); no text: its box
+    const std::vector<std::vector<QRectF>>& linkGlyphs(int page);
+    std::map<int, std::vector<std::vector<QRectF>>> linkGlyphs_;
     void showPopup();
     void hidePopup();
     void updateCursor(QPointF viewPos);
