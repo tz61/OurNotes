@@ -139,6 +139,12 @@ QWidget* PreferencesDialog::generalPage()
         ctx.config().save();
         emit ctx.appearanceChanged();
     });
+    auto* links = new QCheckBox(tr("Highlight links in PDFs in blue"), page);
+    links->setObjectName("highlightLinks");
+    links->setToolTip(tr("Some PDFs do not mark their links (a reference's number, a figure's) apart from the text."));
+    links->setChecked(highlightPdfLinks());
+    form->addRow(QString(), links);
+    connect(links, &QCheckBox::toggled, this, [](bool on) { setHighlightPdfLinks(on); });
     auto* bands = new QCheckBox(tr("Show a background picture behind the item list, a different one every two hours"),
                                 page);
     bands->setObjectName("bandBackground");

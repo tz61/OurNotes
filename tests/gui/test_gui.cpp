@@ -49,6 +49,7 @@
 #include <QPlainTextEdit>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QDropEvent>
 #include <QPainter>
@@ -1848,6 +1849,39 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     QTest::mouseClick(view.viewport(), Qt::BackButton, {}, QPoint(10, 10));
     CHECK(view.currentPage() == 1);
     CHECK(view.pageToViewport(1, {0, 0}).y() == doctest::Approx(view.pageToViewport(1, {0, 0}).y()));
+}
+
+TEST_CASE("pdf view: links are tinted blue unless that is turned off, in every PDF")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "linked.pdf";
+    writeLinkedPdf(file);
+    PdfView view;
+    view.resize(800, 900);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    auto inLink = [&] {  // (a spot of the link's box beside its text)
+        auto img = view.viewport()->grab().toImage();
+        return img.pixelColor((view.pageToViewport(0, {92.5, 77.5}) * img.devicePixelRatio()).toPoint());
+    };
+    CHECK(highlightPdfLinks());
+    CHECK(inLink().blue() > inLink().red() + 25);
+    setHighlightPdfLinks(false);
+    QApplication::processEvents();
+    CHECK(inLink() == QColor(Qt::white));
+    CHECK(env.config.get("/reader/highlightLinks", true) == false);
+    // in Preferences too
+    SyncController sync;
+    PreferencesDialog dialog(&sync);
+    auto* box = dialog.findChild<QCheckBox*>("highlightLinks");
+    REQUIRE(box);
+    CHECK(!box->isChecked());
+    box->setChecked(true);
+    QApplication::processEvents();
+    CHECK(inLink().blue() > inLink().red() + 25);
 }
 
 TEST_CASE("reader: text selected across pages is highlighted on both, one annotation a page, one step to undo")

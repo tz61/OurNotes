@@ -343,7 +343,10 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
     darkPages_ = darkPdfPages();
     tone_ = pageTone(darkPages_);
     if (auto* ctx = AppContext::tryGet()) {
-        connect(ctx, &AppContext::appearanceChanged, this, [this] { setDarkPages(darkPdfPages()); });
+        connect(ctx, &AppContext::appearanceChanged, this, [this] {
+            setDarkPages(darkPdfPages());
+            viewport()->update();  // (links tinted or not)
+        });
         connect(ctx, &AppContext::pageToneChanged, this, [this] {
             tone_ = pageTone(darkPages_);
             viewport()->update();
@@ -1021,6 +1024,8 @@ void PdfView::paintAnnotations(QPainter& p, int page)
 // stays as dark (as light).
 void PdfView::paintLinks(QPainter& p, int page)
 {
+    if (!highlightPdfLinks())
+        return;
     if (!links_.count(page))
         links_[page] = doc_->links(page);
     if (links_[page].empty())
@@ -2449,6 +2454,9 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
             menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit quoteToNote(selectedQuote()); });
         menu.addSeparator();
     }
+    auto* links = menu.addAction(tr("Highlight Links"), this, [](bool on) { setHighlightPdfLinks(on); });
+    links->setCheckable(true);
+    links->setChecked(highlightPdfLinks());
     if (canGoBack() || canGoForward()) {
         auto shortcut = [](Qt::Key key) { return "\t" + QKeySequence(Qt::CTRL | key).toString(QKeySequence::NativeText); };
         menu.addAction(icon("prev"), tr("Back") + shortcut(Qt::Key_Left), this, &PdfView::goBack)->setEnabled(canGoBack());

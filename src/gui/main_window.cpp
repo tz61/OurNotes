@@ -52,6 +52,7 @@
 #include "gui/note_tab.h"
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
+#include "gui/theme.h"
 #include "gui/sync_controller.h"
 #include "gui/storage_window.h"
 #include "gui/sync_history.h"
@@ -408,6 +409,10 @@ void MainWindow::buildActions()
         if (auto* r = qobject_cast<ReaderTab*>(tabs_->currentWidget()))
             r->view()->fitWidth();
     });
+    auto* links = view->addAction(tr("Highlight Links in PDFs"), this, [](bool on) { setHighlightPdfLinks(on); });
+    links->setObjectName("highlightLinks");
+    links->setCheckable(true);
+    connect(view, &QMenu::aboutToShow, links, [links] { links->setChecked(highlightPdfLinks()); });  // (changed elsewhere too)
     view->addSeparator();
     // Control-Command-F on macOS, F11 elsewhere; a maximized window comes back maximized
     auto* fullScreen = view->addAction(tr("Enter Full Screen"), QKeySequence::FullScreen, this,

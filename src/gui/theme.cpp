@@ -160,6 +160,21 @@ void setDarkPdfPages(bool dark)
     emit ctx.appearanceChanged();
 }
 
+bool highlightPdfLinks()
+{
+    auto* ctx = AppContext::tryGet();
+    auto v = ctx ? ctx->config().get("/reader/highlightLinks", true) : Json(true);
+    return !v.is_boolean() || v.get<bool>();
+}
+
+void setHighlightPdfLinks(bool on)
+{
+    auto& ctx = AppContext::get();
+    ctx.config().set("/reader/highlightLinks", on);
+    ctx.config().save();
+    emit ctx.appearanceChanged();
+}
+
 int pageTone(bool darkPages)
 {
     auto* ctx = AppContext::tryGet();
