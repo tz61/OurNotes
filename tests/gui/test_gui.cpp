@@ -1905,6 +1905,15 @@ TEST_CASE("pdf view: links' text is blue and bold (in a colour of its own: that 
     CHECK(highlightPdfLinks());
     auto marked = inkIn(0, one);
     CHECK(marked.blue > marked.count / 3);  // black: blue
+    // while zooming (the page drawn from the last zoom's, until this one's comes): marked too
+    view.setZoom(view.zoom() * 1.3);
+    auto zooming = inkIn(0, one);
+    CHECK(zooming.count > 0);
+    CHECK(zooming.blue > zooming.count / 3);
+    view.setZoom(view.zoom() / 1.3);
+    REQUIRE(QTest::qWaitFor([&] { return inkIn(0, one).blue > 0 && view.renderedPages() > 0; }));
+    QTest::qWait(200);
+    marked = inkIn(0, one);
     setHighlightPdfLinks(false);
     QApplication::processEvents();
     auto plain = inkIn(0, one);

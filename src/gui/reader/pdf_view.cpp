@@ -869,10 +869,11 @@ void PdfView::paintEvent(QPaintEvent*)
             QPointF at(std::round(r.x() * dpr) / dpr, std::round(r.y() * dpr) / dpr);
             p.setRenderHint(QPainter::SmoothPixmapTransform, false);
             p.drawImage(at, it->second.image);
-            paintLinks(p, i, it->second.image, at);
+            paintLinks(p, i, it->second.image, it->second.scale, QRectF(at, QSizeF(it->second.image.size()) / dpr));
             p.setRenderHint(QPainter::SmoothPixmapTransform);
         } else if (it != cache_.end()) {
             p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
+            paintLinks(p, i, it->second.image, it->second.scale, r);  // (its links as marked meanwhile)
         }
         if (tone_ > 0) {  // the page colour: white (or black) paper towards gray, not the text on
             // it (no lighter, or darker, than the gray) nor the pictures
@@ -1045,11 +1046,12 @@ bool colouredInk(const QImage& part, bool darkPages)
 } // namespace
 
 // The text of the links on a page marked, and bold: a PDF does not always mark its links (a
-// reference's number, a figure's) apart from its text. Its part of the page (`image`, drawn at
-// `at`): black or gray ink turned blue (on dark pages: the light ink light blue), the paper as
-// it is; ink of a colour of its own kept. Drawn again a pixel to the right, the darker
-// (lighter) of the two kept: thicker strokes. Not over pictures.
-void PdfView::paintLinks(QPainter& p, int page, const QImage& image, QPointF at)
+// reference's number, a figure's) apart from its text. Its part of the page (`image`, of
+// `imageScale` pixels a point, drawn over `onView`; another zoom's too, stretched, while the
+// zoom changes): black or gray ink turned blue (on dark pages: the light ink light blue), the
+// paper as it is; ink of a colour of its own kept. Drawn again a pixel to the right, the
+// darker (lighter) of the two kept: thicker strokes. Not over pictures.
+void PdfView::paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView)
 {
     if (!highlightPdfLinks())
         return;
@@ -1057,7 +1059,9 @@ void PdfView::paintLinks(QPainter& p, int page, const QImage& image, QPointF at)
         links_[page] = doc_->links(page);
     if (links_[page].empty())
         return;
-    double dpr = image.devicePixelRatio() > 0 ? image.devicePixelRatio() : 1;
+    if (image.isNull() || imageScale <= 0)
+        return;
+    double dpr = devicePixelRatioF(), across = onView.width() / image.width();  // (view units a pixel)
     QColor ink = darkPages_ ? QColor(150, 190, 255) : QColor(20, 100, 235);
     p.save();
     for (auto& link : links_[page]) {
@@ -1066,7 +1070,7 @@ void PdfView::paintLinks(QPainter& p, int page, const QImage& image, QPointF at)
         for (auto& picture : pictureRects(page))
             if (auto common = picture & area; common.width() * common.height() > 0.3 * area.width() * area.height())
                 onPicture = true;
-        QRect pixels = QRectF(area.topLeft() * scale_ * dpr, area.size() * scale_ * dpr).toAlignedRect() & image.rect();
+        QRect pixels = QRectF(area.topLeft() * imageScale, area.size() * imageScale).toAlignedRect() & image.rect();
         if (onPicture || pixels.isEmpty())
             continue;
         QImage part = image.copy(pixels).convertToFormat(QImage::Format_RGB32);
@@ -1075,12 +1079,11 @@ void PdfView::paintLinks(QPainter& p, int page, const QImage& image, QPointF at)
             q.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Multiply : QPainter::CompositionMode_Screen);
             q.fillRect(part.rect(), ink);
         }
-        part.setDevicePixelRatio(dpr);
-        QPointF to = at + QPointF(pixels.topLeft()) / dpr;
+        QRectF to(onView.topLeft() + QPointF(pixels.topLeft()) * across, QSizeF(pixels.size()) * across);
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
         p.drawImage(to, part);
         p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
-        p.drawImage(to + QPointF(1 / dpr, 0), part);  // (bold)
+        p.drawImage(to.translated(1 / dpr, 0), part);  // (bold)
     }
     p.restore();
 }

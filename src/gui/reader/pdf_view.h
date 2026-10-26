@@ -239,7 +239,7 @@ private:
     // painting
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
-    void paintLinks(QPainter& p, int page, const QImage& image, QPointF at);
+    void paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView);
     void showPopup();
     void hidePopup();
     void updateCursor(QPointF viewPos);
