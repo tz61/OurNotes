@@ -362,18 +362,23 @@ QString noteHtmlForEditor(const QString& rawHtml, int64_t libraryId, QTextDocume
     QString html = tableHeadersForEditor(mathMarkupToImages(rawHtml));
     // a caption (<p class="caption">) is marked by a user state, which QTextDocument keeps
     // (it keeps no class); markCaptions makes it a caption. (An empty one is left out: an
-    // empty paragraph is dropped, and its state would go to the one after it.)
-    static const QRegularExpression caption(
-        R"re(<p\b([^>]*?)\s*\bclass\s*=\s*["']caption["']([^>]*)>(?!\s*(?:<br\s*/?>\s*)*</p>))re",
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression style(R"re(\bstyle\s*=\s*(["'])(.*?)\1)re", QRegularExpression::CaseInsensitiveOption);
+    // empty paragraph is dropped, and its state would go to the one after it. Empty: nothing
+    // in it but room and tags, spans, comments, <br>; a picture is something.)
+    constexpr auto ci = QRegularExpression::CaseInsensitiveOption;
+    static const QRegularExpression caption(R"re(<p\b([^>]*?)\s*\bclass\s*=\s*["']caption["']([^>]*)>)re", ci);
+    static const QRegularExpression end(R"re(</p\s*>)re", ci);
+    static const QRegularExpression tag(R"re(<!--[\s\S]*?-->|<(?!img\b)[^>]*>)re", ci);
+    static const QRegularExpression style(R"re(\bstyle\s*=\s*(["'])(.*?)\1)re", ci);
     QString marked;
     qsizetype done = 0;
     for (auto it = caption.globalMatch(html); it.hasNext();) {
         auto m = it.next();
+        auto close = end.match(html, m.capturedEnd());
+        if (close.hasMatch() && html.mid(m.capturedEnd(), close.capturedStart() - m.capturedEnd()).remove(tag).trimmed().isEmpty())
+            continue;
         QString attrs = m.captured(1) + m.captured(2), state = QString("-qt-user-state: %1").arg(kCaptionState);
         if (auto s = style.match(attrs); s.hasMatch()) {
-            QString css = s.captured(2).trimmed();
+            QString css = s.captured(2).trimmed().replace('"', '\'');  // (in double quotes now: font-family: "Times")
             if (css.endsWith(';'))
                 css.chop(1);
             attrs.replace(s.capturedStart(), s.capturedLength(), "style=\"" + (css.isEmpty() ? state : css + "; " + state) + "\"");

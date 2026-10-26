@@ -4501,6 +4501,34 @@ TEST_CASE("notes: a picture's buttons wrap in a narrow note; one in a line of te
     CHECK(note.lines() == QStringList{"Before # after"});
 }
 
+TEST_CASE("notes: captions as others write them: an empty one makes no caption of the next line; quotes in its style")
+{
+    app();
+    Env env;
+    auto open = [&](const QString& body) {
+        auto edit = std::make_unique<NoteTextEdit>();
+        edit->document()->addResource(QTextDocument::ImageResource, QUrl("test:1"), filled(300, 200, Qt::red));
+        edit->setHtml(noteHtmlForEditor("<div data-schema-version=\"9\"><p><img src=\"test:1\"></p>" + body + "</div>",
+                                        env.lib, edit->document()));
+        edit->prepareDocument();
+        return edit;
+    };
+    // empty but for tags: no caption, and the line after it none either
+    for (auto* empty : {"<span></span>", "<span style=\"color: #ff0000\"> </span>", "<!-- nothing -->", "<br>"}) {
+        CAPTURE(empty);
+        auto edit = open(QString("<p class=\"caption\">") + empty + "</p><p>b</p>");
+        auto html = documentToNoteHtml(edit->document());
+        CAPTURE(html.toStdString());
+        CHECK(!html.contains("caption"));
+        CHECK(html.contains("<p>b</p>"));
+    }
+    // a style in single quotes with double ones in it: still a caption
+    auto edit = open("<p class=\"caption\" style='font-family: \"Times\"'>Figure 2</p><p>b</p>");
+    auto html = documentToNoteHtml(edit->document());
+    CAPTURE(html.toStdString());
+    CHECK(html.contains("<p class=\"caption\">Figure 2</p><p>b</p>"));
+}
+
 TEST_CASE("notes: a corner taken and let go where it was changes nothing; an empty caption says what goes there")
 {
     app();
