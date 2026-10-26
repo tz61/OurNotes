@@ -78,7 +78,6 @@ formats tests, with no reports before or after.
 | rendering | `rich_text_images.cpp` | Formulas laid out at the app's highest DPR but drawn at the widget's: up to ~1 px misplacement on mixed-DPI setups; each formula cached twice. |
 | perf | `note_html.cpp` `noteHtmlForEditor` | Each save reloads every other editor showing the note, decoding all its pictures from disk. Needs a shared image cache. |
 | behaviour | `note_editor.cpp` `adaptColors` | `setUndoRedoEnabled(false)` on a theme/palette change wipes the undo history. |
-| perf | `items_model.cpp` `reload` | One `lib.item()` (JSON parse) and one `stat()` per item on every reload, and reloads happen on every item change, including note autosave every 700 ms while typing. Needs the attachment path in `ItemRow` (core). |
 | perf | `TagSelector`, `ItemNotesPanel`, `LocationBox` | Rebuilt on any item change (including note autosave), hidden ones too. |
 | behaviour | `sync/change_watcher.cpp` `run` | The reconnect back-off is never reset after a successful reconnect: after one outage, every later error waits up to 300 s. |
 | robustness | `server/main.cpp` `cmdServe` | An exception between starting the watcher thread and joining it ends in `std::terminate`. |
@@ -113,3 +112,18 @@ Not finished: the second-pass review was cut short. Its other high-ranked lead,
 attachments synced by others being opened with the system's handler with no check of the
 file type, is how Zotero behaves too and is a design decision rather than a bug; it is
 noted here for review.
+
+## Round 3: from the sanitizers and the second pass
+
+The whole suite under ASan + UBSan + LeakSanitizer (GUI included, offscreen): no error
+and no leak in OurNotes' own code. In MicroTeX, which OurNotes builds and patches:
+
+| Kind | Where | What |
+|---|---|---|
+| leak | MicroTeX `macro_impl.h` (patched in `cmake/PatchMicroTeX.cmake`) | Array environments (matrix, align, gather, multline…) held their rows in a raw pointer until the end: one that threw while parsing, as one typed in place does at most keys, leaked ~350 bytes per render. Owned from the start. |
+| memory error | MicroTeX `latex.cpp` (patched) | `asprintf`'s string freed with `delete`. |
+| crash | `util.cpp` `safeFilename` | A name over 200 characters whose "extension" was over 200 (a synced attachment's filename, read at every sync) made `200 - ext.size()` wrap round and read past the end. Test in `test_util.cpp`. |
+| crash | `core/json.h` `parseExternalJson` | JSON nested ~100k deep parses, then overflows the stack when copied or dumped. Requests to the sync server and the connector, and the server's responses to the app, refuse nesting over 256. Test in `test_util.cpp`. (Commit d72c4d3 says "not yet built or tested": it was, afterwards, and passes.) |
+| perf | `items_model.cpp` `reload`, `library.cpp` `itemRows` | Each reload (after every change, a note's autosave too) read and parsed every attachment's JSON to see whether its file is there. `itemRows` now gives an attachment's filename and path. 5,000 papers with a PDF each: 227 ms → ~100 ms per reload. |
+
+Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.
