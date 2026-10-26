@@ -154,3 +154,30 @@ Reviewed, then each finding given to a skeptic told to refute it (six of eight h
 Refuted: `pictureRects()` running page content on the GUI thread (cached per page, once
 a document); the preview's leave timer restarting on each move (as comment bubbles do,
 on purpose).
+
+## Round 5: a second sweep, four fresh lenses (lifecycles, sync under load, drawing, the CLI)
+
+Twenty candidates; the five ranked highest were each given to a skeptic (all held).
+The whole suite under ASan + UBSan + LeakSanitizer again at the head of this branch:
+clean (the 12 bytes MicroTeX keeps from its start aside).
+
+| Kind | Where | What |
+|---|---|---|
+| leak / sync | `core/sync/engine.cpp` `syncFiles` | A file conflict imported the local file as a "conflicted copy", then asked for the remote one; when that was skipped (files on demand) or failed, nothing recorded the conflict as handled, so every later sync imported another copy, uploaded and synced to every computer. The kept file's checksum is recorded. |
+| crash | `item_pane.cpp` tag chips, location and notes tooltips, attachment "Added"; `library_view.cpp` Merge Items; `main_window.cpp` Delete Library | The same rich-text `<img>` path as round 2, in places it missed. |
+| crash | `cli/agent_commands.cpp` `notePictures`, `text` | `std::regex` (libstdc++ recurses per character) read `<img>` tags: a `data:` picture of ~22 KB or more crashed `add-note`, `edit-note`, `add-image` and `text` with a stack overflow. Read by hand now (checked equal to the regexes on 400k random tags). Test in `test_cli.cpp`. |
+| perf | `reader_tab.cpp` | Every open PDF tab, hidden ones too, reloaded its annotations and notes on any item change (a note's autosave too). A hidden tab now does it when shown. |
+| perf | `reader_tab.cpp`, `pdf_view.cpp` `requestThumbnails` | Once thumbnails were shown, every restart of rendering (a tab shown again) rendered all of them again; now only those missing (all again on a colour or screen change). |
+
+Found, not verified (left for review; each is a lead, not a confirmed defect):
+
+- `core/sync/engine.cpp` `pull`: `continue` inside the remote-reset `do … while` leaves the loop, so the whole library may be pushed back.
+- `sync/store.cpp` `Store::changes`, `Store::push`: every row's JSON parsed while holding the server-wide mutex; each pushed object's stored JSON parsed only to compare versions.
+- `core/sync/engine.cpp` `syncFiles`: every sync downloads and parses the full file list of every library, even when nothing changed.
+- `core/util.cpp` `htmlUnescape`: numeric references to surrogates or past U+10FFFF become invalid UTF-8 (`items --json` output).
+- `cli/agent_commands.cpp` `base64Decode`: a left shift of a signed int past its range (UB) on any `data:` picture.
+- `cli/extra_commands.cpp` `index`, `empty-trash`: every item of every library parsed to find PDFs; `cite`/`export` drop unknown keys silently and exit 0.
+- `item_pane.cpp` `RelatedBox`: a long related title makes the Info page wider than the pane; `AutoTextEdit::sizeHint` one pixel short a line (last lines of long fields cut).
+- `note_editor.cpp` `adaptColors`: switching light → dark draws note links in the text colour and saves that colour into the note.
+- `search_field.cpp`: the Aa toggle made 18×16, drawn into 16×16; `metadata_progress.cpp`: rows keep the old theme's text colour.
+- `search_field.cpp`: the search history popup outlives its tab; `storage_window.cpp`: Refresh starts new scans without cancelling the old.
