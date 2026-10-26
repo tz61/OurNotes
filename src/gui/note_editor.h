@@ -122,6 +122,9 @@ private:
     bool tableKey(QKeyEvent* e);    // Tab, Shift+Tab, Enter in a table
     // Text as rich text in `out`, Markdown or plain; its formulas ($…$, $$…$$) as formulas.
     void textDocument(const QString& text, bool markdown, QTextDocument* out) const;
+    // Plain text with formulas in it, at the cursor as plain text goes in: in the format
+    // there, its lines of this one's kind (a heading's), its formulas in that colour.
+    void insertTextWithFormulas(const QString& text);
     bool markdown_ = false;
     int wheelZoom_ = 0;  // Ctrl+wheel turned less than a notch
     struct MathRun {

@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QTimer>
 #include <QMessageBox>
@@ -2566,6 +2567,102 @@ TEST_CASE("notes: LaTeX pasted from other programs becomes formulas; prices stay
     CHECK(formulas[2].first == "y");
     CHECK(formulas[3].first == "k_1");
     CHECK(edit->document()->toPlainText().contains("for $3 or $4"));
+
+    // code has $ of its own: R, the shell, PHP, JavaScript
+    auto* code = new QMimeData;
+    code->setText("plot(d$x, d$y)\ndf$age + df$height\ncp \"$SRC/$NAME\" out\necho $first.$last;\nlet s = ${a}${b};");
+    paste(code);
+    CHECK(formulasIn(edit->document()).size() == 4);
+    for (auto* line : {"plot(d$x, d$y)", "df$age + df$height", "cp \"$SRC/$NAME\" out", "echo $first.$last;", "${a}${b}"})
+        CHECK_MESSAGE(edit->document()->toPlainText().contains(line), line);
+    // a formula with an ending, or in Chinese, still one
+    auto* prose = new QMimeData;
+    prose->setText("the $n$th term, the $x$s, 其中$z$是变量");
+    paste(prose);
+    formulas = formulasIn(edit->document());
+    REQUIRE(formulas.size() == 7);
+    CHECK(formulas[4].first == "n");
+    CHECK(formulas[5].first == "x");
+    CHECK(formulas[6].first == "z");
+    // code in rich text (<pre>, <code>), and in Markdown (`…`, ``` blocks)
+    auto* richCode = new QMimeData;
+    richCode->setHtml("<pre>x &lt;- \"$p$\"</pre><p>R: <code>$q$</code> and $r$, "
+                      "<code style=\"font-family: ui-monospace, Menlo, monospace\">$v$</code></p>");
+    paste(richCode);
+    auto* markdownCode = new QMimeData;
+    markdownCode->setText("Use `$s$` here, and $t$\n```\necho \"$u$\"\n```\n");
+    paste(markdownCode);
+    formulas = formulasIn(edit->document());
+    std::string found;
+    for (auto& [latex, display] : formulas)
+        found += latex.toStdString() + " | ";
+    INFO(found);
+    REQUIRE(formulas.size() == 9);
+    CHECK(formulas[7].first == "r");
+    CHECK(formulas[8].first == "t");
+    for (auto* kept : {"\"$p$\"", "$q$", "$v$", "$s$", "\"$u$\""})
+        CHECK_MESSAGE(edit->document()->toPlainText().contains(kept), kept);
+
+    // a $$ never closed, in a long text: pasted at once (it was tried at each place after it,
+    // seconds for every 100k letters)
+    QString longText = "Price tier: $$\n";
+    for (int i = 0; i < 12000; ++i)
+        longText += "a line of text without a dollar sign in it, at all\n";
+    auto* big = new QMimeData;
+    big->setText(longText);
+    QElapsedTimer clock;
+    clock.start();
+    paste(big);
+    CHECK(clock.elapsed() < 5000);
+    CHECK(formulasIn(edit->document()).size() == 9);
+}
+
+TEST_CASE("notes: plain text with LaTeX pasted takes the format where it goes, as plain text does")
+{
+    app();
+    Env env;
+    auto note = env.library.createNote(env.lib, "<h2>Head</h2><p><span style=\"color: #e02020\">red</span></p>");
+    NoteEditor editor;
+    editor.resize(600, 400);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    edit->setFocus();
+    auto* doc = edit->document();
+    auto pasteAt = [&](int at, const QString& text) {
+        QTextCursor c(doc);
+        c.setPosition(at);
+        edit->setTextCursor(c);
+        auto* data = new QMimeData;
+        data->setText(text);
+        QApplication::clipboard()->setMimeData(data);
+        edit->paste();
+        QApplication::processEvents();
+    };
+    auto formatAt = [&](int at) {
+        QTextCursor c(doc);
+        c.setPosition(at);
+        return c.charFormat();
+    };
+    // at a heading's end: a heading's text, on a heading's lines
+    auto head = doc->begin();
+    auto headFormat = formatAt(head.position() + 2);
+    pasteAt(head.position() + 4, " of $E=mc^2$\nand more");
+    head = doc->begin();
+    CHECK(head.blockFormat().headingLevel() == 2);
+    CHECK(head.text() == "Head of " + QString(QChar::ObjectReplacementCharacter));
+    CHECK(formatAt(head.position() + 7) == headFormat);
+    CHECK(head.next().blockFormat().headingLevel() == 2);
+    CHECK(formatAt(head.next().position() + 2) == headFormat);
+    // in red text: red, the formula too
+    auto red = doc->findBlockByNumber(2);
+    REQUIRE(red.text() == "red");
+    pasteAt(red.position() + 3, " and $y$");
+    CHECK(formatAt(red.position() + 6).foreground().color() == QColor("#e02020"));
+    auto formula = formatAt(red.position() + 9);
+    REQUIRE(formula.isImageFormat());
+    CHECK(formula.foreground().color() == QColor("#e02020"));
 }
 
 TEST_CASE("notes: after `code`, what is typed next is in the note's font again")
@@ -6062,6 +6159,7 @@ TEST_CASE("notes: LaTeX pasted into an empty caption looks as it is saved: a cap
     QApplication::clipboard()->setMimeData(display);
     note.caretAt(note.doc()->lastBlock().position());
     edit.paste();
+    INFO(documentToNoteHtml(note.doc()).toStdString());
     CHECK(documentToNoteHtml(note.doc()).contains("<p class=\"caption\">"));
 }
 

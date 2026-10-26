@@ -35,6 +35,7 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -150,10 +151,14 @@ static const QString kNoteStyleSheet =
 static const QString kNoteFragmentMime = "application/x-ournotes-note-fragment";
 
 // LaTeX in text: $$…$$, and $…$ with no space inside its signs and no digit after it
-// ("$5 and $10" is not a formula).
+// ("$5 and $10" is not a formula). Code has $ of its own: one just after a letter, digit
+// or _ does not open a formula (R's df$x), nor does one just before a letter or { close it
+// (the shell's "$A/$B", PHP's $a.$b), but for an ending ($n$th, $x$s). (Each part matched
+// one way only: a $$ never closed is not tried at each place in the text after it.)
 static const QRegularExpression& latexInText()
 {
-    static const QRegularExpression re(R"re(\$\$([^$]*\S[^$]*)\$\$|(?<![\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?!\d))re");
+    static const QRegularExpression re(
+        R"re(\$\$(\s*[^\s$][^$]*)\$\$|(?<![A-Za-z0-9_\\$])\$([^\s$](?:[^$]*[^\s$\\])?)\$(?=$|[^A-Za-z0-9_{]|(?:st|nd|rd|th|s)(?![A-Za-z0-9_])))re");
     return re;
 }
 
@@ -292,14 +297,24 @@ static QTextImageFormat mathFormat(const QString& latex, bool display, const QTe
 }
 
 // LaTeX written in pasted rich text becomes formulas, in the colour of its text; one alone
-// on its line, $$…$$, is centred.
+// on its line, $$…$$, is centred. Not in code (<pre>, <code>): its $ are its own.
 static void formulasFromText(QTextDocument* doc)
 {
+    auto inCode = [doc](int at) {  // (Qt gives code "monospace", as a web page's own fonts for it end)
+        QTextCursor c(doc);
+        c.setPosition(at + 1);  // (the format of what is before)
+        auto f = c.charFormat();
+        return f.fontFixedPitch() || f.fontFamilies().toStringList().contains("monospace", Qt::CaseInsensitive);
+    };
     for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        if (block.blockFormat().nonBreakableLines())
+            continue;
         QString text = block.text();
         std::vector<QRegularExpressionMatch> found;
         for (auto it = latexInText().globalMatch(text); it.hasNext();)
-            found.push_back(it.next());
+            if (auto m = it.next(); !inCode(block.position() + int(m.capturedStart())) &&
+                                    !inCode(block.position() + int(m.capturedEnd()) - 1))
+                found.push_back(m);
         for (auto m = found.rbegin(); m != found.rend(); ++m) {
             bool display = m->capturedLength(1) > 0;
             QTextCursor c(doc);
@@ -1354,14 +1369,62 @@ void NoteTextEdit::finishHeading()
     committing_ = false;
 }
 
+void NoteTextEdit::insertTextWithFormulas(const QString& text)
+{
+    auto cursor = textCursor();
+    auto format = textFormatOf(cursor.charFormat());
+    cursor.beginEditBlock();
+    cursor.removeSelectedText();
+    int at = cursor.position();
+    std::vector<int> display;  // where display formulas went: centred when alone on their lines
+    qsizetype last = 0;
+    for (auto it = latexInText().globalMatch(text); it.hasNext();) {
+        auto m = it.next();
+        bool isDisplay = m.capturedLength(1) > 0;
+        cursor.insertText(text.mid(last, m.capturedStart() - last), format);
+        if (isDisplay)
+            display.push_back(cursor.position());
+        cursor.insertImage(mathFormat((isDisplay ? m.captured(1) : m.captured(2)).trimmed(), isDisplay, format));
+        last = m.capturedEnd();
+    }
+    cursor.insertText(text.mid(last), format);
+    for (int p : display)
+        if (auto block = document()->findBlock(p); !block.blockFormat().hasProperty(kCaptionProperty) &&
+                                                   block.text().trimmed() == QString(QChar::ObjectReplacementCharacter)) {
+            auto bf = block.blockFormat();
+            bf.setAlignment(Qt::AlignHCenter);
+            QTextCursor(block).setBlockFormat(bf);
+        }
+    // a caption it went into stays one, what went into it a caption's text
+    if (auto block = document()->findBlock(at); block.blockFormat().hasProperty(kCaptionProperty))
+        setCaption(block, true);
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+}
+
 void NoteTextEdit::textDocument(const QString& source, bool markdown, QTextDocument* out) const
 {
+    // Markdown's code, whose $ are its own: `…` and ``` blocks
+    std::vector<std::pair<qsizetype, qsizetype>> code;
+    if (markdown) {
+        static const QRegularExpression codeRe(R"re(^ {0,3}```[\s\S]*?(?:^ {0,3}```|\z)|`[^`\n]+`)re",
+                                               QRegularExpression::MultilineOption);
+        for (auto it = codeRe.globalMatch(source); it.hasNext();) {
+            auto m = it.next();
+            code.push_back({m.capturedStart(), m.capturedEnd()});
+        }
+    }
+    auto inCode = [&](qsizetype at) {
+        return std::any_of(code.begin(), code.end(), [at](auto& span) { return at >= span.first && at < span.second; });
+    };
     // set aside first: Markdown would read the _ and * in them as emphasis
     std::vector<std::pair<QString, bool>> formulas;
     QString text;
     qsizetype last = 0;
     for (auto it = latexInText().globalMatch(source); it.hasNext();) {
         auto m = it.next();
+        if (inCode(m.capturedStart()))
+            continue;
         bool display = m.capturedLength(1) > 0;
         text += source.mid(last, m.capturedStart() - last);
         text += QChar(0xE000) + QString::number(formulas.size()) + QChar(0xE001);
@@ -1932,7 +1995,12 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
     }
     // Markdown, or text with LaTeX in it: formulas, formatting and lines as such
     bool markdown = markdown_ && markdownRe.match(source->text()).hasMatch();
-    if (!fromNote && !source->hasHtml() && source->hasText() && (markdown || latexInText().match(source->text()).hasMatch())) {
+    if (!fromNote && !source->hasHtml() && source->hasText() && !markdown &&
+        latexInText().match(source->text()).hasMatch()) {
+        insertTextWithFormulas(source->text());
+        return;
+    }
+    if (!fromNote && !source->hasHtml() && source->hasText() && markdown) {
         QTextDocument pasted;
         textDocument(source->text(), markdown, &pasted);
         noParagraphSpacing(&pasted);
