@@ -160,7 +160,7 @@ void SyncHistoryWindow::reload(const sync::SyncHistory& history)
             auto title = jqs(c, "title");
             QString arrow = c.value("incoming", false) ? "↓ " : "↑ ";
             row->setText(0, arrow + kindText(kind) + (title.isEmpty() ? QString() : "  “" + title + "”"));
-            row->setToolTip(0, title);
+            row->setToolTip(0, plainTip(title));
             row->setIcon(0, kindIcon(kind));
             row->setText(1, actionText(jstr(c, "action")));
             row->setText(2, jqs(c, "by"));

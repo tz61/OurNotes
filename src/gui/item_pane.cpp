@@ -283,7 +283,9 @@ void InfoEditor::rebuild()
 
     auto addInfo = [&](const QString& label, const QString& value) {
         grid_->addWidget(fieldLabel(label, this), row, 0);
-        auto* l = new QLabel(value, this);
+        auto* l = new QLabel(this);
+        l->setTextFormat(Qt::PlainText);  // (a synced date that is not one is shown as it is)
+        l->setText(value);
         l->setTextInteractionFlags(Qt::TextSelectableByMouse);
         l->setContentsMargins(2, 4, 0, 0);
         grid_->addWidget(l, row++, 1);

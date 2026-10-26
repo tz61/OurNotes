@@ -118,6 +118,7 @@ MainWindow::MainWindow()
     layout()->setSizeConstraint(QLayout::SetNoConstraint);  // see followMinimumSize()
     connect(&titleBarTimer_, &QTimer::timeout, this, &MainWindow::followTitleBar);
     status_ = new QLabel(this);
+    status_->setTextFormat(Qt::PlainText);  // titles and library names, never rich text (see plainTip)
     statusBar()->addWidget(status_, 1);
 
     sync_ = new SyncController(this);
@@ -177,7 +178,7 @@ MainWindow::MainWindow()
     connect(sync_, &SyncController::finished, this, [this](bool ok, const QString& summary) {
         syncButton_->setEnabled(true);
         syncButton_->setIcon(icon(ok ? "sync" : "sync-error"));
-        syncButton_->setToolTip(ok ? tr("Sync (last: %1)").arg(QTime::currentTime().toString("HH:mm")) : summary);
+        syncButton_->setToolTip(ok ? tr("Sync (last: %1)").arg(QTime::currentTime().toString("HH:mm")) : plainTip(summary));
         setStatus(ok ? tr("Sync finished: %1").arg(summary) : tr("Sync failed: %1").arg(summary.section('\n', 0, 0)),
                   ok ? 8000 : 0);
     });

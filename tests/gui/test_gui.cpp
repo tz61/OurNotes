@@ -1649,6 +1649,32 @@ TEST_CASE("formulas: what was fixed in MicroTeX still draws as before, or better
     }
 }
 
+TEST_CASE("notes: a synced note's <img> naming a file is not read; titles in tooltips stay text")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "secret.png";
+    QImage red(4, 4, QImage::Format_RGB32);
+    red.fill(Qt::red);
+    REQUIRE(red.save(qpath(file)));
+    NoteTextEdit edit;
+    for (auto url : {QUrl::fromLocalFile(qpath(file)), QUrl(qpath(file))}) {
+        INFO(url.toString().toStdString());
+        auto v = edit.document()->resource(QTextDocument::ImageResource, url);
+        CHECK(v.value<QImage>().isNull());
+        CHECK(v.toByteArray().isEmpty());
+    }
+    edit.setHtml("<p>x <img src=\"" + qpath(file).toHtmlEscaped() + "\"> y</p>");
+    CHECK(edit.toPlainText().startsWith("x "));
+    // a web address is not read either way, and is still not the note's own (pasted: adopted)
+    CHECK(!edit.document()->resource(QTextDocument::ImageResource, QUrl("https://example.org/a.png")).isValid());
+
+    CHECK(plainTip("A title") == "A title");
+    auto tip = plainTip("<img src=\"/dev/zero\"> & co");
+    CHECK(!tip.contains("<img"));
+    CHECK(tip.contains("&lt;img src=&quot;/dev/zero&quot;&gt; &amp; co"));
+}
+
 TEST_CASE("notes: typing $...$ makes a formula, prices stay text")
 {
     app();

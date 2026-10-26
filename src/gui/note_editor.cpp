@@ -1673,6 +1673,16 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
     menu->exec(e->globalPos());
 }
 
+// A picture the note has not got (its own are added as resources) is not read from a file:
+// QTextDocument reads any local path an <img> names, and notes come from others in a group
+// (one naming /dev/zero took the app down). Other names, web addresses, it does not read.
+QVariant NoteTextEdit::loadResource(int type, const QUrl& name)
+{
+    if (name.isLocalFile() || name.isRelative())
+        return QByteArray();  // (not nothing: given nothing, QTextDocument reads the file)
+    return QTextEdit::loadResource(type, name);
+}
+
 // Copied or dragged out of a note. Another note gets the selection as it was; other
 // programs get formulas as their LaTeX ($…$, $$…$$ on a line of its own) and pictures as
 // "[image]", in text and in Zotero's HTML; a picture selected alone is copied as a picture.
@@ -2078,7 +2088,7 @@ void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
         viewport()->setToolTip(tr("Click to edit the formula"));
     } else if (reference) {
         auto opens = describeLink ? describeLink(href).second : QString();
-        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : tr("Click to open %1").arg(opens));
+        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : plainTip(tr("Click to open %1").arg(opens)));
     } else {
         viewport()->setToolTip({});
     }

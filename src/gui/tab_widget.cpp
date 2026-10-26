@@ -12,6 +12,7 @@
 
 #include <cmath>
 
+#include "gui/common.h"
 #include "gui/flow_layout.h"
 
 namespace on::gui {
@@ -39,7 +40,7 @@ public:
 
     void sync()
     {
-        setToolTip(tabs_->tabToolTip(index()));
+        setToolTip(plainTip(tabs_->tabToolTip(index())));  // (titles)
         updateGeometry();
         update();
     }

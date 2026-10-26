@@ -437,7 +437,7 @@ QVariant ItemsModel::data(const QModelIndex& index, int role) const
         return {};
     case Qt::ToolTipRole:
         if (col == Title)
-            return qs(r.title);
+            return plainTip(qs(r.title));
         if (col == Attachments && n->fileMissing)
             return tr("The attached file could not be found");
         return {};

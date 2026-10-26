@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QTextDocument>
 
 #include <string>
 #include <vector>
@@ -31,6 +32,14 @@ inline std::vector<std::string> toStdVector(const QStringList& v)
     for (auto& s : v)
         out.push_back(ss(s));
     return out;
+}
+
+// A tooltip of text from a library (a title, a name), shown as it is: a tooltip that looks
+// like HTML is rich text, and rich text reads the files its <img> tags name (one naming
+// /dev/zero, synced from a group, took the app down).
+inline QString plainTip(const QString& s)
+{
+    return Qt::mightBeRichText(s) ? "<p style=\"white-space:pre\">" + s.toHtmlEscaped() + "</p>" : s;
 }
 
 // MIME type used when dragging items between views (JSON: {"library": id, "keys": [...]}).

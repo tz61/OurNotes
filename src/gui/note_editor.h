@@ -91,6 +91,7 @@ public:
     void insertPictures(const QList<QImage>& images);
 
 protected:
+    QVariant loadResource(int type, const QUrl& name) override;
     QMimeData* createMimeDataFromSelection() const override;
     bool canInsertFromMimeData(const QMimeData* source) const override;
     void insertFromMimeData(const QMimeData* source) override;
