@@ -3118,6 +3118,49 @@ TEST_CASE("notes: tables keep what is in them and around them, edited, deleted, 
         CHECK(html.find("href=\"https://arxiv.org/abs/1\"") != npos);
     }
 
+    SUBCASE("a table in a header cell: the note's rest once, the header rows of both kept")
+    {
+        auto count = [](const std::string& html, const std::string& what) {
+            size_t n = 0;
+            for (auto at = html.find(what); at != npos; at = html.find(what, at + 1))
+                ++n;
+            return n;
+        };
+        // its first row a header too, or not
+        for (auto [html, innerHeader] : std::vector<std::pair<const char*, int>>{
+                 {"<table><tr><th>Head<table><tr><th>B</th></tr><tr><td>c</td></tr></table></th></tr>"
+                  "<tr><td>body1</td></tr></table><p>after</p>",
+                  1},
+                 {"<table><tr><th>Head<table><tr><td>x</td></tr></table></th></tr>"
+                  "<tr><td>body1</td></tr></table><p>after</p>",
+                  0}}) {
+            auto key = noteKey(html);
+            for (auto* letter : {"x", "y"}) {  // opened, edited and saved twice
+                auto saved = typeAndSave(key, letter);
+                INFO(saved);
+                CHECK(count(saved, "body1") == 1);
+                CHECK(count(saved, "after") == 1);
+                CHECK(count(saved, "<table>") == 2);
+                CHECK(saved.find("<th align=\"center\">Head") != npos);
+            }
+            auto o = open(key);
+            auto* outer = firstTable(o->doc);
+            REQUIRE(outer);
+            CHECK(outer->format().headerRowCount() == 1);
+            QTextTable* inner = nullptr;
+            auto cell = outer->cellAt(0, 0);
+            for (auto it = cell.begin(); !it.atEnd(); ++it)
+                inner = inner ? inner : qobject_cast<QTextTable*>(it.currentFrame());
+            REQUIRE(inner);
+            CHECK(inner->format().headerRowCount() == innerHeader);
+        }
+        // as it reaches the editor
+        CHECK(tableHeadersForEditor("<table><tr><th>A<table><tr><th>B</th></tr><tr><td>c</td></tr></table></th></tr>"
+                                    "<tr><td>d</td></tr></table>") ==
+              "<table><thead><tr><th>A<table><thead><tr><th>B</th></tr></thead><tr><td>c</td></tr></table></th></tr>"
+              "</thead><tr><td>d</td></tr></table>");
+    }
+
     SUBCASE("Delete Table leaves the lines around it as they were")
     {
         for (auto [html, gone, kept] : std::vector<std::tuple<const char*, const char*, const char*>>{

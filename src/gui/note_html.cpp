@@ -9,6 +9,7 @@
 #include <QTextTable>
 #include <QUrl>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -67,6 +68,52 @@ QString mathMarkupToImages(const QString& html)
     return final;
 }
 
+namespace {
+
+struct Row {
+    qsizetype end = 0;  // after its </tr> and the room after it
+    QString cells;  // its own cells, the tables in them left out
+};
+
+// The row that starts at `at`, the tables in its cells passed over (a row's end is not the
+// first </tr>: a table in a cell has its own); nothing when none starts there, or it is not
+// closed before its table is.
+std::optional<Row> rowAt(const QString& html, qsizetype at)
+{
+    constexpr auto ci = QRegularExpression::CaseInsensitiveOption;
+    static const QRegularExpression start(R"re(<tr\b[^>]*>)re", ci);
+    static const QRegularExpression tag(R"re(<(/?)(table|tr)\b[^>]*>)re", ci);
+    auto s = start.match(html, at, QRegularExpression::NormalMatch, QRegularExpression::AnchorAtOffsetMatchOption);
+    if (!s.hasMatch())
+        return std::nullopt;
+    Row row;
+    qsizetype from = s.capturedEnd();  // its own since here
+    int depth = 0;  // in tables in its cells
+    for (auto it = tag.globalMatch(html, s.capturedEnd()); it.hasNext();) {
+        auto t = it.next();
+        bool closing = !t.capturedView(1).isEmpty();
+        bool table = t.capturedView(2).compare(u"table", Qt::CaseInsensitive) == 0;
+        if (table && !closing) {
+            if (depth++ == 0)
+                row.cells += html.mid(from, t.capturedStart() - from);
+        } else if (depth > 0) {
+            if (table && --depth == 0)
+                from = t.capturedEnd();
+        } else if (table || !closing) {
+            return std::nullopt;  // its table's end, or the next row: not closed
+        } else {
+            row.cells += html.mid(from, t.capturedStart() - from);
+            row.end = t.capturedEnd();
+            while (row.end < html.size() && html[row.end].isSpace())
+                ++row.end;
+            return row;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
 QString tableHeadersForEditor(const QString& html)
 {
     constexpr auto ci = QRegularExpression::CaseInsensitiveOption;
@@ -75,10 +122,13 @@ QString tableHeadersForEditor(const QString& html)
     // what may come before the rows: room, a caption, column groups
     static const QRegularExpression before(R"re((?:\s+|<caption\b[\s\S]*?</caption\s*>|<colgroup\b[\s\S]*?</colgroup\s*>|<col\b[^>]*>)+)re", ci);
     static const QRegularExpression body(R"re(<tbody\b[^>]*>\s*)re", ci);
-    static const QRegularExpression row(R"re(<tr\b[^>]*>((?:(?!</tr\s*>)[\s\S])*)</tr\s*>\s*)re", ci);
     static const QRegularExpression th(R"re(<th\b)re", ci), td(R"re(<td\b)re", ci);
-    QString out;
-    qsizetype last = 0;
+    // each table's, in a table's cells too: what is taken out at a place, and put in
+    struct Edit {
+        qsizetype at, taken;
+        QString put;
+    };
+    std::vector<Edit> edits;
     for (auto it = table.globalMatch(html); it.hasNext();) {
         auto m = it.next();
         qsizetype at = m.capturedEnd();
@@ -90,18 +140,24 @@ QString tableHeadersForEditor(const QString& html)
             tbody = b.captured(0);
             at = b.capturedEnd();
         }
-        QString rows;  // its first rows of header cells only
-        for (;;) {
-            auto r = row.match(html, at, QRegularExpression::NormalMatch, here);
-            if (!r.hasMatch() || !r.captured(1).contains(th) || r.captured(1).contains(td))
+        qsizetype rows = at;  // its first rows of header cells only
+        while (auto r = rowAt(html, at)) {
+            if (!r->cells.contains(th) || r->cells.contains(td))
                 break;
-            rows += r.captured(0);
-            at = r.capturedEnd();
+            at = r->end;
         }
-        if (rows.isEmpty())
+        if (at == rows)
             continue;
-        out += html.mid(last, head - last) + "<thead>" + rows + "</thead>" + tbody;
-        last = at;
+        edits.push_back({head, rows - head, "<thead>"});
+        edits.push_back({at, 0, "</thead>" + tbody});
+    }
+    // in the order of their places (a table in a header cell: within its table's)
+    std::stable_sort(edits.begin(), edits.end(), [](const Edit& a, const Edit& b) { return a.at < b.at; });
+    QString out;
+    qsizetype last = 0;
+    for (auto& e : edits) {
+        out += html.mid(last, e.at - last) + e.put;
+        last = e.at + e.taken;
     }
     return out + html.mid(last);
 }
