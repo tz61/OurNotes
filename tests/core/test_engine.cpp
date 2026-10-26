@@ -521,6 +521,48 @@ TEST_CASE("attachment files are uploaded and downloaded")
     CHECK(jstr(*a.item(la, key), "md5") == md5Hex("%PDF-1.5 hello v2"));
 }
 
+TEST_CASE("a file changed on two computers, files on demand: this one's kept as a copy, the other's fetched when opened")
+{
+    TempDir tmp;
+    FakeTransport server;
+    Library a(tmp.path / "a");
+    Library b(tmp.path / "b");
+    auto la = a.defaultLibrary();
+    auto src = tmp.path / "doc.pdf";
+    std::ofstream(src, std::ios::binary) << "%PDF-1.5 hello";
+    auto key = jstr(a.importAttachment(la, src), "key");
+    syncWith(a, server);
+    syncWith(b, server);
+    auto lb = b.libraries()[0].id;
+    auto here = a.attachmentFile(la, *a.item(la, key));
+    std::ofstream(b.attachmentFile(lb, *b.item(lb, key)), std::ios::binary | std::ios::app) << " from b";
+    syncWith(b, server);
+    std::ofstream(here, std::ios::binary | std::ios::app) << " from a";
+    SyncOptions onDemand;
+    onDemand.downloadFiles = false;
+    auto copies = [&] {
+        std::vector<Json> out;
+        for (auto& d : a.allItems(la))
+            if (jstr(d, "title").find("conflicted copy") != std::string::npos)
+                out.push_back(d);
+        return out;
+    };
+    auto r = SyncEngine(a, server, "fake", onDemand).syncAll();
+    CHECK(r.conflicts == 1);
+    REQUIRE(copies().size() == 1);
+    CHECK(readFile(a.attachmentFile(la, copies()[0])) == "%PDF-1.5 hello from a");
+    // the attachment itself: the other's, not here until opened
+    CHECK(!fs::exists(here));
+    CHECK(SyncEngine(a, server, "fake", onDemand).downloadAttachment(la, key));
+    CHECK(readFile(here) == "%PDF-1.5 hello from b");
+    // changed here after: sent, no conflict, no copy again
+    std::ofstream(here, std::ios::binary | std::ios::app) << " and a";
+    r = SyncEngine(a, server, "fake", onDemand).syncAll();
+    CHECK(r.conflicts == 0);
+    CHECK(r.uploaded >= 1);
+    CHECK(copies().size() == 1);
+}
+
 TEST_CASE("pagination and large pushes")
 {
     TempDir tmp;
