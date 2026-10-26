@@ -542,26 +542,30 @@ struct ScratchFolder {
 };
 
 // A picture a note's HTML shows by its file (<img src>, as Markdown's ![what](file) makes):
-// a file here, a data: URI, or a picture on the web (fetched into `scratch`).
+// a file here, a data: URI, or a picture on the web (fetched into `scratch`); or one stored
+// for another note (<img data-attachment-key>, as a note's HTML has it), its file copied as
+// the app copies one pasted: a note shows only its own, which go with it (deleted, copied).
 struct NotePicture {
     size_t at = 0, length = 0;  // its <img> in the HTML
     fs::path file;
     std::string attrs;  // its width, height and alt, kept
 };
 
-std::vector<NotePicture> notePictures(const std::string& html, const fs::path& scratch)
+std::vector<NotePicture> notePictures(Library& lib, const std::string& html, const fs::path& scratch,
+                                      const std::set<std::string>& own)
 {
     std::vector<NotePicture> out;
     int n = 0;
     for (auto [at, length] : imgTags(html, true)) {
         auto t = html.substr(at, length);
-        std::optional<std::string> source;
+        std::optional<std::string> source, stored;
         size_t end = 0;
         for (size_t i = 0; i < t.size() && !source; ++i)
             source = attributeAt(t, i, "src", end);
-        if (t.find("data-attachment-key") != std::string::npos || !source)
-            continue;  // stored already, or showing nothing
-        auto src = htmlUnescape(*source);
+        for (size_t i = 0; i < t.size() && !stored; ++i)
+            stored = attributeAt(t, i, "data-attachment-key", end);
+        if (stored ? own.count(htmlUnescape(*stored)) > 0 : !source)
+            continue;  // the note's own already, or showing nothing
         NotePicture p{at, length, {}, {}};
         for (size_t i = 0; i < t.size(); ++i)
             for (auto attr : {"width", "height", "alt"})
@@ -570,6 +574,22 @@ std::vector<NotePicture> notePictures(const std::string& html, const fs::path& s
                     i = end - 1;
                     break;
                 }
+        if (stored) {  // another note's
+            auto key = htmlUnescape(*stored);
+            fs::path file;
+            try {
+                auto [where, d] = findItem(lib, key, std::nullopt);
+                file = lib.attachmentFile(where, d);
+            } catch (const Error&) {
+            }
+            std::error_code ec;
+            if (file.empty() || !fs::is_regular_file(file, ec))
+                throw Error("the picture " + key + " is not on this computer: a note's pictures are its own, copied from here");
+            p.file = file;
+            out.push_back(p);
+            continue;
+        }
+        auto src = htmlUnescape(*source);
         auto name = scratch / ("picture-" + std::to_string(++n));
         if (startsWith(src, "data:")) {
             auto comma = src.find(',');
@@ -600,6 +620,16 @@ std::vector<NotePicture> notePictures(const std::string& html, const fs::path& s
         }
         out.push_back(p);
     }
+    return out;
+}
+
+// The keys of a note's own pictures.
+std::set<std::string> ownPictures(Library& lib, int64_t id, const std::string& noteKey)
+{
+    std::set<std::string> out;
+    for (auto& d : lib.children(id, noteKey, "attachment"))
+        if (jstr(d, "linkMode") == "embedded_image")
+            out.insert(jstr(d, "key"));
     return out;
 }
 
@@ -655,7 +685,7 @@ int cmdAddNote(Library& lib, Args& args)
     requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, contentAt));
     ScratchFolder scratch;
-    auto pictures = notePictures(html, scratch.path);  // all there before the note is made
+    auto pictures = notePictures(lib, html, scratch.path, {});  // all there before the note is made
     if (trim(htmlToText(html)).empty() && html.find("<img") == std::string::npos)
         throw Error("the note is empty");
     Json data{{"itemType", "note"}, {"note", html}};
@@ -683,7 +713,7 @@ int cmdEditNote(Library& lib, Args& args)
         throw Error("the text is empty: the note is left as it was (to delete it: delete " + jstr(note, "key") +
                     " --yes)");
     ScratchFolder scratch;
-    auto pictures = notePictures(html, scratch.path);
+    auto pictures = notePictures(lib, html, scratch.path, ownPictures(lib, id, jstr(note, "key")));
     html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);
     if (args.flag("--append"))
         html = "<div data-schema-version=\"9\">" + noteBody(jstr(note, "note")) + noteBody(html) + "</div>";
@@ -715,7 +745,7 @@ int cmdAddImage(Library& lib, Args& args)
     if (auto caption = trim(args.option("--caption")); !caption.empty())  // under them
         html += "<p class=\"caption\">" + htmlEscape(caption) + "</p>";
     ScratchFolder scratch;
-    auto pictures = notePictures(html, scratch.path);
+    auto pictures = notePictures(lib, html, scratch.path, ownPictures(lib, id, jstr(note, "key")));
     html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);
     lib.updateItem(id, jstr(note, "key"), [&](Json& d) {
         d["note"] = "<div data-schema-version=\"9\">" + noteBody(jstr(d, "note")) + html + "</div>";

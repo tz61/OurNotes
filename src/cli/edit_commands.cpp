@@ -429,9 +429,12 @@ int cmdMove(Library& lib, Args& args)
         throw Error("say where: --to ITEM (under that item), or --standalone [--collection C]");
     std::vector<Json> items;
     auto id = sameLibrary(lib, args, keys, &items);
-    for (auto& d : items)
+    for (auto& d : items) {
         if (jstr(d, "itemType") != "note" && jstr(d, "itemType") != "attachment")
             throw Error(jstr(d, "key") + " is a " + jstr(d, "itemType") + ": only notes and attachments move");
+        if (jstr(d, "linkMode") == "embedded_image")
+            throw Error(jstr(d, "key") + " is a picture in a note: it goes where its note goes");
+    }
     std::string parent, collection;
     if (!to.empty()) {
         auto [pid, p] = findItem(lib, to, id);

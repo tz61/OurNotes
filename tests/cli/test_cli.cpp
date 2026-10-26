@@ -1072,4 +1072,47 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
     REQUIRE(largeData.size() > 30000);
     CHECK(cli.run({"add-image", note, largeData}).first == 0);
     CHECK(cli.run({"add-note", paper, "![large](" + largeData + ")"}).first == 0);
+
+    // a note's HTML with another note's pictures (`show --json`, a note merged into another):
+    // copied, as the app copies one pasted, so they go with this note (deleted, copied)
+    auto group = lib.createLibrary("Group");
+    auto other = jstr(lib.createItem(group, Json{{"itemType", "book"}, {"title", "Other"}}), "key");
+    auto source = jstr(*lib.item(mine, note), "note");
+    auto ownKeys = [&](int64_t id, const std::string& key) {
+        std::set<std::string> out;
+        for (auto& d : lib.children(id, key, "attachment"))
+            out.insert(jstr(d, "key"));
+        return out;
+    };
+    auto [copyCode, copyOut] = cli.run({"add-note", other, "--html", source});
+    INFO(copyOut);
+    REQUIRE(copyCode == 0);
+    auto copy = trim(copyOut);
+    auto copied = ownKeys(group, copy);
+    CHECK(copied.size() == ownKeys(mine, note).size());
+    for (auto& key : copied) {
+        CHECK(ownKeys(mine, note).count(key) == 0);
+        CHECK(jstr(*lib.item(group, copy), "note").find(key) != npos);
+    }
+    for (auto& key : ownKeys(mine, note))
+        CHECK(jstr(*lib.item(group, copy), "note").find(key) == npos);
+    // its own kept as they are when the note is given again
+    CHECK(cli.run({"edit-note", copy, "--html", jstr(*lib.item(group, copy), "note")}).first == 0);
+    CHECK(ownKeys(group, copy) == copied);
+    // the first note gone for good: the copy's pictures still there
+    CHECK(cli.run({"delete", note, "--yes"}).first == 0);
+    for (auto& d : lib.children(group, copy, "attachment"))
+        CHECK(lib.attachmentFileExists(group, d));
+    // one whose file is not here: refused, nothing made
+    auto notes = lib.children(group, other, "note").size();
+    auto [goneCode, goneOut] = cli.run({"add-note", other, "--html", "<p>x</p><img data-attachment-key=\"ZZZZ9999\">"});
+    CHECK(goneCode == 1);
+    CHECK(goneOut.find("not on this computer") != npos);
+    CHECK(lib.children(group, other, "note").size() == notes);
+    // and a note's picture moves with its note only
+    auto picture2 = *lib.children(group, copy, "attachment").begin();
+    auto [moveCode, moveOut] = cli.run({"move", jstr(picture2, "key"), "--standalone"});
+    CHECK(moveCode == 1);
+    CHECK(moveOut.find("a picture in a note") != npos);
+    CHECK(jstr(*lib.item(group, jstr(picture2, "key")), "parentItem") == copy);
 }
