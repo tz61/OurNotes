@@ -53,7 +53,9 @@ TEST_CASE("string helpers")
     // JSON from elsewhere nested deeper than OurNotes writes is not taken
     CHECK(parseExternalJson(R"({"a": [1, {"b": "]]]"}]})").is_object());
     CHECK(parseExternalJson(std::string(100000, '[') + std::string(100000, ']')).is_discarded());
-    CHECK(parseExternalJson(R"(["\"[[[[", "{{{"])", 2).is_array());
+    // (out of CHECK: MSVC's preprocessor quotes a raw string's \" wrongly)
+    const std::string brackets = R"(["\"[[[[", "{{{"])";
+    CHECK(parseExternalJson(brackets, 2).is_array());
     // a response has room for an object a request brought, a few levels further in
     auto nested = [](size_t depth) { return std::string(depth, '[') + std::string(depth, ']'); };
     CHECK(parseExternalJson(nested(kMaxRequestDepth)).is_array());
