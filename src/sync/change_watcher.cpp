@@ -40,15 +40,21 @@ void ChangeWatcher::run()
     while (!stopping_) {
         std::unique_ptr<Transport> transport;
         bool failed = false;
+        auto started = steady_clock::now();
         try {
             transport = hooks_.connect();
-            watch(*transport, asked, retry);
+            watch(*transport, asked);
         } catch (const std::exception&) {
             failed = true;
         }
         end();  // before the transport goes
         transport.reset();
         if (failed) {
+            // after watching a while (a laptop waking, a proxy dropping a held request): as long
+            // as the first time, not as the last; a target failing at once (even one that answers,
+            // then fails each held request), longer and longer
+            if (steady_clock::now() - started >= seconds(timing_.waitSeconds) / 2)
+                retry = 0;
             retry = retry ? std::min(retry * 2, timing_.maxRetrySeconds) : timing_.retrySeconds;
             pause(retry);
         }
@@ -56,7 +62,7 @@ void ChangeWatcher::run()
 }
 
 // Until an error (or the end): as long as the target is reachable, with one transport.
-void ChangeWatcher::watch(Transport& transport, std::string& asked, int& retry)
+void ChangeWatcher::watch(Transport& transport, std::string& asked)
 {
     while (!stopping_) {
         uint64_t synced = idle();
@@ -64,7 +70,6 @@ void ChangeWatcher::watch(Transport& transport, std::string& asked, int& retry)
             return;
         auto now = transport.awaitLibraries({}, 0);
         end();
-        retry = 0;  // reached: the next error waits as the first did, not as long as the last
         if (!now) {
             unsupported_ = true;
             pause(timing_.unsupportedSeconds);

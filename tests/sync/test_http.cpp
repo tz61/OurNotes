@@ -517,6 +517,72 @@ TEST_CASE("change watcher: another client's push is told at once, this one's own
     CHECK(waitUntil([&] { return changed == 3; }));
 }
 
+TEST_CASE("change watcher: a target failing at once is asked later and later, one that held the request a while soon again")
+{
+    using namespace std::chrono;
+    // Each tells its libraries' state at once, and fails a request held for a change: one at
+    // once (as a broken proxy might), one after holding it (a proxy's timeout, a laptop asleep).
+    struct Target {
+        httplib::Server http;
+        std::thread thread;
+        std::string url;
+        std::mutex mutex;
+        std::vector<steady_clock::time_point> tries;  // when each try's first request came
+        explicit Target(milliseconds held)
+        {
+            http.Get("/api/v1/libraries", [this, held](const httplib::Request& req, httplib::Response& res) {
+                if (!req.has_param("state")) {
+                    std::lock_guard lock(mutex);
+                    tries.push_back(steady_clock::now());
+                    res.set_content(R"({"libraries": [], "state": "s1"})", "application/json");
+                    return;
+                }
+                std::this_thread::sleep_for(held);
+                res.status = 502;
+            });
+            int port = http.bind_to_any_port("127.0.0.1");
+            thread = std::thread([this] { http.listen_after_bind(); });
+            http.wait_until_ready();
+            url = "http://127.0.0.1:" + std::to_string(port);
+        }
+        ~Target()
+        {
+            http.stop();
+            thread.join();
+        }
+        size_t count()
+        {
+            std::lock_guard lock(mutex);
+            return tries.size();
+        }
+        double secondsBefore(size_t n)  // between try n - 1 and try n
+        {
+            std::lock_guard lock(mutex);
+            return duration<double>(tries[n] - tries[n - 1]).count();
+        }
+    };
+    Target atOnce(milliseconds(0)), held(milliseconds(1200));
+    ChangeWatcher::Timing timing;
+    timing.waitSeconds = 2;  // so a request held over a second was held a while
+    timing.retrySeconds = 1;
+    timing.maxRetrySeconds = 4;
+    auto hooks = [](Target& target) {
+        return ChangeWatcher::Hooks{[&target] { return std::make_unique<HttpTransport>(target.url, "token"); },
+                                    [] { return std::map<std::string, int64_t>(); }, [] { return uint64_t(0); },
+                                    [] {}};
+    };
+    ChangeWatcher watchingAtOnce(hooks(atOnce), timing), watchingHeld(hooks(held), timing);
+    for (int i = 0; i < 200 && (atOnce.count() < 3 || held.count() < 3); ++i)
+        std::this_thread::sleep_for(milliseconds(50));
+    REQUIRE(atOnce.count() >= 3);
+    REQUIRE(held.count() >= 3);
+    // a second, then two
+    CHECK(atOnce.secondsBefore(1) < 1.9);
+    CHECK(atOnce.secondsBefore(2) >= 1.9);
+    // held 1.2 s, then a second again (not two)
+    CHECK(held.secondsBefore(2) < 2.9);
+}
+
 TEST_CASE("http: the server's status, for the user's libraries")
 {
     TestServer srv;
