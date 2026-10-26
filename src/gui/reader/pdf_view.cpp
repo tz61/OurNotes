@@ -182,17 +182,24 @@ protected:
     {
         QPainter p(this);
         p.fillRect(rect(), palette().color(QPalette::Dark));  // (between pages)
+        double dpr = devicePixelRatioF();
         double y = -at_.y() * scale_;  // the top of page_, here
-        for (int page = page_; page < pages && y < height(); ++page) {
+        int page = page_;
+        for (; page < pages && y < height(); ++page) {
             QSizeF size = pageSize(page);
             QRectF onWidget(-at_.x() * scale_, y, size.width() * scale_, size.height() * scale_);
             QRectF shown = onWidget & QRectF(rect());
             if (!shown.isEmpty()) {
                 auto& tile = tileFor(page, QRectF((shown.topLeft() - onWidget.topLeft()) / scale_, shown.size() / scale_));
-                p.drawImage(QRectF(onWidget.topLeft() + tile.area.topLeft() * scale_, tile.area.size() * scale_), tile.image);
+                // pixel for pixel from a device pixel (see PdfView::paintEvent; the tile is whole ones)
+                QPointF at = (onWidget.topLeft() + tile.area.topLeft() * scale_) * dpr;
+                p.drawImage(QRectF(QPointF(std::round(at.x()), std::round(at.y())) / dpr, tile.area.size() * scale_), tile.image);
             }
             y += size.height() * scale_ + kGap;
         }
+        // the tiles of the pages here kept, and one each side (wheeled on through many: not all)
+        tiles_.erase(tiles_.begin(), tiles_.lower_bound(page_ - 1));
+        tiles_.erase(tiles_.upper_bound(page), tiles_.end());
         p.setPen(palette().color(QPalette::Mid));
         p.drawRect(rect().adjusted(0, 0, -1, -1));
     }
@@ -232,6 +239,7 @@ protected:
         if (hovered)
             hovered(false);
     }
+    void hideEvent(QHideEvent*) override { tiles_.clear(); }  // (drawn again when next shown)
 
 private:
     static constexpr int kGap = 6;  // pixels between pages
@@ -249,7 +257,7 @@ private:
     }
     void zoom(double factor, QPointF pos)
     {
-        double scale = std::clamp(scale_ * factor, 0.4, 4.0);
+        double scale = std::clamp(scale_ * factor, std::min(0.4, scale_), std::max(4.0, scale_));  // (begun past these: no further)
         QPointF under = at_ + pos / scale_;  // (stays under the mouse)
         scale_ = scale;
         at_ = under - pos / scale_;
@@ -274,9 +282,13 @@ private:
     const Tile& tileFor(int page, const QRectF& needed)
     {
         auto it = tiles_.find(page);
-        if (it == tiles_.end() || !it->second.area.contains(needed)) {
+        // (where a page's edge shows, rounding can put needed a hair past area)
+        if (it == tiles_.end() || !it->second.area.adjusted(-1e-6, -1e-6, 1e-6, 1e-6).contains(needed)) {
             QRectF area = needed.adjusted(-needed.width() / 2, -needed.height(), needed.width() / 2, needed.height()) &
                           QRectF(QPointF(), pageSize(page));
+            double px = scale_ * devicePixelRatioF();  // (to whole device pixels, as it is drawn)
+            QRect pixels = QRectF(area.topLeft() * px, area.size() * px).toAlignedRect();
+            area = QRectF(QPointF(pixels.topLeft()) / px, QSizeF(pixels.size()) / px);
             it = tiles_.insert_or_assign(page, Tile{area, draw(page, area, scale_)}).first;
         }
         return it->second;
@@ -799,7 +811,7 @@ void PdfView::onRendered(int page, double scale, quint64 generation, bool thumbn
         return;  // keep the existing image until the right one arrives
     QImage img = image;
     img.setDevicePixelRatio(devicePixelRatioF());
-    cache_[page] = {img, scale};
+    cache_[page] = {img, scale, {}, false};
     auto [first, last] = visiblePages();
     if (page >= first && page <= last)
         viewport()->update(pageRects_[page].translated(-scrollOffset()).toAlignedRect());
@@ -876,11 +888,11 @@ void PdfView::paintEvent(QPaintEvent*)
             QPointF at(std::round(r.x() * dpr) / dpr, std::round(r.y() * dpr) / dpr);
             p.setRenderHint(QPainter::SmoothPixmapTransform, false);
             p.drawImage(at, it->second.image);
-            paintLinks(p, i, it->second.image, it->second.scale, QRectF(at, QSizeF(it->second.image.size()) / dpr));
+            paintLinks(p, i, it->second, QRectF(at, QSizeF(it->second.image.size()) / dpr));
             p.setRenderHint(QPainter::SmoothPixmapTransform);
         } else if (it != cache_.end()) {
             p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
-            paintLinks(p, i, it->second.image, it->second.scale, r);  // (its links as marked meanwhile)
+            paintLinks(p, i, it->second, r);  // (its links as marked meanwhile)
         }
         if (tone_ > 0) {  // the page colour: white (or black) paper towards gray, not the text on
             // it (no lighter, or darker, than the gray) nor the pictures
@@ -1053,39 +1065,48 @@ bool colouredInk(const QImage& part, bool darkPages)
 } // namespace
 
 // The text of the links on a page marked, and bold: a PDF does not always mark its links (a
-// reference's number, a figure's) apart from its text. Its part of the page (`image`, of
-// `imageScale` pixels a point, drawn over `onView`; another zoom's too, stretched, while the
-// zoom changes): black or gray ink turned blue (on dark pages: the light ink light blue), the
-// paper as it is; ink of a colour of its own kept. Drawn again a pixel to the right, the
-// darker (lighter) of the two kept: thicker strokes. Not over pictures.
-void PdfView::paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView)
+// reference's number, a figure's) apart from its text. Its part of the page (`cached`'s image,
+// drawn over `onView`; another zoom's too, stretched, while the zoom changes): black or gray
+// ink turned blue (on dark pages: the light ink light blue), the paper as it is; ink of a
+// colour of its own kept. Drawn again a pixel to the right, the darker (lighter) of the two
+// kept: thicker strokes. Not over pictures. The parts made once an image (each paint, at
+// every step of a scroll, was milliseconds a page).
+void PdfView::paintLinks(QPainter& p, int page, Cached& cached, const QRectF& onView)
 {
     if (!highlightPdfLinks())
         return;
-    if (!links_.count(page))
-        links_[page] = doc_->links(page);
-    if (links_[page].empty())
-        return;
+    const QImage& image = cached.image;
+    double imageScale = cached.scale;
     if (image.isNull() || imageScale <= 0)
         return;
-    double dpr = devicePixelRatioF(), across = onView.width() / image.width();  // (view units a pixel)
-    QColor ink = darkPages_ ? QColor(150, 190, 255) : QColor(20, 100, 235);
-    p.save();
-    for (auto& link : links_[page]) {
-        QRectF area = toQ(link.rect);
-        bool onPicture = false;
-        for (auto& picture : pictureRects(page))
-            if (auto common = picture & area; common.width() * common.height() > 0.3 * area.width() * area.height())
-                onPicture = true;
-        QRect pixels = QRectF(area.topLeft() * imageScale, area.size() * imageScale).toAlignedRect() & image.rect();
-        if (onPicture || pixels.isEmpty())
-            continue;
-        QImage part = image.copy(pixels).convertToFormat(QImage::Format_RGB32);
-        if (!colouredInk(part, darkPages_)) {  // (screened: black ink blue, white paper white)
-            QPainter q(&part);
-            q.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Multiply : QPainter::CompositionMode_Screen);
-            q.fillRect(part.rect(), ink);
+    if (!cached.linksMarked) {
+        if (!links_.count(page))
+            links_[page] = doc_->links(page);
+        QColor ink = darkPages_ ? QColor(150, 190, 255) : QColor(20, 100, 235);
+        for (auto& link : links_[page]) {
+            QRectF area = toQ(link.rect);
+            bool onPicture = false;
+            for (auto& picture : pictureRects(page))
+                if (auto common = picture & area; common.width() * common.height() > 0.3 * area.width() * area.height())
+                    onPicture = true;
+            QRect pixels = QRectF(area.topLeft() * imageScale, area.size() * imageScale).toAlignedRect() & image.rect();
+            if (onPicture || pixels.isEmpty())
+                continue;
+            QImage part = image.copy(pixels).convertToFormat(QImage::Format_RGB32);
+            if (!colouredInk(part, darkPages_)) {  // (screened: black ink blue, white paper white)
+                QPainter q(&part);
+                q.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Multiply : QPainter::CompositionMode_Screen);
+                q.fillRect(part.rect(), ink);
+            }
+            cached.links.push_back({pixels, std::move(part)});
         }
+        cached.linksMarked = true;
+    }
+    if (cached.links.empty())
+        return;
+    double dpr = devicePixelRatioF(), across = onView.width() / image.width();  // (view units a pixel)
+    p.save();
+    for (auto& [pixels, part] : cached.links) {
         QRectF to(onView.topLeft() + QPointF(pixels.topLeft()) * across, QSizeF(pixels.size()) * across);
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
         p.drawImage(to, part);

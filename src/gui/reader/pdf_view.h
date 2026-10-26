@@ -188,6 +188,9 @@ private:
     struct Cached {
         QImage image;
         double scale = 0;
+        // its links' text as marked (paintLinks): each part, and where on the image; made once
+        std::vector<std::pair<QRect, QImage>> links;
+        bool linksMarked = false;
     };
 
     // geometry
@@ -239,7 +242,7 @@ private:
     // painting
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
-    void paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView);
+    void paintLinks(QPainter& p, int page, Cached& cached, const QRectF& onView);
     void showPopup();
     void hidePopup();
     void updateCursor(QPointF viewPos);
