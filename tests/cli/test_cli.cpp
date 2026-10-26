@@ -221,6 +221,40 @@ TEST_CASE("cli: titles, tags, notes, collections and the trash, marked for the n
     CHECK(!jbool(*lib.item(course, keys[1]), "deleted"));
 }
 
+TEST_CASE("cli: a note's text that begins with '-' is its text; empty text leaves the note as it was")
+{
+    Cli cli;
+    auto id = cli.lib.defaultLibrary();
+    auto paper = jstr(cli.lib.createItem(id, Json{{"itemType", "book"}, {"title", "A Book"}}), "key");
+    auto [code, out] = cli.run({"add-note", paper, "Kept"});
+    REQUIRE(code == 0);
+    auto note = trim(out);
+    auto text = [&] { return jstr(*cli.lib.item(id, note), "note"); };
+
+    // a Markdown list, front matter's rule: text (an option has no spaces in it)
+    CHECK(cli.run({"edit-note", note, "- first point\n- second"}).first == 0);
+    CHECK(text() == "<div data-schema-version=\"9\"><ul><li>first point</li><li>second</li></ul></div>");
+    // after --, all is text
+    CHECK(cli.run({"edit-note", note, "--append", "--", "-v2"}).first == 0);
+    CHECK(text() == "<div data-schema-version=\"9\"><ul><li>first point</li><li>second</li></ul><p>-v2</p></div>");
+
+    // empty ("$TEXT" with TEXT unset), or nothing on standard input: refused, the note kept
+    auto before = text();
+    for (auto words : std::vector<std::vector<std::string>>{
+             {"edit-note", note, ""}, {"edit-note", note, "-"}, {"edit-note", note}, {"edit-note", note, " \n"},
+             {"edit-note", note, "--append", ""}, {"edit-note", note, "--html", "<p> </p>"}}) {
+        auto [emptyCode, emptyOut] = cli.run(words, " \n");
+        CAPTURE(emptyOut);
+        CHECK(emptyCode == 1);
+        CHECK(emptyOut.find("empty") != std::string::npos);
+    }
+    CHECK(text() == before);
+    // a note made: the same
+    CHECK(cli.run({"add-note", paper, "- a list"}).first == 0);
+    CHECK(cli.run({"add-note", paper, ""}).first == 1);
+    CHECK(cli.lib.children(id, paper, "note").size() == 2);
+}
+
 TEST_CASE("cli: what it changes and syncs is in the app's sync history, as ournotes-cli's")
 {
     Cli cli;

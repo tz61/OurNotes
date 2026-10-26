@@ -130,7 +130,8 @@ ournotes-cli rename-tag todo later     # tag-color later red
 - A tag is renamed, coloured or deleted in one library, as in the app: when several have
   it, say which with `--library`.
 - Text for a note: an argument, or standard input with `-` (best for anything longer than a
-  line, and for text that begins with `-`). It is read as Markdown unless `--html` or
+  line). Text that begins with `-` and has no space in it goes after `--`
+  (`edit-note NOTE2345 -- "-v2"`); empty text is refused, the note left as it was. It is read as Markdown unless `--html` or
   `--text` says otherwise, or it begins with `<` (then it is taken as HTML).
 - Markdown in notes: paragraphs, `#` headings (`###` and deeper become level 3), `-` and
   `1.` lists (not nested), `>` quotes, code blocks between ```` ``` ````, `---`, tables

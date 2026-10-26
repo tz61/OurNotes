@@ -679,6 +679,9 @@ int cmdEditNote(Library& lib, Args& args)
         throw Error(jstr(note, "key") + " is not a note");
     requireEditable(lib, id);
     auto html = asNoteHtml(args, contentFrom(args, 1));
+    if (trim(htmlToText(html)).empty() && html.find("<img") == std::string::npos)
+        throw Error("the text is empty: the note is left as it was (to delete it: delete " + jstr(note, "key") +
+                    " --yes)");
     ScratchFolder scratch;
     auto pictures = notePictures(html, scratch.path);
     html = storeNotePictures(lib, id, jstr(note, "key"), html, pictures);
@@ -874,9 +877,9 @@ std::vector<std::string> keysFrom(const Args& args, size_t from)
 
 std::string contentFrom(const Args& args, size_t at)
 {
-    auto v = args.positional(at);
-    if (!v.empty() && v != "-")
-        return v;
+    // given, even empty (as "$TEXT" is with TEXT unset): as it is; "-" or none: standard input
+    if (at < args.positionals.size() && args.positionals[at] != "-")
+        return args.positionals[at];
     return std::string(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
 }
 

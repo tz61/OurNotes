@@ -41,7 +41,8 @@ library safely, with examples).
 
 KEY is an item's key (8 letters and digits); --library takes a library's ID or name;
 --collection a collection's key or path, such as "FA26/CS8803"; --json prints JSON for
-scripts and agents. What deletes something for good asks for --yes.
+scripts and agents. What deletes something for good asks for --yes. After --, all is
+text, even what begins with "-".
 
 Reading:
   guide | where | info              how to work with a library; where things are; statistics

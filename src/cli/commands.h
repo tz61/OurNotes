@@ -23,7 +23,8 @@ CollectionRef findCollection(on::Library& lib, const std::string& spec, std::opt
 // The library an item is in (the only one with that key).
 int64_t findItemLibrary(on::Library& lib, const std::string& key);
 
-// Minimal argument parser: `--name value` options, `--flag` switches, positionals.
+// Minimal argument parser: `--name value` options, `--flag` switches, positionals. After
+// `--`, all are positionals; one with a space in it always is (text: "- a Markdown list").
 struct Args {
     std::string command;
     std::vector<std::string> positionals;
@@ -38,12 +39,18 @@ struct Args {
             "--type",     "--page",    "--quote",   "--at",     "--rect",       "--ink",       "--color",
             "--comment",  "--tags",    "--font-size", "--zoom", "--limit",      "--name",      "--width",
             "--dpi",      "--margin",  "--height",  "--caption"};
+        bool text = false;  // after --
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
-            bool takesValue = std::find(valued.begin(), valued.end(), a) != valued.end();
+            if (a == "--" && !text) {
+                text = true;
+                continue;
+            }
+            bool named = !text && a.size() > 1 && a[0] == '-' && a.find_first_of(" \t\r\n") == std::string::npos;
+            bool takesValue = named && std::find(valued.begin(), valued.end(), a) != valued.end();
             if (takesValue && i + 1 < argc) {
                 options[a] = argv[++i];
-            } else if (a.size() > 1 && a[0] == '-') {
+            } else if (named) {
                 options[a] = "1";
             } else if (command.empty()) {
                 command = a;
