@@ -283,6 +283,33 @@ std::string hmacSha256(std::string_view key, std::string_view msg)
 
 std::string pbkdf2Sha256(std::string_view password, std::string_view salt, int iterations, size_t len)
 {
+    // HMAC with the password as its key, the padded key hashed once: each iteration starts
+    // from copies of those two hashes (as hmacSha256 does, without hashing the pads again,
+    // which was half the work of each of the 120k iterations of a login)
+    std::string k(password);
+    if (k.size() > 64) {
+        Sha256 s;
+        s.update(k.data(), k.size());
+        k = s.digest();
+    }
+    k.resize(64, '\0');
+    std::string ipad(64, '\0'), opad(64, '\0');
+    for (int i = 0; i < 64; ++i) {
+        ipad[i] = (char)(k[i] ^ 0x36);
+        opad[i] = (char)(k[i] ^ 0x5c);
+    }
+    Sha256 innerKeyed, outerKeyed;
+    innerKeyed.update(ipad.data(), 64);
+    outerKeyed.update(opad.data(), 64);
+    auto hmac = [&](std::string_view msg) {
+        Sha256 inner = innerKeyed;
+        inner.update(msg.data(), msg.size());
+        auto ih = inner.digest();
+        Sha256 outer = outerKeyed;
+        outer.update(ih.data(), ih.size());
+        return outer.digest();
+    };
+
     std::string out;
     for (uint32_t block = 1; out.size() < len; ++block) {
         std::string s(salt);
@@ -290,10 +317,10 @@ std::string pbkdf2Sha256(std::string_view password, std::string_view salt, int i
         s += (char)(block >> 16);
         s += (char)(block >> 8);
         s += (char)block;
-        std::string u = hmacSha256(password, s);
+        std::string u = hmac(s);
         std::string t = u;
         for (int i = 1; i < iterations; ++i) {
-            u = hmacSha256(password, u);
+            u = hmac(u);
             for (size_t j = 0; j < t.size(); ++j)
                 t[j] ^= u[j];
         }

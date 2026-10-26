@@ -83,7 +83,6 @@ formats tests, with no reports before or after.
 | perf | `sync/server_api.cpp` `LoginLimiter::failed` | With more than 10k live addresses the whole map is scanned on each failure and still grows (PBKDF2 limits the rate). |
 | perf | `cli/extra_commands.cpp` `import` | Each imported item commits on its own; one transaction would hold the write lock long enough for the GUI's 15 s busy timeout. |
 | perf | `library.cpp` `writeItem` | The INSERT is prepared again for each tag and collection (no statement cache). |
-| perf | `hash.cpp` `pbkdf2Sha256` | The HMAC pads are recomputed in each of the 120k iterations: about twice the CPU per login. |
 
 ## Round 2: text from a group or a web page shown as rich text
 
@@ -127,5 +126,6 @@ and no leak in OurNotes' own code. In MicroTeX, which OurNotes builds and patche
 | perf | `items_model.cpp` `reload`, `library.cpp` `itemRows` | Each reload (after every change, a note's autosave too) read and parsed every attachment's JSON to see whether its file is there. `itemRows` now gives an attachment's filename and path. 5,000 papers with a PDF each: 227 ms → ~100 ms per reload. |
 
 | behaviour | `sync/change_watcher.cpp` `run`, `watch` | The reconnect back-off was never reset: after one outage, every later error waited up to 300 s before the next try. Reset once the target answers. |
+| perf | `hash.cpp` `pbkdf2Sha256` | The padded password was hashed again in each of a login's 120k iterations. Hashed once; each iteration copies the two states. 211 ms → 113 ms per login or `useradd` (output unchanged: RFC 7914's 80,000-iteration vector added to the tests). |
 
 Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.

@@ -18,6 +18,9 @@ TEST_CASE("md5 and sha256 test vectors")
     CHECK(toHex(pbkdf2Sha256("passwd", "salt", 1, 64)) ==
           "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc"
           "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783");
+    CHECK(toHex(pbkdf2Sha256("Password", "NaCl", 80000, 64)) ==
+          "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56"
+          "a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d");
 }
 
 TEST_CASE("normalize folds case and accents")
