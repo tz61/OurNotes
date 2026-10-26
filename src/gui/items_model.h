@@ -86,10 +86,12 @@ private:
         bool fileMissing = false;
         bool matches = true;   // false: shown only for context (non-matching child)
         QString context;       // in the trash, on its own: the title of the item it belongs to
+        int rowNo = 0;         // its row among its siblings (kept by numberRows)
     };
 
     QVariant sortValue(const Node& n, int column) const;
     void sortNodes(std::vector<std::unique_ptr<Node>>& nodes);
+    static void numberRows(std::vector<std::unique_ptr<Node>>& nodes);
     const Node* nodeAt(const QModelIndex& index) const;
     // What a drop of the list's own items onto `parent` would move, and where.
     QStringList movableKeys(const QMimeData* data, const QModelIndex& parent, QString* parentKey) const;

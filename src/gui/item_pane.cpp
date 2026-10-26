@@ -634,15 +634,14 @@ void TagsBox::rebuild()
     bool editable = AppContext::get().editable(libraryId_);
     input_->setVisible(editable);
     std::map<std::string, int> counts;
-    for (auto& d : lib.items(libraryId_, toStdVector(keys_)))
-        for (auto& t : d.value("tags", Json::array()))
-            counts[jstr(t, "tag")]++;
-    auto colors = lib.tagColors(libraryId_);
-    header_->setText(tr("Tags (%1)").arg(counts.size()));
     std::map<std::string, int> types;
     for (auto& d : lib.items(libraryId_, toStdVector(keys_)))
-        for (auto& t : d.value("tags", Json::array()))
+        for (auto& t : d.value("tags", Json::array())) {
+            counts[jstr(t, "tag")]++;
             types[jstr(t, "tag")] = (int)jint(t, "type");
+        }
+    auto colors = lib.tagColors(libraryId_);
+    header_->setText(tr("Tags (%1)").arg(counts.size()));
     for (auto& [tag, n] : counts) {
         QString label = qs(tag) + (keys_.size() > 1 && n < keys_.size() ? QString(" (%1)").arg(n) : QString());
         auto* chip = new TagChip(label, colors.count(tag) ? qs(colors[tag]) : QString(), types[tag] == 1, editable);
@@ -1080,6 +1079,15 @@ void LocationBox::setItem(int64_t libraryId, const QString& key)
 }
 
 QStringList LocationBox::paths() const { return paths_; }
+
+// The trash's icon and the "›" between the parts are drawn in the text's colours when
+// built: after a switch of theme they were left in the old ones (dark on dark).
+void LocationBox::changeEvent(QEvent* e)
+{
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange && !key_.isEmpty())
+        QMetaObject::invokeMethod(this, &LocationBox::rebuild, Qt::QueuedConnection);
+}
 
 QSize LocationBox::minimumSizeHint() const
 {

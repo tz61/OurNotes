@@ -112,6 +112,7 @@ private:
     QTimer reloadTimer_;
     QTimer searchTimer_;
     QTimer bandTimer_;  // the next band, at the next even hour
+    QString bandFile_;  // the picture behind the list now, empty for none
     QString pendingSelect_;
 };
 
