@@ -265,7 +265,8 @@ std::string ordinal(const std::string& edition)
 {
     if (edition.empty() || !std::all_of(edition.begin(), edition.end(), [](char c) { return c >= '0' && c <= '9'; }))
         return edition;
-    int n = std::stoi(edition);
+    // its last two digits decide (a long number, an ISBN typed here, does not fit in an int)
+    int n = std::stoi(edition.substr(edition.size() - std::min<size_t>(edition.size(), 2)));
     const char* suffix = "th";
     if (n % 100 < 11 || n % 100 > 13) {
         if (n % 10 == 1)
@@ -337,8 +338,10 @@ std::string pageRange(const std::string& raw, PageFormat fmt)
     case PageFormat::MinimalTwo:
         return minimal(2);
     case PageFormat::Chicago: {
-        long start = std::stol(a);
-        if (start < 100 || start % 100 == 0)
+        // a number too long for a long is a large one: only its last digits matter
+        bool large = a.size() > 9;
+        long start = std::stol(large ? a.substr(a.size() - 9) : a);
+        if ((start < 100 && !large) || start % 100 == 0)
             return a + "–" + b;
         if (start % 100 < 10)
             return minimal(1);

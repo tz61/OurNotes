@@ -861,15 +861,18 @@ void writeFileAtomic(const fs::path& path, std::string_view data)
         fs::create_directories(path.parent_path());
     auto tmp = path;
     tmp += ".tmp" + std::to_string(nowMillis() % 100000);
+    std::error_code ec;
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out)
             throw Error("cannot write " + pathString(tmp));
         out.write(data.data(), (std::streamsize)data.size());
-        if (!out)
+        out.close();  // flushes: a full disk shows here, and must not replace the file with a part of it
+        if (!out) {
+            fs::remove(tmp, ec);
             throw Error("write failed: " + pathString(tmp));
+        }
     }
-    std::error_code ec;
     fs::rename(tmp, path, ec);
     if (ec) {
         fs::remove(path, ec);

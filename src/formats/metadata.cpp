@@ -1186,6 +1186,8 @@ void downloadFile(const std::string& url, const fs::path& dest, bool requirePdf)
         fail(sinkError.empty() ? e.what() : sinkError);
     }
     out.close();
+    if (!out && r.status == 200)  // the last of it not written (disk full): not a whole file
+        fail("Could not write " + pathString(part) + ".");
     if (r.status != 200)
         fail(r.status == 404 ? "The file was not found on the server (HTTP 404)."
                              : "Download failed (HTTP " + std::to_string(r.status) + ").");
