@@ -121,15 +121,18 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
         findStatus_->setText(total ? tr("%1 of %2").arg(cur).arg(total) : tr("No results"));
     });
     connect(view_, &PdfView::thumbnailRendered, this, [this](int page, const QImage& img) {
-        if (auto* item = thumbnails_->item(page))
+        if (auto* item = thumbnails_->item(page)) {
             item->setIcon(QPixmap::fromImage(img));
+            thumbnailsDone_[page] = true;
+        }
     });
     connect(view_, &PdfView::renderingRestarted, this, [this] {
         if (thumbnailsRequested_)
-            requestThumbnails();
+            requestThumbnails();  // those cut short (the pictures kept are not rendered again)
     });
     connect(view_, &PdfView::darkPagesChanged, this, [this] {
         updateDarkPagesAction();
+        thumbnailsDone_.assign(thumbnailsDone_.size(), false);  // all in the old colours
         if (thumbnailsRequested_)
             requestThumbnails();
     });
@@ -155,15 +158,7 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
 
     reloadTimer_.setSingleShot(true);
     reloadTimer_.setInterval(30);
-    connect(&reloadTimer_, &QTimer::timeout, this, [this] {
-        // dragged onto an item in the library, or off it
-        if (auto att = AppContext::get().library().item(libraryId_, ss(key_)); att && jqs(*att, "parentItem") != parentKey_) {
-            parentKey_ = jqs(*att, "parentItem");
-            followParent();
-        }
-        reloadAnnotations();
-        reloadNotes();
-    });
+    connect(&reloadTimer_, &QTimer::timeout, this, &ReaderTab::reload);
     connect(&AppContext::get(), &AppContext::changed, this,
             [this](qint64 lib, const QString& type, const QString&, const QStringList&) {
                 if ((lib == libraryId_ || lib == 0) && (type == "item" || type == "*"))
@@ -271,6 +266,7 @@ void ReaderTab::buildSidebar()
     QIcon blankIcon(blank);
     for (int i = 0; i < doc->pageCount(); ++i)
         new QListWidgetItem(blankIcon, qs(doc->pageLabel(i)), thumbnails_);
+    thumbnailsDone_.assign(doc->pageCount(), false);
     connect(thumbnails_, &QListWidget::currentRowChanged, this, [this](int row) { view_->goToPage(row); });
     outline_ = new QTreeWidget(sidebar_);
     outline_->setHeaderHidden(true);
@@ -663,10 +659,21 @@ void ReaderTab::changeEvent(QEvent* e)
         updateDarkPagesAction();
 }
 
+void ReaderTab::showEvent(QShowEvent* e)
+{
+    QWidget::showEvent(e);
+    if (stale_)
+        reload();  // (before a caller selects an annotation added meanwhile)
+}
+
 void ReaderTab::requestThumbnails()
 {
     auto size = view_->document()->pageSize(0);
-    view_->requestThumbnails(120.0 / std::max(1.0f, size.width) * devicePixelRatioF());
+    double scale = 120.0 / std::max(1.0f, size.width) * devicePixelRatioF();
+    if (scale != thumbnailScale_)  // on another screen: all of them again, sharp
+        thumbnailsDone_.assign(thumbnailsDone_.size(), false);
+    thumbnailScale_ = scale;
+    view_->requestThumbnails(scale, thumbnailsDone_);
 }
 
 // --- behaviour --------------------------------------------------------------------------------
@@ -744,6 +751,24 @@ void ReaderTab::saveViewState()
 void ReaderTab::savePosition()
 {
     AppContext::get().library().setSetting(libraryId_, "lastPageIndex_" + ss(key_), view_->currentPage());
+}
+
+// In a tab not shown, once it is: each pause in typing a note (an item change) reloaded
+// every open PDF's annotations and notes.
+void ReaderTab::reload()
+{
+    if (!isVisible()) {
+        stale_ = true;
+        return;
+    }
+    stale_ = false;
+    // dragged onto an item in the library, or off it
+    if (auto att = AppContext::get().library().item(libraryId_, ss(key_)); att && jqs(*att, "parentItem") != parentKey_) {
+        parentKey_ = jqs(*att, "parentItem");
+        followParent();
+    }
+    reloadAnnotations();
+    reloadNotes();
 }
 
 void ReaderTab::reloadAnnotations()

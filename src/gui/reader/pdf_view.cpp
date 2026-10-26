@@ -817,13 +817,14 @@ void PdfView::onRendered(int page, double scale, quint64 generation, bool thumbn
         viewport()->update(pageRects_[page].translated(-scrollOffset()).toAlignedRect());
 }
 
-void PdfView::requestThumbnails(double scale)
+void PdfView::requestThumbnails(double scale, const std::vector<bool>& have)
 {
     if (!worker_)
         return;
     std::deque<RenderWorker::Request> q;
     for (int i = 0; i < pageCount(); ++i)
-        q.push_back({i, scale, 0, true, darkPages_});
+        if (i >= (int)have.size() || !have[i])
+            q.push_back({i, scale, 0, true, darkPages_});
     worker_->addRequests(q);
 }
 

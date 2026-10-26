@@ -111,7 +111,7 @@ public:
     void find(const QString& text, bool backwards);
     void clearFind();
     void setFindCaseSensitive(bool on);  // the next find searches again
-    void requestThumbnails(double scale);
+    void requestThumbnails(double scale, const std::vector<bool>& have);  // (not those marked in have)
 
     // While hidden, the view drops its rendered pages after imagesMs and its render
     // thread and MuPDF caches after allMs (defaults 3 s and 20 s).
