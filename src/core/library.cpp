@@ -14,7 +14,7 @@ namespace on {
 
 namespace {
 
-constexpr int kSchemaVersion = 3;
+constexpr int kSchemaVersion = 4;
 
 const char* kSchemaSql = R"SQL(
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS items(
     PRIMARY KEY(library_id, key)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS items_parent ON items(library_id, parent_key);
 CREATE INDEX IF NOT EXISTS items_dirty ON items(library_id, synced);
+CREATE INDEX IF NOT EXISTS items_trashed ON items(library_id, key, trashed);
 CREATE TABLE IF NOT EXISTS item_tags(
     library_id INTEGER NOT NULL,
     item_key TEXT NOT NULL,
@@ -268,6 +269,8 @@ void Library::migrate()
     db_.exec(kSchemaSql);
     // 2: the library name last agreed with the sync target (names are synced)
     // 3: changed_by, made by kSchemaSql
+    // 4: items_trashed, made by kSchemaSql: whether an item is in the trash without reading
+    //    its row (whole items with their data: tags() looked up each tag's item, 4x slower)
     if (!db_.scalarInt("SELECT 1 FROM pragma_table_info('libraries') WHERE name='sync_name'"))
         db_.exec("ALTER TABLE libraries ADD COLUMN sync_name TEXT");
     if (!db_.scalarStr("SELECT value FROM meta WHERE key='created'"))
@@ -747,7 +750,9 @@ std::vector<ItemRow> Library::itemRows(int64_t lib)
     std::vector<ItemRow> out;
     auto st = db_.query(R"SQL(
         SELECT key, item_type, parent_key, title, creator, year, date, publication, date_added, date_modified,
-               content_type, link_mode, trashed
+               content_type, link_mode, trashed,
+               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.filename') END,
+               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.path') END
         FROM items WHERE library_id=? AND item_type != 'annotation')SQL",
                         lib);
     while (st.step()) {
@@ -765,6 +770,8 @@ std::vector<ItemRow> Library::itemRows(int64_t lib)
         r.contentType = st.str(10);
         r.linkMode = st.str(11);
         r.trashed = st.i64(12) != 0;
+        r.filename = st.str(13);
+        r.path = st.str(14);
         out.push_back(std::move(r));
     }
     return out;
@@ -1129,9 +1136,21 @@ std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<s
         d["collections"] = !d.contains("parentItem") && !collectionKey.empty() ? Json::array({collectionKey})
                                                                                : Json::array();
         if (d.contains("note") && d["note"].is_string()) {
+            // each image's key looked up (not every key copied looked for in every note)
+            static const std::string attr = "data-attachment-key=\"";
             auto html = d["note"].get<std::string>();
-            for (auto& [from, to] : newKeys)
-                html = replaceAll(html, "data-attachment-key=\"" + from + "\"", "data-attachment-key=\"" + to + "\"");
+            for (auto pos = html.find(attr); pos != std::string::npos; pos = html.find(attr, pos)) {
+                pos += attr.size();
+                auto end = html.find('"', pos);
+                if (end == std::string::npos)
+                    break;
+                auto to = newKeys.find(html.substr(pos, end - pos));
+                if (to != newKeys.end()) {
+                    html.replace(pos, end - pos, to->second);
+                    end = pos + to->second.size();
+                }
+                pos = end;
+            }
             d["note"] = html;
         }
         if (schema::isStoredLinkMode(jstr(d, "linkMode"))) {  // its own copy of the file
@@ -1719,7 +1738,8 @@ std::optional<StoredObject> Library::getObject(int64_t lib, const std::string& t
 void Library::putRemoteObject(int64_t lib, const std::string& type, const std::string& key, const Json& data,
                               int64_t version)
 {
-    bool existed = getObject(lib, type, key).has_value();
+    bool existed = db_.scalarInt("SELECT 1 FROM " + tableFor(type) + " WHERE library_id=? AND key=?", lib, key)
+                       .has_value();  // (without reading its data: done for every object pulled)
     sql::Transaction tx(db_);
     writeObject(lib, type, key, data, version, true, false);
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);

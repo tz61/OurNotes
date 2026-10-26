@@ -145,19 +145,24 @@ std::pair<int, int> charsOf(const Reading& r, size_t from, size_t length)
 
 // A quote across a page break: its first words at the end of `page` (the last place there),
 // the rest at the start of the next (the first), what lies between them (a page number, a
-// running head) left out.
+// running head) left out. Whole words, by the break: not "Table 3" mid-page and any "4" on
+// the next for "Table 4".
 std::optional<Passage> passageAcross(pdf::Document& doc, const std::u32string& quote, int page)
 {
+    constexpr size_t kNearBreak = 200;  // letters a page number, a running head may take, at most
     if (page + 1 >= doc.pageCount())
         return std::nullopt;
     auto before = reading(doc.text(page)), after = reading(doc.text(page + 1));
+    auto ends = before.text + U' ', starts = U' ' + after.text;  // (to find whole words)
     for (size_t k = quote.size(); k-- > 1;) {  // (the longest beginning first)
         if (quote[k] != U' ' || k + 1 >= quote.size())
             continue;
         auto head = quote.substr(0, k), tail = quote.substr(k + 1);
-        auto i = before.text.rfind(head);
-        auto j = after.text.find(tail);
+        auto i = ends.rfind(head + U' ');
+        auto j = starts.find(U' ' + tail);  // (where it begins in after.text)
         if (i == std::u32string::npos || j == std::u32string::npos)
+            continue;
+        if (before.text.size() - i - head.size() > kNearBreak || j > kNearBreak)
             continue;
         auto [from, to] = charsOf(before, i, head.size());
         auto [nextFrom, nextTo] = charsOf(after, j, tail.size());

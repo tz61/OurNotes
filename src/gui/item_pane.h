@@ -185,6 +185,9 @@ public:
 signals:
     void scopeRequested(const Scope& scope);
 
+protected:
+    void changeEvent(QEvent* e) override;  // the icons and separators in the theme's colours
+
 private:
     void rebuild();
 

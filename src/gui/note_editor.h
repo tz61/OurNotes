@@ -91,6 +91,7 @@ public:
     void insertPictures(const QList<QImage>& images);
 
 protected:
+    QVariant loadResource(int type, const QUrl& name) override;
     QMimeData* createMimeDataFromSelection() const override;
     bool canInsertFromMimeData(const QMimeData* source) const override;
     void insertFromMimeData(const QMimeData* source) override;
@@ -141,6 +142,7 @@ private:
     bool finishMathSession(const QString& latex, QTextCursor* after);
     QTextCharFormat sourceFormat(bool display, QTextCharFormat base) const;
     std::vector<MathRun> mathRuns() const;
+    std::vector<MathRun> mathRuns(const QTextBlock& block) const;  // (those in one block)
     std::optional<MathRun> runAtCursor() const;
     void updateMathPreview();
     void leaveMath(const MathRun& run, bool nextLine);
@@ -199,6 +201,7 @@ private:
     QTextCursor dragged_;  // the picture being dragged
     int picking_ = 0;
     bool caretHidden_ = false;
+    bool captionHint_ = false;  // the cursor in an empty caption (its hint drawn: paintEvent)
     QTextCursor typingStep_;  // text typed at pictures: its new line and it, one step to undo
     // an input method's text at pictures: where the cursor was moved to for it, the line
     // made for it (gone again if nothing is written, while it is the last step to undo:

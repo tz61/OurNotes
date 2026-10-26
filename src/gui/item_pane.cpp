@@ -27,6 +27,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 
 #include "core/schema.h"
 #include "gui/app_context.h"
@@ -112,7 +113,9 @@ QSize AutoTextEdit::sizeHint() const
     int lines = 0;
     for (auto b = document()->begin(); b.isValid(); b = b.next())
         lines += std::max(1, b.layout() ? b.layout()->lineCount() : 1);
-    int h = fontMetrics().lineSpacing() * std::max(1, lines) + 2 * (int)document()->documentMargin() + 6;
+    // a laid-out line is its height rounded up, where lineSpacing() rounds to nearest: a pixel a line short
+    int line = int(std::ceil(QFontMetricsF(font()).lineSpacing()));
+    int h = line * std::max(1, lines) + 2 * (int)document()->documentMargin() + 6;
     return {200, h};
 }
 
@@ -283,7 +286,9 @@ void InfoEditor::rebuild()
 
     auto addInfo = [&](const QString& label, const QString& value) {
         grid_->addWidget(fieldLabel(label, this), row, 0);
-        auto* l = new QLabel(value, this);
+        auto* l = new QLabel(this);
+        l->setTextFormat(Qt::PlainText);  // (a synced date that is not one is shown as it is)
+        l->setText(value);
         l->setTextInteractionFlags(Qt::TextSelectableByMouse);
         l->setContentsMargins(2, 4, 0, 0);
         grid_->addWidget(l, row++, 1);
@@ -503,7 +508,7 @@ public:
         : QWidget(parent), tag_(tag), color_(color), automatic_(automatic)
     {
         setObjectName("tagChip");
-        setToolTip(automatic ? tr("%1 (automatic tag)").arg(tag) : tag);
+        setToolTip(asPlainText(automatic ? tr("%1 (automatic tag)").arg(tag) : tag));  // (synced tags)
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         setAttribute(Qt::WA_Hover);
         if (removable) {
@@ -634,15 +639,14 @@ void TagsBox::rebuild()
     bool editable = AppContext::get().editable(libraryId_);
     input_->setVisible(editable);
     std::map<std::string, int> counts;
-    for (auto& d : lib.items(libraryId_, toStdVector(keys_)))
-        for (auto& t : d.value("tags", Json::array()))
-            counts[jstr(t, "tag")]++;
-    auto colors = lib.tagColors(libraryId_);
-    header_->setText(tr("Tags (%1)").arg(counts.size()));
     std::map<std::string, int> types;
     for (auto& d : lib.items(libraryId_, toStdVector(keys_)))
-        for (auto& t : d.value("tags", Json::array()))
+        for (auto& t : d.value("tags", Json::array())) {
+            counts[jstr(t, "tag")]++;
             types[jstr(t, "tag")] = (int)jint(t, "type");
+        }
+    auto colors = lib.tagColors(libraryId_);
+    header_->setText(tr("Tags (%1)").arg(counts.size()));
     for (auto& [tag, n] : counts) {
         QString label = qs(tag) + (keys_.size() > 1 && n < keys_.size() ? QString(" (%1)").arg(n) : QString());
         auto* chip = new TagChip(label, colors.count(tag) ? qs(colors[tag]) : QString(), types[tag] == 1, editable);
@@ -667,10 +671,10 @@ void TagsBox::confirmRemove(const QString& tag)
     if (keys_.isEmpty())
         return;
     QMessageBox box(QMessageBox::Question, tr("Remove Tag"),
-                    keys_.size() == 1 ? tr("Remove the tag \"%1\" from this item?").arg(tag)
-                                      : tr("Remove the tag \"%1\" from the %2 selected items?")
-                                            .arg(tag)
-                                            .arg(keys_.size()),
+                    asPlainText(keys_.size() == 1 ? tr("Remove the tag \"%1\" from this item?").arg(tag)
+                                                  : tr("Remove the tag \"%1\" from the %2 selected items?")
+                                                        .arg(tag)
+                                                        .arg(keys_.size())),
                     QMessageBox::NoButton, this);
     box.setObjectName("confirmRemoveTag");
     auto* remove = box.addButton(tr("Remove"), QMessageBox::DestructiveRole);
@@ -765,6 +769,7 @@ void RelatedBox::rebuild()
                                      row);
         link->setFlat(true);
         link->setStyleSheet("text-align: left");
+        link->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);  // a long title is cut at the pane's edge, not widening it
         connect(link, &QPushButton::clicked, this, [this, k = qs(k)] { emit itemActivated(k); });
         auto* remove = smallButton(icon("remove"), tr("Remove relation"), row);
         connect(remove, &QToolButton::clicked, this,
@@ -881,7 +886,7 @@ void AttachmentBox::rebuild()
             lines << tr("Annotations: %1").arg(anns);
         file_->setText("<small>" + qpath(path).toHtmlEscaped() + "</small>");
     }
-    lines << tr("Added: %1").arg(qs(isoToLocalDisplay(jstr(*d, "dateAdded"))));
+    lines << tr("Added: %1").arg(qs(isoToLocalDisplay(jstr(*d, "dateAdded"))).toHtmlEscaped());
     info_->setText(lines.join("<br>"));
     info_->setOpenExternalLinks(true);
     buttons_->setVisible(true);
@@ -1010,7 +1015,8 @@ void ItemNotesPanel::reload()
             auto title = qs(noteTitle(jstr(n, "note")));
             auto* item = new QListWidgetItem(icon("type-note"), title.isEmpty() ? tr("(empty note)") : title, list_);
             item->setData(Qt::UserRole, jqs(n, "key"));
-            item->setToolTip(tr("Modified %1").arg(qs(isoToLocalDisplay(jstr(n, "dateModified")))));
+            // an unparseable date is shown as it is
+            item->setToolTip(asPlainText(tr("Modified %1").arg(qs(isoToLocalDisplay(jstr(n, "dateModified"))))));
             if (jqs(n, "key") == current)
                 list_->setCurrentItem(item);
         }
@@ -1080,6 +1086,15 @@ void LocationBox::setItem(int64_t libraryId, const QString& key)
 }
 
 QStringList LocationBox::paths() const { return paths_; }
+
+// The trash's icon and the "›" between the parts are drawn in the text's colours when
+// built: after a switch of theme they were left in the old ones (dark on dark).
+void LocationBox::changeEvent(QEvent* e)
+{
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange && !key_.isEmpty())
+        QMetaObject::invokeMethod(this, &LocationBox::rebuild, Qt::QueuedConnection);
+}
 
 QSize LocationBox::minimumSizeHint() const
 {
@@ -1164,7 +1179,7 @@ void LocationBox::rebuild()
         label->setTextFormat(Qt::RichText);
         label->setWordWrap(true);
         label->setText(l.html);
-        label->setToolTip(l.plain);
+        label->setToolTip(asPlainText(l.plain));  // (library and collection names)
         label->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::TextSelectableByMouse);
         connect(label, &QLabel::linkActivated, this, [this](const QString& href) {
             Scope s{libraryId_, ScopeKind::Library, {}};
@@ -1200,8 +1215,8 @@ void LocationBox::rebuild()
         });
         connect(erase, &QPushButton::clicked, this, [this, trashedKey, title] {
             QMessageBox box(QMessageBox::Warning, tr("Delete Permanently"),
-                            tr("Permanently delete \"%1\", with its attachments and notes? This cannot be undone.")
-                                .arg(title),
+                            asPlainText(tr("Permanently delete \"%1\", with its attachments and notes? This cannot be undone.")
+                                            .arg(title)),
                             QMessageBox::NoButton, this);
             box.setObjectName("confirmDeletePermanently");
             auto* yes = box.addButton(tr("Delete Permanently"), QMessageBox::DestructiveRole);

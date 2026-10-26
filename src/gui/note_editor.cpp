@@ -363,27 +363,39 @@ QTextCharFormat NoteTextEdit::sourceFormat(bool display, QTextCharFormat base) c
     return base;
 }
 
+std::vector<NoteTextEdit::MathRun> NoteTextEdit::mathRuns(const QTextBlock& block) const
+{
+    std::vector<MathRun> runs;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        auto frag = it.fragment();
+        int kind = frag.charFormat().property(kMathSourceProperty).toInt();
+        if (!kind)
+            continue;
+        if (!runs.empty() && runs.back().end == frag.position() && runs.back().display == (kind == 2))
+            runs.back().end = frag.position() + frag.length();
+        else
+            runs.push_back({frag.position(), frag.position() + frag.length(), kind == 2});
+    }
+    return runs;
+}
+
 std::vector<NoteTextEdit::MathRun> NoteTextEdit::mathRuns() const
 {
     std::vector<MathRun> runs;
-    for (auto block = document()->begin(); block.isValid(); block = block.next())
-        for (auto it = block.begin(); !it.atEnd(); ++it) {
-            auto frag = it.fragment();
-            int kind = frag.charFormat().property(kMathSourceProperty).toInt();
-            if (!kind)
-                continue;
-            if (!runs.empty() && runs.back().end == frag.position() && runs.back().display == (kind == 2))
-                runs.back().end = frag.position() + frag.length();
-            else
-                runs.push_back({frag.position(), frag.position() + frag.length(), kind == 2});
-        }
+    for (auto block = document()->begin(); block.isValid(); block = block.next()) {
+        auto inBlock = mathRuns(block);
+        runs.insert(runs.end(), inBlock.begin(), inBlock.end());
+    }
     return runs;
 }
 
 std::optional<NoteTextEdit::MathRun> NoteTextEdit::runAtCursor() const
 {
-    int p = textCursor().position();
-    for (auto& r : mathRuns())
+    // (a run is within a block, the separator between two being none of it: the cursor's
+    // block is enough, and not the whole note at each key and each move of the cursor)
+    auto cursor = textCursor();
+    int p = cursor.position();
+    for (auto& r : mathRuns(cursor.block()))
         if (p > r.start && p < r.end)
             return r;
     return std::nullopt;
@@ -752,7 +764,9 @@ void NoteTextEdit::adaptColors()
                 continue;
             QColor original = hidden ? f.property(kOriginalForegroundProperty).value<QColor>() : f.foreground().color();
             bool unreadable = unreadableOn(original, base);
-            if (unreadable && !hidden) {
+            if (unreadable && !hidden && f.isAnchor()) {
+                f.setForeground(palette().link());  // (a link's colour is the palette's, not its own: as when pasted)
+            } else if (unreadable && !hidden) {
                 f.setProperty(kOriginalForegroundProperty, original);
                 f.clearForeground();
             } else if (!unreadable && hidden) {
@@ -1661,6 +1675,16 @@ void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
     menu->exec(e->globalPos());
 }
 
+// A picture the note has not got (its own are added as resources) is not read from a file:
+// QTextDocument reads any local path an <img> names, and notes come from others in a group
+// (one naming /dev/zero took the app down). Other names, web addresses, it does not read.
+QVariant NoteTextEdit::loadResource(int type, const QUrl& name)
+{
+    if (name.isLocalFile() || name.isRelative())
+        return QByteArray();  // (not nothing: given nothing, QTextDocument reads the file)
+    return QTextEdit::loadResource(type, name);
+}
+
 // Copied or dragged out of a note. Another note gets the selection as it was; other
 // programs get formulas as their LaTeX ($…$, $$…$$ on a line of its own) and pictures as
 // "[image]", in text and in Zotero's HTML; a picture selected alone is copied as a picture.
@@ -2066,7 +2090,7 @@ void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
         viewport()->setToolTip(tr("Click to edit the formula"));
     } else if (reference) {
         auto opens = describeLink ? describeLink(href).second : QString();
-        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : tr("Click to open %1").arg(opens));
+        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : asPlainText(tr("Click to open %1").arg(opens)));
     } else {
         viewport()->setToolTip({});
     }
@@ -2780,7 +2804,7 @@ void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId)
         if (key.isEmpty() || !AppContext::get().editable(lib))
             return;
         QMessageBox box(QMessageBox::Question, QObject::tr("Move to Trash"),
-                        QObject::tr("Move the note \"%1\" to the trash?").arg(title), QMessageBox::NoButton, list);
+                        asPlainText(QObject::tr("Move the note \"%1\" to the trash?").arg(title)), QMessageBox::NoButton, list);
         box.setObjectName("confirmTrashNote");
         auto* move = box.addButton(QObject::tr("Move to Trash"), QMessageBox::DestructiveRole);
         box.addButton(QMessageBox::Cancel);

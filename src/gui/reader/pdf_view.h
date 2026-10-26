@@ -111,7 +111,7 @@ public:
     void find(const QString& text, bool backwards);
     void clearFind();
     void setFindCaseSensitive(bool on);  // the next find searches again
-    void requestThumbnails(double scale);
+    void requestThumbnails(double scale, const std::vector<bool>& have);  // (not those marked in have)
 
     // While hidden, the view drops its rendered pages after imagesMs and its render
     // thread and MuPDF caches after allMs (defaults 3 s and 20 s).
@@ -188,6 +188,16 @@ private:
     struct Cached {
         QImage image;
         double scale = 0;
+        // its links' text as marked (paintLinks), made once: each one's part of the image, where it
+        // is on it, its letters (page points) and their height
+        struct MarkedLink {
+            QRect pixels;
+            QImage part;
+            std::vector<QRectF> glyphs;
+            double height = 0;
+        };
+        std::vector<MarkedLink> links;
+        bool linksMarked = false;
     };
 
     // geometry
@@ -239,7 +249,7 @@ private:
     // painting
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
-    void paintLinks(QPainter& p, int page, const QImage& image, double imageScale, const QRectF& onView);
+    void paintLinks(QPainter& p, int page, Cached& cached, const QRectF& onView);
     // each link's letters on a page (the characters with their middle in its box); no text: its box
     const std::vector<std::vector<QRectF>>& linkGlyphs(int page);
     std::map<int, std::vector<std::vector<QRectF>>> linkGlyphs_;
@@ -258,6 +268,7 @@ private:
     double scale_ = 96.0 / 72.0;     // DIP per point
     Fit fit_ = Fit::Width;
     quint64 generation_ = 0;
+    double renderDpr_ = 0;  // the devicePixelRatioF() pages were last asked for at
     bool darkPages_ = false;
     int tone_ = 0;  // the page colour (pageTone) for darkPages_
     std::map<int, Cached> cache_;

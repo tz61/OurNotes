@@ -67,6 +67,7 @@ signals:
 
 protected:
     void changeEvent(QEvent* e) override;
+    void showEvent(QShowEvent* e) override;  // what changed while another tab was shown
     // Esc in a field (the annotations' search, the page number, Info, a note…) that has no
     // use for it: the keys back on the page ([, ], I, N…)
     void keyPressEvent(QKeyEvent* e) override;
@@ -78,6 +79,7 @@ private:
     void buildSidebar();
     void buildContextPane();
     void followParent();  // the pane and "Add to Note" for parentKey_, or none without one
+    void reload();  // after a change in the library: the parent, the annotations, the notes
     void reloadAnnotations();
     void reloadNotes();
     void importEmbeddedAnnotations();
@@ -131,12 +133,15 @@ private:
     QMenu* paletteMenus_[3] = {};
     QActionGroup* tools_;
     QTimer reloadTimer_;
+    bool stale_ = false;  // changed while hidden: reloaded when shown
     QTimer positionTimer_;  // the synced last page, after page changes
     QTimer stateTimer_;     // the local view state, after scrolling or zooming
     bool restored_ = false;
     std::vector<std::function<void()>> whenRestored_;  // where it was asked to go meanwhile
     QUndoStack* undo_;
     bool thumbnailsRequested_ = false;
+    std::vector<bool> thumbnailsDone_;  // pages whose picture is in the current colours and scale
+    double thumbnailScale_ = 0;
     QAction* darkPages_ = nullptr;
     QAction* sideToggle_ = nullptr;  // the panel on the left: annotations, thumbnails, outline
     QAction* paneToggle_ = nullptr;  // the panel on the right: Info and Notes

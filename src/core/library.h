@@ -51,6 +51,7 @@ struct ItemRow {
     std::string dateModified;
     std::string contentType;  // attachments
     std::string linkMode;     // attachments
+    std::string filename, path;  // attachments: where the file is, for attachmentFile()
     bool trashed = false;
 };
 

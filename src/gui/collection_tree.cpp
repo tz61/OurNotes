@@ -218,7 +218,7 @@ void CollectionTree::deleteCollection(QTreeWidgetItem* item, bool trashItems)
     auto text = trashItems
                     ? tr("Delete the collection \"%1\", its subcollections and move all their items to the trash?")
                     : tr("Delete the collection \"%1\" and its subcollections? Items stay in the library.");
-    if (QMessageBox::question(this, tr("Delete Collection"), text.arg(item->text(0))) != QMessageBox::Yes)
+    if (QMessageBox::question(this, tr("Delete Collection"), asPlainText(text.arg(item->text(0)))) != QMessageBox::Yes)
         return;
     AppContext::get().library().deleteCollection(s.libraryId, s.collectionKey, trashItems);
 }

@@ -109,6 +109,7 @@ AnnotationCard::AnnotationCard(const Json& data, bool editable, QWidget* parent)
     comment_->setPlaceholderText(tr("Add comment"));
     v->addWidget(comment_);
     tags_ = new QLabel(this);
+    tags_->setTextFormat(Qt::PlainText);
     tags_->setWordWrap(true);
     v->addWidget(tags_);
 
@@ -179,7 +180,8 @@ void AnnotationCard::refresh()
     bool external = jbool(data_, "annotationIsExternal");
     QString page = jqs(data_, "annotationPageLabel");
     header_->setText(QString("<span style=\"color:%1\">■</span> %2 &nbsp;<small>%3</small>%4")
-                         .arg(color.name(), typeName(type), page.isEmpty() ? QString() : tr("Page %1").arg(page),
+                         .arg(color.name(), typeName(type).toHtmlEscaped(),
+                              page.isEmpty() ? QString() : tr("Page %1").arg(page.toHtmlEscaped()),
                               external ? " <small>(" + tr("in file") + ")</small>" : QString()));
     auto text = jqs(data_, "annotationText");
     text_->setVisible(!text.isEmpty());

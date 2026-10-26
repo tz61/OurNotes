@@ -50,7 +50,7 @@ BaseUrl parseBaseUrl(const std::string& url)
 
 std::string errorMessage(int status, const std::string& body)
 {
-    auto j = Json::parse(body, nullptr, false);
+    auto j = parseExternalJson(body);
     if (j.is_object()) {
         auto msg = jstr(j, "error");
         if (!msg.empty())
@@ -153,7 +153,7 @@ Json HttpTransport::request(const char* method, const std::string& path, const J
     check(res, baseUrl_);
     if (res->body.empty())
         return Json::object();
-    auto j = Json::parse(res->body, nullptr, false);
+    auto j = parseExternalJson(res->body);
     if (j.is_discarded())
         throw SyncError("invalid response from " + baseUrl_ + " (not JSON)");
     return j;
@@ -358,7 +358,7 @@ FileInfo HttpTransport::upload(const std::string& uid, const std::string& key, c
     if (readFailed)
         throw SyncError("read failed: " + pathString(src));
     check(res, baseUrl_);
-    auto j = Json::parse(res->body, nullptr, false);
+    auto j = parseExternalJson(res->body);
     if (!j.is_object())
         throw SyncError("invalid response from " + baseUrl_ + " (not JSON)");
     return fileInfoFromJson(j);

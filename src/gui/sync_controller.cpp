@@ -1,6 +1,8 @@
 #include "gui/sync_controller.h"
 
+#include <QCoreApplication>
 #include <QMetaObject>
+#include <QPointer>
 
 #include <map>
 #include <optional>
@@ -189,7 +191,10 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
     }
     auto dataDir = AppContext::get().library().dataDir();
     AppContext::get().beginOwnWrites();
-    std::thread([this, dataDir, t = *target, libraryId, key] {
+    // Detached, the thread can outlive this controller (the window closed during a
+    // download): the result goes through the application, and here only if still here.
+    QPointer<SyncController> self(this);
+    std::thread([self, dataDir, t = *target, libraryId, key] {
         bool ok = false;
         QString error;
         try {
@@ -201,10 +206,12 @@ void SyncController::downloadFile(qint64 libraryId, const QString& key)
             error = qs(e.what());
         }
         QMetaObject::invokeMethod(
-            this,
-            [this, libraryId, key, ok, error] {
+            QCoreApplication::instance(),
+            [self, libraryId, key, ok, error] {
+                if (!self)
+                    return;
                 AppContext::get().endOwnWrites();
-                emit fileDownloaded(libraryId, key, ok, error);
+                emit self->fileDownloaded(libraryId, key, ok, error);
             },
             Qt::QueuedConnection);
     }).detach();
@@ -220,7 +227,8 @@ void SyncController::deleteRemoteLibrary(qint64 libraryId)
     }
     auto dataDir = AppContext::get().library().dataDir();
     AppContext::get().beginOwnWrites();
-    std::thread([this, dataDir, t = *target, libraryId, uid = info->uid] {
+    QPointer<SyncController> self(this);  // (see downloadFile)
+    std::thread([self, dataDir, t = *target, libraryId, uid = info->uid] {
         bool ok = false;
         QString error;
         try {
@@ -234,10 +242,12 @@ void SyncController::deleteRemoteLibrary(qint64 libraryId)
             error = qs(e.what());
         }
         QMetaObject::invokeMethod(
-            this,
-            [this, libraryId, ok, error] {
+            QCoreApplication::instance(),
+            [self, libraryId, ok, error] {
+                if (!self)
+                    return;
                 AppContext::get().endOwnWrites();
-                emit remoteLibraryDeleted(libraryId, ok, error);
+                emit self->remoteLibraryDeleted(libraryId, ok, error);
             },
             Qt::QueuedConnection);
     }).detach();

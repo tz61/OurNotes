@@ -18,6 +18,9 @@ TEST_CASE("md5 and sha256 test vectors")
     CHECK(toHex(pbkdf2Sha256("passwd", "salt", 1, 64)) ==
           "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc"
           "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783");
+    CHECK(toHex(pbkdf2Sha256("Password", "NaCl", 80000, 64)) ==
+          "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56"
+          "a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d");
 }
 
 TEST_CASE("normalize folds case and accents")
@@ -34,8 +37,20 @@ TEST_CASE("string helpers")
     CHECK(yearOf("12345") == "");
     CHECK(searchTokens("foo \"Bar baz\"  qux") == std::vector<std::string>{"foo", "bar baz", "qux"});
     CHECK(htmlToText("<div><p>Hello &amp; <b>world</b></p><p>Second</p></div>") == "Hello & world\nSecond");
+    // a reference to no character (a surrogate, past U+10FFFF) is U+FFFD, as a browser shows
+    // it: not bytes that are no UTF-8 (JSON could not be written of them)
+    CHECK(htmlUnescape("a&#xD800;b&#x110000;") == "a\xEF\xBF\xBD" "b\xEF\xBF\xBD");
+    CHECK(htmlUnescape("&#x1F600;&#233;&amp;") == "\xF0\x9F\x98\x80\xC3\xA9&");
     CHECK(noteTitle("<h1>Title</h1><p>body</p>") == "Title");
     CHECK(safeFilename("a/b:c?.pdf") == "a_b_c_.pdf");
+    // long names are cut, their extension kept; a long "extension" (a synced filename) is
+    // no extension, and nothing is read past the end of the name
+    CHECK(safeFilename(std::string(300, 'y') + ".pdf") == std::string(196, 'y') + ".pdf");
+    CHECK(safeFilename("a." + std::string(300, 'x')) == "a." + std::string(198, 'x'));
+    // JSON from elsewhere nested deeper than OurNotes writes is not taken
+    CHECK(parseExternalJson(R"({"a": [1, {"b": "]]]"}]})").is_object());
+    CHECK(parseExternalJson(std::string(100000, '[') + std::string(100000, ']')).is_discarded());
+    CHECK(parseExternalJson(R"(["\"[[[[", "{{{"])", 2).is_array());
     CHECK(isoToEpoch("1970-01-02T00:00:00Z") == 86400);
     CHECK(epochToIso(86400) == "1970-01-02T00:00:00Z");
     CHECK(isValidKey(newKey()));

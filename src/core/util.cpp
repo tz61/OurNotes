@@ -379,6 +379,8 @@ std::string htmlUnescape(std::string_view s)
                 cp = 0;
             }
             if (cp) {
+                if ((cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF)
+                    cp = 0xFFFD;  // no such character: a browser shows this
                 appendUtf8(out, cp);
                 done = true;
             }
@@ -737,6 +739,8 @@ std::string safeFilename(std::string_view name, std::string_view fallback)
         out.erase(out.begin());
     if (out.size() > 200) {
         auto ext = fs::path(out).extension().string();
+        if (ext.size() > 20)  // a name with a dot in it, not an extension (200 - its size wrapped round)
+            ext.clear();
         size_t cut = 200 - ext.size();
         while (cut > 0 && ((unsigned char)out[cut] & 0xC0) == 0x80)
             --cut;
@@ -861,15 +865,18 @@ void writeFileAtomic(const fs::path& path, std::string_view data)
         fs::create_directories(path.parent_path());
     auto tmp = path;
     tmp += ".tmp" + std::to_string(nowMillis() % 100000);
+    std::error_code ec;
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out)
             throw Error("cannot write " + pathString(tmp));
         out.write(data.data(), (std::streamsize)data.size());
-        if (!out)
+        out.close();  // flushes: a full disk shows here, and must not replace the file with a part of it
+        if (!out) {
+            fs::remove(tmp, ec);
             throw Error("write failed: " + pathString(tmp));
+        }
     }
-    std::error_code ec;
     fs::rename(tmp, path, ec);
     if (ec) {
         fs::remove(path, ec);

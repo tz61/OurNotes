@@ -67,12 +67,12 @@ void SearchField::updateCaseButton()
     if (!caseButton_)
         return;
     qreal dpr = devicePixelRatioF();
-    QPixmap pm(QSize(18, 16) * dpr);
+    QPixmap pm(QSize(16, 16) * dpr);  // square, as the field draws it (a wider one is scaled, blurred)
     pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
-    QRectF box(0, 0, 18, 16);
+    QRectF box(0, 0, 16, 16);
     if (caseSensitive_) {
         p.setPen(Qt::NoPen);
         p.setBrush(palette().color(QPalette::Highlight));
@@ -183,6 +183,7 @@ void SearchField::showList(const QStringList& searches)
 {
     if (!popup_) {
         popup_ = new QFrame(window());
+        connect(this, &QObject::destroyed, popup_, &QObject::deleteLater);  // (the window's: it would outlive a closed tab)
         popup_->setObjectName("searchHistoryList");
         popup_->setFrameShape(QFrame::StyledPanel);
         popup_->setAutoFillBackground(true);

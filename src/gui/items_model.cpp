@@ -203,6 +203,12 @@ void ItemsModel::reload()
     }
 
     // per-item summaries: note count and the attachment shown in the Attachments column
+    // (whether its file is there from the row, not from each attachment's data read and
+    // parsed: reloads follow every change, a note's autosave too)
+    auto fileMissing = [&](const ItemRow& r) {
+        Json att{{"key", r.key}, {"linkMode", r.linkMode}, {"filename", r.filename}, {"path", r.path}};
+        return !lib.attachmentFileExists(scope_.libraryId, att);
+    };
     for (auto& root : roots_) {
         int bestScore = -1;
         for (auto& c : root->children) {
@@ -220,24 +226,24 @@ void ItemsModel::reload()
                 root->bestContent = qs(ct);
                 root->bestLinkMode = qs(c->row.linkMode);
                 if (c->row.linkMode != "linked_url") {
-                    auto data = lib.item(scope_.libraryId, c->row.key);
-                    c->fileMissing = data && !lib.attachmentFileExists(scope_.libraryId, *data);
+                    c->fileMissing = fileMissing(c->row);
                     root->fileMissing = c->fileMissing;
                 }
             }
         }
-        if (root->row.itemType == "attachment" && root->row.linkMode != "linked_url") {
-            auto data = lib.item(scope_.libraryId, root->row.key);
-            root->fileMissing = data && !lib.attachmentFileExists(scope_.libraryId, *data);
-        }
+        if (root->row.itemType == "attachment" && root->row.linkMode != "linked_url")
+            root->fileMissing = fileMissing(root->row);
     }
     sortNodes(roots_);
-    for (auto& root : roots_)
+    numberRows(roots_);
+    for (auto& root : roots_) {
         std::stable_sort(root->children.begin(), root->children.end(), [](auto& a, auto& b) {
             if (a->row.itemType != b->row.itemType)
                 return a->row.itemType < b->row.itemType;  // attachments before notes
             return normalize(a->row.title) < normalize(b->row.title);
         });
+        numberRows(root->children);
+    }
     endResetModel();
 }
 
@@ -265,21 +271,50 @@ void ItemsModel::sortNodes(std::vector<std::unique_ptr<Node>>& nodes)
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     int col = sortColumn_;
     bool desc = sortOrder_ == Qt::DescendingOrder;
-    std::stable_sort(nodes.begin(), nodes.end(), [&](const auto& a, const auto& b) {
-        auto va = sortValue(*a, col), vb = sortValue(*b, col);
+    // the values compared, worked out once per item (not twice in every comparison)
+    struct Key {
+        bool isInt = false;
+        int number = 0;
+        QString text, title;
+        bool empty = false;
+    };
+    std::vector<Key> keys(nodes.size());
+    std::vector<size_t> order(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        auto v = sortValue(*nodes[i], col);
+        auto& k = keys[i];
+        k.isInt = v.typeId() == QMetaType::Int;
+        k.number = v.toInt();
+        k.text = v.toString();
+        k.title = qs(normalize(nodes[i]->row.title));
+        k.empty = k.text.isEmpty();
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&](size_t ia, size_t ib) {
+        const Key &a = keys[ia], &b = keys[ib];
         int c;
-        if (va.typeId() == QMetaType::Int)
-            c = va.toInt() - vb.toInt();
+        if (a.isInt)
+            c = a.number - b.number;
         else
-            c = collator.compare(va.toString(), vb.toString());
+            c = collator.compare(a.text, b.text);
         if (c == 0)
-            c = collator.compare(qs(normalize(a->row.title)), qs(normalize(b->row.title)));
+            c = collator.compare(a.title, b.title);
         // empty values always last
-        bool ea = va.toString().isEmpty(), eb = vb.toString().isEmpty();
-        if (ea != eb)
-            return eb;
+        if (a.empty != b.empty)
+            return b.empty;
         return desc ? c > 0 : c < 0;
     });
+    std::vector<std::unique_ptr<Node>> sorted;
+    sorted.reserve(nodes.size());
+    for (size_t i : order)
+        sorted.push_back(std::move(nodes[i]));
+    nodes = std::move(sorted);
+}
+
+void ItemsModel::numberRows(std::vector<std::unique_ptr<Node>>& nodes)
+{
+    for (size_t i = 0; i < nodes.size(); ++i)
+        nodes[i]->rowNo = (int)i;
 }
 
 void ItemsModel::sort(int column, Qt::SortOrder order)
@@ -292,6 +327,7 @@ void ItemsModel::sort(int column, Qt::SortOrder order)
     for (auto& i : before)
         keys.push_back(nodeAt(i) ? nodeAt(i)->row.key : std::string());
     sortNodes(roots_);
+    numberRows(roots_);
     QModelIndexList after;
     for (size_t i = 0; i < keys.size(); ++i)
         after << (keys[i].empty() ? QModelIndex() : indexOfKey(qs(keys[i])).siblingAtColumn(before[(int)i].column()));
@@ -322,17 +358,7 @@ QModelIndex ItemsModel::indexOfKey(const QString& key) const
     if (it == byKey_.end())
         return {};
     Node* n = it->second;
-    if (!n->parent) {
-        for (size_t i = 0; i < roots_.size(); ++i)
-            if (roots_[i].get() == n)
-                return createIndex((int)i, 0, n);
-    } else {
-        auto& siblings = n->parent->children;
-        for (size_t i = 0; i < siblings.size(); ++i)
-            if (siblings[i].get() == n)
-                return createIndex((int)i, 0, n);
-    }
-    return {};
+    return createIndex(n->rowNo, 0, n);
 }
 
 QModelIndex ItemsModel::index(int row, int column, const QModelIndex& parent) const
@@ -352,10 +378,8 @@ QModelIndex ItemsModel::parent(const QModelIndex& index) const
     auto n = nodeAt(index);
     if (!n || !n->parent)
         return {};
-    for (size_t i = 0; i < roots_.size(); ++i)
-        if (roots_[i].get() == n->parent)
-            return createIndex((int)i, 0, n->parent);
-    return {};
+    // (asked for every child row the view lays out or paints: no search of the top level)
+    return createIndex(n->parent->rowNo, 0, n->parent);
 }
 
 int ItemsModel::rowCount(const QModelIndex& parent) const
@@ -416,7 +440,7 @@ QVariant ItemsModel::data(const QModelIndex& index, int role) const
         return {};
     case Qt::ToolTipRole:
         if (col == Title)
-            return qs(r.title);
+            return asPlainText(qs(r.title));
         if (col == Attachments && n->fileMissing)
             return tr("The attached file could not be found");
         return {};

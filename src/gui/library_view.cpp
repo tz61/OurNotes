@@ -68,7 +68,8 @@ protected:
             QPainter p(viewport());
             QSize area = viewport()->size();
             qreal dpr = viewport()->devicePixelRatioF();
-            if (scaled_.isNull() || scaledFor_ != area) {  // scaled once per size
+            // scaled once per size (and screen: moved to one of another scale, it was blurred)
+            if (scaled_.isNull() || scaledFor_ != area || scaled_.devicePixelRatio() != dpr) {
                 QSize s = background_.size().scaled(area, Qt::KeepAspectRatio);
                 scaled_ = QPixmap::fromImage(background_.scaled(s * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation));
                 scaled_.setDevicePixelRatio(dpr);
@@ -628,12 +629,18 @@ void LibraryView::updateBandBackground()
         }
     }
     if (files.isEmpty()) {
+        bandFile_.clear();
         view->setBackgroundImage({});
         return;
     }
     auto now = QDateTime::currentDateTime();
     int slot = now.time().hour() / 2;
-    view->setBackgroundImage(QImage(dir.filePath(files[slot % files.size()])));
+    // the same picture is not read and scaled again (at every change of appearance, which
+    // L in a PDF is, too)
+    if (auto file = dir.filePath(files[slot % files.size()]); file != bandFile_) {
+        bandFile_ = file;
+        view->setBackgroundImage(QImage(file));
+    }
     // the next band at the next even hour
     QDateTime next(now.date().addDays(slot == 11 ? 1 : 0), QTime((slot + 1) % 12 * 2, 0));
     bandTimer_.start(int(std::clamp<qint64>(now.msecsTo(next) + 500, 1000, 2 * 3600 * 1000)));
@@ -1013,10 +1020,10 @@ void LibraryView::mergeSelected()
               [](const Json& a, const Json& b) { return jstr(a, "dateAdded") < jstr(b, "dateAdded"); });
     auto master = jstr(items.front(), "key");
     if (QMessageBox::question(this, tr("Merge Items"),
-                              tr("Merge %n items into \"%1\" (the oldest)? Notes, attachments, tags and collections "
-                                 "are moved to it; the other items go to the trash.",
-                                 nullptr, keys.size())
-                                  .arg(jqs(items.front(), "title"))) != QMessageBox::Yes)
+                              asPlainText(tr("Merge %n items into \"%1\" (the oldest)? Notes, attachments, tags and "
+                                             "collections are moved to it; the other items go to the trash.",
+                                             nullptr, keys.size())
+                                              .arg(jqs(items.front(), "title")))) != QMessageBox::Yes)
         return;
     std::vector<std::string> others;
     for (size_t i = 1; i < items.size(); ++i)

@@ -466,7 +466,7 @@ void PreferencesDialog::addServer()
             dlg.accept();
         } catch (const std::exception& e) {
             QApplication::restoreOverrideCursor();
-            QMessageBox::warning(&dlg, tr("Sign In"), tr("Could not sign in: %1").arg(qs(e.what())));
+            QMessageBox::warning(&dlg, tr("Sign In"), asPlainText(tr("Could not sign in: %1").arg(qs(e.what()))));
         }
     });
     if (dlg.exec() == QDialog::Accepted) {

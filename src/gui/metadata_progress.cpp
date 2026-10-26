@@ -149,7 +149,7 @@ MetadataProgressDialog::MetadataProgressDialog(int64_t libraryId, std::vector<Jo
         auto* row = new QTreeWidgetItem(list_);
         row->setIcon(0, statusIcon(Status::Pending));
         row->setText(0, job.name);
-        row->setToolTip(0, job.name);
+        row->setToolTip(0, asPlainText(job.name));
         row->setText(1, tr("Waiting"));
         row->setForeground(1, palette().color(QPalette::Disabled, QPalette::Text));
     }
@@ -260,7 +260,7 @@ void MetadataProgressDialog::onResult(int index, const std::optional<formats::Pd
         row->setIcon(0, statusIcon(Status::Found));
         row->setText(1, jqs(match->item, "title"));
         row->setToolTip(1, jqs(match->item, "title") + "\n" + tr("Double-click to show it in the library"));
-        row->setForeground(1, palette().color(QPalette::Text));
+        row->setForeground(1, QBrush());  // the list's own text colour, which follows light and dark
         row->setText(2, qs(match->source));
     } else {
         ++missed_;

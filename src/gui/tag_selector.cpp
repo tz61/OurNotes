@@ -149,7 +149,7 @@ void TagSelector::showMenu(const QPoint& pos)
             lib.renameTag(libraryId_, ss(tag), ss(name.trimmed()));
     })->setEnabled(editable);
     menu.addAction(tr("Delete Tag…"), this, [&] {
-        if (QMessageBox::question(this, tr("Delete Tag"), tr("Remove the tag \"%1\" from all items?").arg(tag)) ==
+        if (QMessageBox::question(this, tr("Delete Tag"), asPlainText(tr("Remove the tag \"%1\" from all items?").arg(tag))) ==
             QMessageBox::Yes)
             lib.deleteTag(libraryId_, ss(tag));
     })->setEnabled(editable);

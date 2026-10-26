@@ -111,15 +111,15 @@ class SvgIconEngine : public QIconEngine {
 public:
     explicit SvgIconEngine(QString body) : body_(std::move(body)), id_(qHash(body_)) {}
 
-    void paint(QPainter* p, const QRect& rect, QIcon::Mode mode, QIcon::State) override
+    // Item views paint their icons through here (QIcon::paint), every row on every
+    // repaint: drawn from the cached pixmap at the device's pixel ratio, not parsed and
+    // rendered from the SVG each time.
+    void paint(QPainter* p, const QRect& rect, QIcon::Mode mode, QIcon::State state) override
     {
-        QSvgRenderer renderer(svg());
-        p->save();
-        p->setRenderHint(QPainter::Antialiasing);
-        if (mode == QIcon::Disabled)
-            p->setOpacity(0.35);
-        renderer.render(p, rect);
-        p->restore();
+        if (rect.isEmpty())
+            return;
+        qreal dpr = p->device() ? p->device()->devicePixelRatio() : qApp->devicePixelRatio();
+        p->drawPixmap(rect, scaledPixmap(rect.size(), mode, state, dpr));
     }
 
     QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
@@ -136,7 +136,7 @@ public:
         pm = QPixmap(size);
         pm.fill(Qt::transparent);
         QPainter p(&pm);
-        paint(&p, QRect(QPoint(0, 0), size), mode, state);
+        draw(&p, QRect(QPoint(0, 0), size), mode);
         p.end();
         QPixmapCache::insert(cacheKey, pm);
         return pm;
@@ -153,6 +153,15 @@ public:
     QString key() const override { return QStringLiteral("ournotes-svg"); }
 
 private:
+    void draw(QPainter* p, const QRect& rect, QIcon::Mode mode) const
+    {
+        QSvgRenderer renderer(svg());
+        p->setRenderHint(QPainter::Antialiasing);
+        if (mode == QIcon::Disabled)
+            p->setOpacity(0.35);
+        renderer.render(p, rect);
+    }
+
     QByteArray svg() const
     {
         return QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")

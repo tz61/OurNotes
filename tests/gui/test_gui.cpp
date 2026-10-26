@@ -1649,6 +1649,32 @@ TEST_CASE("formulas: what was fixed in MicroTeX still draws as before, or better
     }
 }
 
+TEST_CASE("notes: a synced note's <img> naming a file is not read; titles in tooltips stay text")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "secret.png";
+    QImage red(4, 4, QImage::Format_RGB32);
+    red.fill(Qt::red);
+    REQUIRE(red.save(qpath(file)));
+    NoteTextEdit edit;
+    for (auto url : {QUrl::fromLocalFile(qpath(file)), QUrl(qpath(file))}) {
+        INFO(url.toString().toStdString());
+        auto v = edit.document()->resource(QTextDocument::ImageResource, url);
+        CHECK(v.value<QImage>().isNull());
+        CHECK(v.toByteArray().isEmpty());
+    }
+    edit.setHtml("<p>x <img src=\"" + qpath(file).toHtmlEscaped() + "\"> y</p>");
+    CHECK(edit.toPlainText().startsWith("x "));
+    // a web address is not read either way, and is still not the note's own (pasted: adopted)
+    CHECK(!edit.document()->resource(QTextDocument::ImageResource, QUrl("https://example.org/a.png")).isValid());
+
+    CHECK(asPlainText("A title") == "A title");
+    auto tip = asPlainText("<img src=\"/dev/zero\"> & co");
+    CHECK(!tip.contains("<img"));
+    CHECK(tip.contains("&lt;img src=&quot;/dev/zero&quot;&gt; &amp; co"));
+}
+
 TEST_CASE("notes: typing $...$ makes a formula, prices stay text")
 {
     app();
@@ -7340,7 +7366,7 @@ TEST_CASE("sync: another computer's push is pulled by itself, at once")
     // here, nobody syncing: it comes in a few seconds (a folder is looked at every 3)
     REQUIRE(QTest::qWaitFor([&] { return jstr(*env.library.item(env.lib, paperKey), "title") == "Changed there"; },
                             sync::LocalTransport::kPollSeconds * 1000 + 5000));
-    CHECK(syncs == 2);
+    CHECK(QTest::qWaitFor([&] { return syncs == 2; }, 5000));  // (its end is told after what it pulled is in)
     // and its own sync (nothing new) is not taken for another computer's
     QTest::qWait(sync::LocalTransport::kPollSeconds * 1000 + 500);
     CHECK(syncs == 2);

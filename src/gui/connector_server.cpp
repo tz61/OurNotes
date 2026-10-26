@@ -253,7 +253,7 @@ bool ConnectorServer::start(int port)
     auto jsonBody = [](const httplib::Request& req) {
         if (req.body.size() > kMaxJson)
             throw Refused("request too large", 413);
-        auto j = Json::parse(req.body, nullptr, false);
+        auto j = parseExternalJson(req.body);
         if (!j.is_object())
             throw Refused("expected a JSON object", 400);
         return j;
@@ -309,7 +309,7 @@ bool ConnectorServer::start(int port)
             std::ofstream(file, std::ios::binary).write(req.body.data(), (std::streamsize)req.body.size());
             int64_t lib = number(req.get_param_value("library"));
             auto parent = req.get_param_value("parent"), target = req.get_param_value("target");
-            auto tags = Json::parse(req.get_param_value("tags"), nullptr, false);
+            auto tags = parseExternalJson(req.get_param_value("tags"));
             // copies: when OurNotes closes, the request may end before the GUI gets to it
             sendJson(res, onGui([this, file, lib, parent, url, title, target, tags] {
                 return addPdf(file, lib, parent, url, title, target, tags);
