@@ -34,12 +34,12 @@ inline std::vector<std::string> toStdVector(const QStringList& v)
     return out;
 }
 
-// A tooltip of text from a library (a title, a name), shown as it is: a tooltip that looks
-// like HTML is rich text, and rich text reads the files its <img> tags name (one naming
-// /dev/zero, synced from a group, took the app down).
-inline QString plainTip(const QString& s)
+// A tooltip or message with text from a library (a title, a name), shown as it is: one
+// that looks like HTML is rich text, and rich text reads the files its <img> tags name
+// (one naming /dev/zero, synced from a group, took the app down).
+inline QString asPlainText(const QString& s)
 {
-    return Qt::mightBeRichText(s) ? "<p style=\"white-space:pre\">" + s.toHtmlEscaped() + "</p>" : s;
+    return Qt::mightBeRichText(s) ? "<p style=\"white-space:pre-wrap\">" + s.toHtmlEscaped() + "</p>" : s;
 }
 
 // MIME type used when dragging items between views (JSON: {"library": id, "keys": [...]}).

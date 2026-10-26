@@ -149,7 +149,7 @@ MetadataProgressDialog::MetadataProgressDialog(int64_t libraryId, std::vector<Jo
         auto* row = new QTreeWidgetItem(list_);
         row->setIcon(0, statusIcon(Status::Pending));
         row->setText(0, job.name);
-        row->setToolTip(0, plainTip(job.name));
+        row->setToolTip(0, asPlainText(job.name));
         row->setText(1, tr("Waiting"));
         row->setForeground(1, palette().color(QPalette::Disabled, QPalette::Text));
     }

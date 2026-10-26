@@ -1669,8 +1669,8 @@ TEST_CASE("notes: a synced note's <img> naming a file is not read; titles in too
     // a web address is not read either way, and is still not the note's own (pasted: adopted)
     CHECK(!edit.document()->resource(QTextDocument::ImageResource, QUrl("https://example.org/a.png")).isValid());
 
-    CHECK(plainTip("A title") == "A title");
-    auto tip = plainTip("<img src=\"/dev/zero\"> & co");
+    CHECK(asPlainText("A title") == "A title");
+    auto tip = asPlainText("<img src=\"/dev/zero\"> & co");
     CHECK(!tip.contains("<img"));
     CHECK(tip.contains("&lt;img src=&quot;/dev/zero&quot;&gt; &amp; co"));
 }

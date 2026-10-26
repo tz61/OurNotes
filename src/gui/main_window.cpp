@@ -118,7 +118,7 @@ MainWindow::MainWindow()
     layout()->setSizeConstraint(QLayout::SetNoConstraint);  // see followMinimumSize()
     connect(&titleBarTimer_, &QTimer::timeout, this, &MainWindow::followTitleBar);
     status_ = new QLabel(this);
-    status_->setTextFormat(Qt::PlainText);  // titles and library names, never rich text (see plainTip)
+    status_->setTextFormat(Qt::PlainText);  // titles and library names, never rich text (see asPlainText)
     statusBar()->addWidget(status_, 1);
 
     sync_ = new SyncController(this);
@@ -178,7 +178,7 @@ MainWindow::MainWindow()
     connect(sync_, &SyncController::finished, this, [this](bool ok, const QString& summary) {
         syncButton_->setEnabled(true);
         syncButton_->setIcon(icon(ok ? "sync" : "sync-error"));
-        syncButton_->setToolTip(ok ? tr("Sync (last: %1)").arg(QTime::currentTime().toString("HH:mm")) : plainTip(summary));
+        syncButton_->setToolTip(ok ? tr("Sync (last: %1)").arg(QTime::currentTime().toString("HH:mm")) : asPlainText(summary));
         setStatus(ok ? tr("Sync finished: %1").arg(summary) : tr("Sync failed: %1").arg(summary.section('\n', 0, 0)),
                   ok ? 8000 : 0);
     });
@@ -190,12 +190,12 @@ MainWindow::MainWindow()
         setStatus({});
         if (!ok)
             QMessageBox::warning(this, tr("Delete Library"),
-                                 tr("\"%1\" could not be deleted on the sync target, so it was kept:\n\n%2")
-                                     .arg(qs(info->name), error));
+                                 asPlainText(tr("\"%1\" could not be deleted on the sync target, so it was kept:\n\n%2")
+                                                 .arg(qs(info->name), error)));
         else if (!lib.libraryContents(id).empty())  // filled in the meantime: the next sync uploads it again
             QMessageBox::information(this, tr("Delete Library"),
-                                     tr("\"%1\" got new entries while it was being deleted, so it was kept.")
-                                         .arg(qs(info->name)));
+                                     asPlainText(tr("\"%1\" got new entries while it was being deleted, so it was kept.")
+                                                     .arg(qs(info->name))));
         else
             lib.deleteLibrary(id);
     });
@@ -204,7 +204,7 @@ MainWindow::MainWindow()
                 if (ok)
                     openAttachment(lib, key);
                 else
-                    QMessageBox::warning(this, tr("Download File"), tr("Could not download the file: %1").arg(error));
+                    QMessageBox::warning(this, tr("Download File"), asPlainText(tr("Could not download the file: %1").arg(error)));
             });
     connect(indexer_, &FulltextIndexer::progress, this, [this](int done, int total) {
         setStatus(tr("Indexing documents for full-text search: %1/%2").arg(done).arg(total), 3000);
@@ -639,7 +639,7 @@ void MainWindow::openAttachment(int64_t libraryId, const QString& key, int page,
             QApplication::restoreOverrideCursor();
         } catch (const std::exception& e) {
             QApplication::restoreOverrideCursor();
-            QMessageBox::warning(this, tr("Open PDF"), tr("Could not open the PDF:\n\n%1").arg(qs(e.what())));
+            QMessageBox::warning(this, tr("Open PDF"), asPlainText(tr("Could not open the PDF:\n\n%1").arg(qs(e.what()))));
             return;
         }
         auto title = reader->title();

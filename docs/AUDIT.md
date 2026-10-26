@@ -99,13 +99,14 @@ the browser (status bar), and `<img>` in a synced note.
 | crash / file read | `note_editor.cpp` `NoteTextEdit::loadResource` | A note's `<img>` naming a local or relative path was read from disk. Not read now (the note's own pictures are resources; web addresses are not read either way, and pasted ones are still adopted). Test: "notes: a synced note's <img> naming a file is not read". |
 | crash / file read | `main_window.cpp` status bar; `item_pane.cpp` dates; `annotation_sidebar.cpp` tags | Plain-text labels. |
 | crash / file read | `annotation_sidebar.cpp` header | The page label (and type) are escaped in the card's rich-text header. |
-| crash / file read | tooltips: `items_model.cpp` titles, `tab_widget.cpp` tabs, `sync_history.cpp`, `metadata_progress.cpp`, `note_editor.cpp` links, the sync button | Through `plainTip()` (`common.h`): text that looks like HTML is escaped. |
+| crash / file read | tooltips: `items_model.cpp` titles, `tab_widget.cpp` tabs, `sync_history.cpp`, `metadata_progress.cpp`, `note_editor.cpp` links, the sync button | Through `asPlainText()` (`common.h`): text that looks like HTML is escaped. |
 
 Reported: pasting HTML (`setHtml` on a parentless `QTextDocument` in `note_editor.cpp`
 paste paths) still lets Qt read local files named by `<img>` in the clipboard's HTML.
-That is the user's own clipboard, so it was left. Message boxes that quote titles
-(`QMessageBox` auto-detects rich text) were not all checked; they need the user to act
-first.
+That is the user's own clipboard, so it was left. Message boxes quoting a collection's,
+tag's, note's or library's name, an item's title, or an error from the sync server or a
+PDF (`QMessageBox` takes text that looks like HTML as rich text too) go through
+`asPlainText()` as well (`plainTip()` renamed, as it is no longer only for tooltips).
 
 Not finished: the second-pass review was cut short. Its other high-ranked lead,
 attachments synced by others being opened with the system's handler with no check of the

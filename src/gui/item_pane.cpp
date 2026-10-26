@@ -668,10 +668,10 @@ void TagsBox::confirmRemove(const QString& tag)
     if (keys_.isEmpty())
         return;
     QMessageBox box(QMessageBox::Question, tr("Remove Tag"),
-                    keys_.size() == 1 ? tr("Remove the tag \"%1\" from this item?").arg(tag)
-                                      : tr("Remove the tag \"%1\" from the %2 selected items?")
-                                            .arg(tag)
-                                            .arg(keys_.size()),
+                    asPlainText(keys_.size() == 1 ? tr("Remove the tag \"%1\" from this item?").arg(tag)
+                                                  : tr("Remove the tag \"%1\" from the %2 selected items?")
+                                                        .arg(tag)
+                                                        .arg(keys_.size())),
                     QMessageBox::NoButton, this);
     box.setObjectName("confirmRemoveTag");
     auto* remove = box.addButton(tr("Remove"), QMessageBox::DestructiveRole);
@@ -1210,8 +1210,8 @@ void LocationBox::rebuild()
         });
         connect(erase, &QPushButton::clicked, this, [this, trashedKey, title] {
             QMessageBox box(QMessageBox::Warning, tr("Delete Permanently"),
-                            tr("Permanently delete \"%1\", with its attachments and notes? This cannot be undone.")
-                                .arg(title),
+                            asPlainText(tr("Permanently delete \"%1\", with its attachments and notes? This cannot be undone.")
+                                            .arg(title)),
                             QMessageBox::NoButton, this);
             box.setObjectName("confirmDeletePermanently");
             auto* yes = box.addButton(tr("Delete Permanently"), QMessageBox::DestructiveRole);

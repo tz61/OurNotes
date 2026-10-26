@@ -40,7 +40,7 @@ public:
 
     void sync()
     {
-        setToolTip(plainTip(tabs_->tabToolTip(index())));  // (titles)
+        setToolTip(asPlainText(tabs_->tabToolTip(index())));  // (titles)
         updateGeometry();
         update();
     }

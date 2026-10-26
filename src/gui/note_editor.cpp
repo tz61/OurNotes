@@ -2088,7 +2088,7 @@ void NoteTextEdit::mouseMoveEvent(QMouseEvent* e)
         viewport()->setToolTip(tr("Click to edit the formula"));
     } else if (reference) {
         auto opens = describeLink ? describeLink(href).second : QString();
-        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : plainTip(tr("Click to open %1").arg(opens)));
+        viewport()->setToolTip(opens.isEmpty() ? tr("Not in your libraries") : asPlainText(tr("Click to open %1").arg(opens)));
     } else {
         viewport()->setToolTip({});
     }
@@ -2802,7 +2802,7 @@ void enableNoteTrash(QListWidget* list, std::function<int64_t()> libraryId)
         if (key.isEmpty() || !AppContext::get().editable(lib))
             return;
         QMessageBox box(QMessageBox::Question, QObject::tr("Move to Trash"),
-                        QObject::tr("Move the note \"%1\" to the trash?").arg(title), QMessageBox::NoButton, list);
+                        asPlainText(QObject::tr("Move the note \"%1\" to the trash?").arg(title)), QMessageBox::NoButton, list);
         box.setObjectName("confirmTrashNote");
         auto* move = box.addButton(QObject::tr("Move to Trash"), QMessageBox::DestructiveRole);
         box.addButton(QMessageBox::Cancel);
