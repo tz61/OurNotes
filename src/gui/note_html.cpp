@@ -455,13 +455,17 @@ QString displayFormula(const QTextCharFormat& f, const QString& latex)
 }
 
 // caption: the fragment is in a caption, whose gray (the text's unless it has a colour of its
-// own) is not saved.
+// own) is not saved, hidden as too near the background to read (adaptColors) or not.
 QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefault, QSizeF size = {}, bool caption = false)
 {
     auto f = frag.charFormat();
-    if (caption && !f.hasProperty(kOriginalForegroundProperty) && f.hasProperty(QTextFormat::ForegroundBrush) &&
-        f.foreground().color() == captionCharFormat().foreground().color())
+    auto gray = captionCharFormat().foreground().color();
+    if (caption && (f.hasProperty(kOriginalForegroundProperty)
+                        ? f.property(kOriginalForegroundProperty).value<QColor>() == gray
+                        : f.hasProperty(QTextFormat::ForegroundBrush) && f.foreground().color() == gray)) {
+        f.clearProperty(kOriginalForegroundProperty);
         f.clearProperty(QTextFormat::ForegroundBrush);
+    }
     if (int kind = f.property(kMathSourceProperty).toInt()) {
         auto latex = mathSourceLatex(frag.text(), kind == 2);
         // an empty one is its signs, as text: what stays when it is left so

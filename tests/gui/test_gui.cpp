@@ -6206,6 +6206,30 @@ TEST_CASE("notes: a tooltip in a synced note's text is shown as text, its <img> 
     CHECK(!html.contains("#202020"));
 }
 
+TEST_CASE("notes: a caption's gray is not saved as its text's colour in a dark theme it is hidden in")
+{
+    app();
+    PictureNote note;
+    auto& edit = note.edit;
+    edit.moveCursor(QTextCursor::End);
+    edit.insertPictures({filled(300, 200, Qt::red)});
+    note.click("pictureCaption");
+    note.type("Fig. 1");
+    auto saved = [&] { return documentToNoteHtml(note.doc()).toStdString(); };
+    REQUIRE(saved().find("<p class=\"caption\">Fig. 1</p>") != std::string::npos);
+    // Dracula's, Nord's, Arc-Dark's: dark enough for the gray to be hidden as too near to read
+    for (auto base : {QColor("#282a36"), QColor("#2e3440"), QColor("#383c4a")}) {
+        auto dark = edit.palette();
+        dark.setColor(QPalette::Base, base);
+        dark.setColor(QPalette::Text, QColor("#f8f8f2"));
+        edit.setPalette(dark);
+        QApplication::processEvents();
+        CAPTURE(base.name().toStdString());
+        CAPTURE(saved());
+        CHECK(saved().find("<p class=\"caption\">Fig. 1</p>") != std::string::npos);
+    }
+}
+
 TEST_CASE("notes: LaTeX pasted into an empty caption looks as it is saved: a caption's text, a formula alone too")
 {
     app();
