@@ -6,7 +6,29 @@ is on this branch) or **reported** (with why it was left).
 
 How it was checked: Qt 6.8.4 and MuPDF 1.28.5 (conda-forge), the full build, and
 `ctest` with the GUI tests offscreen, before and after each round of fixes. All 7 test
-programs pass before and after.
+programs pass before and after. Also: the suite under ASan + UBSan + LeakSanitizer,
+libFuzzer on the import parsers and string helpers, timings of the hot paths changed,
+and each finding of the later rounds given to a skeptic told to refute it.
+
+In short: 56 findings fixed (some rows cover several places), each with the suite green
+after it, and new tests where a test could show it. The ones that mattered most:
+
+- **Crashes from what others sync.** Text that looks like HTML (a library's, tag's,
+  collection's name, a title, a date, a note's `<img>`) was shown as rich text, which reads
+  the files `<img>` names: `/dev/zero` took every member of a group down (rounds 2, 5). A
+  long attachment filename and deeply nested JSON crashed the sync too (round 3).
+- **Sync.** A file conflict made a new conflicted copy at every sync, forever (round 5);
+  a target restored from a backup made the next sync push the whole library (round 6);
+  a sync was quadratic in objects (round 1: 60k items, 36 s → 15 s).
+- **Memory.** The formula cache had no size limit; the link preview kept a 10 MB tile per
+  page wheeled through; MicroTeX leaked at each half-typed matrix (rounds 1, 3, 4).
+- **Speed while typing or scrolling.** Icons parsed per row per paint, link tints made per
+  paint (up to 28 ms a page), the item list's reload after each autosave (227 → 100 ms),
+  every hidden PDF tab reloading its annotations (rounds 1, 3, 4, 5).
+- **CLI.** A 20 KB picture overflowed the stack (`std::regex`); a quote not in a PDF could
+  be "found" across a page break and a wrong highlight saved (rounds 4, 5).
+
+Reported but not fixed, with the reasons, at the end of round 1 and in round 5's list.
 
 > Note for anyone repeating this: with conda-forge's FreeType 2.14, `test_gui` crashed
 > in `QFontEngineFT::loadGlyph` ("render glyph failed err=62") while MicroTeX drew a
