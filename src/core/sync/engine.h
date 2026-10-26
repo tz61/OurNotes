@@ -85,10 +85,15 @@ private:
     std::string targetId_;
     SyncOptions options_;
     // Where each object is in the changes of the report record() last added to (by library,
-    // type, key), so that a sync of many objects does not search them all for each one.
+    // type, key), so that a sync of many objects does not search them all for each one. An
+    // object recorded again leaves its earlier change marked superseded (taking it out there,
+    // and moving all after it, made a sync bringing everything in twice quadratic), which
+    // compact() takes out at the end of a library's sync.
     std::map<std::tuple<int64_t, std::string, std::string>, size_t> changeIndex_;
+    std::vector<bool> superseded_;
     const SyncReport* indexed_ = nullptr;
     size_t indexedSize_ = 0;
+    void compact(SyncReport& report);
 };
 
 } // namespace on::sync

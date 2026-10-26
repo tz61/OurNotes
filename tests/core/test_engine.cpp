@@ -556,3 +556,41 @@ TEST_CASE("server reset triggers re-upload")
     CHECK(r.pushed == 1);
     CHECK(server.libs.begin()->second.objects.size() == 1);
 }
+
+TEST_CASE("objects recorded twice in a sync (sent, then brought back changed) are one change each in the report")
+{
+    TempDir tmp;
+    // another computer changing what was just pushed, before this one pulls again
+    struct EditingTransport : FakeTransport {
+        PushResult push(const std::string& uid, const std::vector<PushObject>& objects) override
+        {
+            auto r = FakeTransport::push(uid, objects);
+            auto& l = libs.at(uid);
+            for (auto& o : objects)
+                if (auto it = l.objects.find({o.type, o.key}); it != l.objects.end() && it->second.data.is_object()) {
+                    it->second.data["title"] = "Changed elsewhere";
+                    it->second.version = ++l.info.version;
+                }
+            return r;
+        }
+    } server;
+    Library lib(tmp.path / "data");
+    auto id = lib.defaultLibrary();
+    std::set<std::string> made;
+    for (int i = 0; i < 300; ++i)
+        made.insert(jstr(lib.createItem(id, Json{{"itemType", "book"}, {"title", "Book " + std::to_string(i)}}), "key"));
+    auto report = syncWith(lib, server);
+    std::map<std::string, int> times;
+    std::map<std::string, std::string> action;
+    for (auto& c : report.changes)
+        if (made.count(c.key)) {
+            ++times[c.key];
+            action[c.key] = c.action;
+        }
+    REQUIRE(times.size() == made.size());
+    for (auto& [key, n] : times) {
+        CHECK(n == 1);
+        CHECK(action[key] == "added");  // (made here in this sync, then changed: added)
+    }
+    CHECK(jstr(*lib.item(id, *made.begin()), "title") == "Changed elsewhere");
+}

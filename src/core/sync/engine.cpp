@@ -202,6 +202,11 @@ void SyncEngine::syncLibrary(int64_t libraryId, SyncReport& report)
         lib = library_.library(libraryId);
     }
     log("Syncing \"" + lib->name + "\"");
+    struct Compacted {  // its changes recorded again taken out, when done or given up
+        SyncEngine* engine;
+        SyncReport& report;
+        ~Compacted() { engine->compact(report); }
+    } compacted{this, report};
     pull(*lib, report);
     if (options_.syncFiles && !cancelled())
         syncFiles(*lib, report);
@@ -288,37 +293,51 @@ void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type
     if (type == "setting")
         c.title = key;
     c.title = shortened(c.title);
-    auto reindex = [&](size_t from) {
-        for (size_t i = from; i < report.changes.size(); ++i) {
+    if (indexed_ != &report || indexedSize_ != report.changes.size()) {  // another report, or changed elsewhere
+        compact(report);
+        changeIndex_.clear();
+        for (size_t i = 0; i < report.changes.size(); ++i) {
             auto& o = report.changes[i];
             changeIndex_[{o.libraryId, o.type, o.key}] = i;
         }
-    };
-    if (indexed_ != &report || indexedSize_ != report.changes.size()) {  // another report, or changed elsewhere
-        changeIndex_.clear();
-        reindex(0);
+        superseded_.assign(report.changes.size(), false);
         indexed_ = &report;
     }
     auto found = changeIndex_.find({lib, type, key});
     if (found != changeIndex_.end()) {
-        size_t pos = found->second;
-        auto it = report.changes.begin() + (std::ptrdiff_t)pos;
+        auto& earlier = report.changes[found->second];
         // the last change wins, but an object that came or went in this sync stays added
-        if (it->action == "added" && action == "changed")
+        if (earlier.action == "added" && action == "changed")
             c.action = "added";
         if (c.title.empty())
-            c.title = it->title;
-        if (c.by.empty() && !incoming && !it->incoming)
-            c.by = it->by;
-        report.changes.erase(it);
-        changeIndex_.erase(found);
-        reindex(pos);
+            c.title = earlier.title;
+        if (c.by.empty() && !incoming && !earlier.incoming)
+            c.by = earlier.by;
+        superseded_[found->second] = true;  // (taken out by compact())
     }
     if (auto info = library_.library(lib))
         c.library = info->name;
     changeIndex_[{lib, type, key}] = report.changes.size();
     report.changes.push_back(std::move(c));
+    superseded_.push_back(false);
     indexedSize_ = report.changes.size();
+}
+
+void SyncEngine::compact(SyncReport& report)
+{
+    if (indexed_ != &report || superseded_.size() != report.changes.size())
+        return;  // (nothing marked in it)
+    size_t kept = 0;
+    for (size_t i = 0; i < report.changes.size(); ++i)
+        if (!superseded_[i]) {
+            if (kept != i)
+                report.changes[kept] = std::move(report.changes[i]);
+            ++kept;
+        }
+    report.changes.resize(kept);
+    indexed_ = nullptr;  // (made again at the next record())
+    changeIndex_.clear();
+    superseded_.clear();
 }
 
 void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& report)
