@@ -2060,17 +2060,31 @@ void NoteTextEdit::insertFromMimeData(const QMimeData* source)
             return tmp.blockCount() > 1 &&
                    (!pictureRow(tmp.begin()).empty() || tmp.lastBlock().blockFormat().hasProperty(kCaptionProperty));
         };
-        if (figure()) {  // (an empty line at its start or end, as a selection takes it: not part of it)
-            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.lastBlock().length() <= 1;) {
+        // (an empty line at its start or end, as a selection takes it: not part of it; but not
+        // one beside a table, as a document has after one: a selection up to it took the whole
+        // table out, and one before a table could not be taken out, again and again)
+        auto besideTable = [&](const QTextBlock& block, const QTextBlock& other) {
+            return tmp.frameAt(block.position()) != tmp.frameAt(other.position());
+        };
+        if (figure()) {
+            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.lastBlock().length() <= 1 &&
+                                         !besideTable(tmp.lastBlock(), tmp.lastBlock().previous());) {
+                int blocks = tmp.blockCount();
                 edge.setPosition(tmp.lastBlock().position() - 1);
                 edge.setPosition(tmp.lastBlock().position(), QTextCursor::KeepAnchor);
                 edge.removeSelectedText();
+                if (tmp.blockCount() == blocks)
+                    break;
             }
-            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.begin().length() <= 1;) {
+            for (QTextCursor edge(&tmp); tmp.blockCount() > 1 && tmp.begin().length() <= 1 &&
+                                         !besideTable(tmp.begin(), tmp.begin().next());) {
+                int blocks = tmp.blockCount();
                 auto next = tmp.begin().next().blockFormat();
                 edge.setPosition(0);
                 edge.deleteChar();
                 edge.setBlockFormat(next);
+                if (tmp.blockCount() == blocks)
+                    break;
             }
         }
         if (figure() && QTextCursor(textCursor()).currentTable()) {  // (a cell: one line saved, no captions)

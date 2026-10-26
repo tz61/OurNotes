@@ -42,6 +42,8 @@
 #include <sstream>
 #include <httplib.h>
 #include <atomic>
+#include <cstdio>
+#include <thread>
 #include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
@@ -6227,6 +6229,87 @@ TEST_CASE("notes: LaTeX pasted into an empty caption looks as it is saved: a cap
     edit.paste();
     INFO(documentToNoteHtml(note.doc()).toStdString());
     CHECK(documentToNoteHtml(note.doc()).contains("<p class=\"caption\">"));
+}
+
+TEST_CASE("notes: a figure copied with a table beside it is pasted whole, the table too, and at once")
+{
+    app();
+    // (pasting one that began with an empty line before a table never ended: a watchdog)
+    std::atomic<bool> done{false};
+    std::thread watchdog([&] {
+        for (int i = 0; i < 600 && !done; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!done) {
+            std::fprintf(stderr, "pasting a figure beside a table did not end\n");
+            std::_Exit(3);
+        }
+    });
+    QImage image(300, 200, QImage::Format_RGB32);
+    image.fill(Qt::darkCyan);
+    QString pic = "<img src=\"test:100\" width=\"120\" height=\"80\">";
+    QString table = "<table border=\"1\"><tr><td>c1</td><td>c2</td></tr><tr><td>c3</td><td>c4</td></tr></table>";
+    auto tables = [](QTextDocument* doc) {
+        int n = 0;
+        for (auto* f : doc->rootFrame()->childFrames())
+            n += qobject_cast<QTextTable*>(f) != nullptr;
+        return n;
+    };
+    auto pictures = [](QTextDocument* doc) {
+        int n = 0;
+        for (auto block = doc->begin(); block.isValid(); block = block.next())
+            n += (int)pictureRow(block).size();
+        return n;
+    };
+    struct Case {
+        const char* what;
+        QString html;
+        int caption;  // its block, or -1
+        int fromBlock, fromOffset, toBlock, toOffset;
+    };
+    // a table's cells are blocks 2..5 (1..4 with nothing before), the empty one after it next
+    std::vector<Case> cases = {
+        {"a picture's line down to the line after a table", "<p>" + pic + "</p><p>x</p>" + table + "<p>after</p>", -1, 0, 0, 6, 0},
+        {"a picture's line down into a table", "<p>" + pic + "</p><p>x</p>" + table + "<p>after</p>", -1, 0, 0, 5, 1},
+        {"from in a table down to a caption", "<p>before</p>" + table + "<p>" + pic + "</p><p>Cap text</p><p>after</p>", 7, 1, 1, 7, 8},
+        {"from the empty line before a table to a caption",
+         "<p>before</p><p></p>" + table + "<p>" + pic + "</p><p>Cap text</p><p>after</p>", 8, 1, 0, 8, 8},
+    };
+    for (auto& k : cases) {
+        CAPTURE(k.what);
+        PictureNote from({700, 600}, k.html);
+        from.doc()->addResource(QTextDocument::ImageResource, QUrl("test:100"), image);
+        if (k.caption >= 0)
+            setCaption(from.doc()->findBlockByNumber(k.caption), true);
+        QTextCursor sel(from.doc());
+        sel.setPosition(from.doc()->findBlockByNumber(k.fromBlock).position() + k.fromOffset);
+        sel.setPosition(from.doc()->findBlockByNumber(k.toBlock).position() + k.toOffset, QTextCursor::KeepAnchor);
+        from.edit.setTextCursor(sel);
+        from.edit.copy();
+        PictureNote to({700, 600}, "<p>Target line</p>");
+        to.doc()->addResource(QTextDocument::ImageResource, QUrl("test:100"), image);
+        to.caretAt(to.doc()->lastBlock().position() + to.doc()->lastBlock().length() - 1);
+        to.edit.paste();
+        QApplication::processEvents();
+        CHECK(tables(to.doc()) == 1);
+        CHECK(pictures(to.doc()) == 1);
+        CHECK(to.doc()->begin().text() == "Target line");
+    }
+    // cut, and pasted back in the same note: the table kept
+    PictureNote note({700, 600}, "<p>top</p><p>" + pic + "</p><p>x</p>" + table + "<p>after</p>");
+    note.doc()->addResource(QTextDocument::ImageResource, QUrl("test:100"), image);
+    QTextCursor sel(note.doc());
+    sel.setPosition(note.doc()->findBlockByNumber(1).position());
+    sel.setPosition(note.doc()->findBlockByNumber(7).position(), QTextCursor::KeepAnchor);
+    note.edit.setTextCursor(sel);
+    note.edit.cut();
+    CHECK(tables(note.doc()) == 0);
+    note.caretAt(note.doc()->lastBlock().position() + note.doc()->lastBlock().length() - 1);
+    note.edit.paste();
+    QApplication::processEvents();
+    CHECK(tables(note.doc()) == 1);
+    CHECK(pictures(note.doc()) == 1);
+    done = true;
+    watchdog.join();
 }
 
 TEST_CASE("notes: picture files pasted or dropped together are one row")
