@@ -217,16 +217,17 @@ MainWindow::MainWindow()
         restoreGeometry(geometry);
     else
         resize(1440, 900);
-    // Maximized last time, or too big for the screen (the first start at a large scale, or
-    // a larger scale since): shown at a size that fits, then maximized. Shown maximized
-    // straight away (KWin maximizes a window too big for the screen), it would be fitted to
-    // the size steps Qt asks for above 100% before they are dropped (see dropX11SizeSteps),
-    // and end a pixel or two short of the screen's edge.
+    // Maximized last time, or too big for the screen (the first start at a large scale):
+    // shown at a size that fits, then maximized. Shown maximized straight away (KWin
+    // maximizes a window too big for the screen), it would be fitted to the size steps Qt
+    // asks for above 100% before they are dropped (see dropX11SizeSteps), and end a pixel or
+    // two short of the screen's edge. (A size restored is made to fit by restoreGeometry,
+    // with its title bar: one as tall as the screen, tiled to its half, is not too big.)
     if (!isFullScreen() && QGuiApplication::platformName() == "xcb" && screen()->devicePixelRatio() != 1.0) {
         maximizeWhenShown_ = isMaximized();
         setWindowState(windowState() & ~Qt::WindowMaximized);
         auto room = screen()->availableGeometry().adjusted(0, 0, 0, -40);  // and a title bar
-        if (width() > room.width() || height() > room.height()) {
+        if (geometry.isEmpty() && (width() > room.width() || height() > room.height())) {
             setGeometry(room.adjusted(room.width() / 20, room.height() / 20, -room.width() / 20, -room.height() / 20));
             maximizeWhenShown_ = true;
         }
