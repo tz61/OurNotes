@@ -797,7 +797,7 @@ void MainWindow::deleteLibrary(int64_t libraryId)
         return;
     auto name = qs(info->name);
     auto refuse = [this](const QString& text) {
-        QMessageBox box(QMessageBox::Information, tr("Delete Library"), text, QMessageBox::Ok, this);
+        QMessageBox box(QMessageBox::Information, tr("Delete Library"), asPlainText(text), QMessageBox::Ok, this);
         box.setObjectName("libraryNotDeletable");
         box.exec();
     };
@@ -822,7 +822,7 @@ void MainWindow::deleteLibrary(int64_t libraryId)
                                 "and on your other devices when they next sync.")
                                  .arg(name, qs(target->name))
                            : tr("Delete the empty library \"%1\"?").arg(name);
-    QMessageBox box(QMessageBox::Question, tr("Delete Library"), question, QMessageBox::NoButton, this);
+    QMessageBox box(QMessageBox::Question, tr("Delete Library"), asPlainText(question), QMessageBox::NoButton, this);
     box.setObjectName("confirmDeleteLibrary");
     auto* yes = box.addButton(tr("Delete Library"), QMessageBox::DestructiveRole);
     box.setDefaultButton(box.addButton(QMessageBox::Cancel));

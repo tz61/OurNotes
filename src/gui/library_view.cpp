@@ -1020,10 +1020,10 @@ void LibraryView::mergeSelected()
               [](const Json& a, const Json& b) { return jstr(a, "dateAdded") < jstr(b, "dateAdded"); });
     auto master = jstr(items.front(), "key");
     if (QMessageBox::question(this, tr("Merge Items"),
-                              tr("Merge %n items into \"%1\" (the oldest)? Notes, attachments, tags and collections "
-                                 "are moved to it; the other items go to the trash.",
-                                 nullptr, keys.size())
-                                  .arg(jqs(items.front(), "title"))) != QMessageBox::Yes)
+                              asPlainText(tr("Merge %n items into \"%1\" (the oldest)? Notes, attachments, tags and "
+                                             "collections are moved to it; the other items go to the trash.",
+                                             nullptr, keys.size())
+                                              .arg(jqs(items.front(), "title")))) != QMessageBox::Yes)
         return;
     std::vector<std::string> others;
     for (size_t i = 1; i < items.size(); ++i)

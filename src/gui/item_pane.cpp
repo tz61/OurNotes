@@ -505,7 +505,7 @@ public:
         : QWidget(parent), tag_(tag), color_(color), automatic_(automatic)
     {
         setObjectName("tagChip");
-        setToolTip(automatic ? tr("%1 (automatic tag)").arg(tag) : tag);
+        setToolTip(asPlainText(automatic ? tr("%1 (automatic tag)").arg(tag) : tag));  // (synced tags)
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         setAttribute(Qt::WA_Hover);
         if (removable) {
@@ -882,7 +882,7 @@ void AttachmentBox::rebuild()
             lines << tr("Annotations: %1").arg(anns);
         file_->setText("<small>" + qpath(path).toHtmlEscaped() + "</small>");
     }
-    lines << tr("Added: %1").arg(qs(isoToLocalDisplay(jstr(*d, "dateAdded"))));
+    lines << tr("Added: %1").arg(qs(isoToLocalDisplay(jstr(*d, "dateAdded"))).toHtmlEscaped());
     info_->setText(lines.join("<br>"));
     info_->setOpenExternalLinks(true);
     buttons_->setVisible(true);
@@ -1011,7 +1011,8 @@ void ItemNotesPanel::reload()
             auto title = qs(noteTitle(jstr(n, "note")));
             auto* item = new QListWidgetItem(icon("type-note"), title.isEmpty() ? tr("(empty note)") : title, list_);
             item->setData(Qt::UserRole, jqs(n, "key"));
-            item->setToolTip(tr("Modified %1").arg(qs(isoToLocalDisplay(jstr(n, "dateModified")))));
+            // an unparseable date is shown as it is
+            item->setToolTip(asPlainText(tr("Modified %1").arg(qs(isoToLocalDisplay(jstr(n, "dateModified"))))));
             if (jqs(n, "key") == current)
                 list_->setCurrentItem(item);
         }
@@ -1174,7 +1175,7 @@ void LocationBox::rebuild()
         label->setTextFormat(Qt::RichText);
         label->setWordWrap(true);
         label->setText(l.html);
-        label->setToolTip(l.plain);
+        label->setToolTip(asPlainText(l.plain));  // (library and collection names)
         label->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::TextSelectableByMouse);
         connect(label, &QLabel::linkActivated, this, [this](const QString& href) {
             Scope s{libraryId_, ScopeKind::Library, {}};
