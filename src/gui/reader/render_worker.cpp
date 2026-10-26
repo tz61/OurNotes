@@ -1,6 +1,10 @@
 #include "gui/reader/render_worker.h"
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
+#include <set>
+#include <utility>
 
 #include "gui/theme.h"
 #include "pdf/document.h"
@@ -27,6 +31,16 @@ void RenderWorker::setQueue(std::deque<Request> requests)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        // The page being rendered is not asked for again: its image is on its way. (The
+        // view asks for every page it has no image of on each scroll step; the page in
+        // hand was rendered twice.)
+        if (rendering_)
+            requests.erase(std::remove_if(requests.begin(), requests.end(),
+                                          [this](const Request& r) {
+                                              return r.page == busy_.page && r.thumbnail == busy_.thumbnail &&
+                                                     r.dark == busy_.dark && std::abs(r.scale - busy_.scale) < 1e-9;
+                                          }),
+                           requests.end());
         queue_ = std::move(requests);
     }
     cv_.notify_all();
@@ -36,6 +50,14 @@ void RenderWorker::addRequests(const std::deque<Request>& requests)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        // thumbnails asked for again (e.g. in dark colours) replace the ones still waiting,
+        // which would only be rendered to be thrown away
+        std::set<std::pair<int, bool>> again;
+        for (auto& r : requests)
+            again.insert({r.page, r.thumbnail});
+        background_.erase(std::remove_if(background_.begin(), background_.end(),
+                                         [&again](const Request& r) { return again.count({r.page, r.thumbnail}) > 0; }),
+                          background_.end());
         background_.insert(background_.end(), requests.begin(), requests.end());
     }
     cv_.notify_all();
@@ -53,6 +75,7 @@ void RenderWorker::run()
         Request req;
         {
             std::unique_lock<std::mutex> lock(mutex_);
+            rendering_ = false;  // the last one's image is sent
             cv_.wait(lock, [this] { return stop_ || !queue_.empty() || !background_.empty(); });
             if (stop_)
                 return;
@@ -63,6 +86,8 @@ void RenderWorker::run()
                 req = background_.front();
                 background_.pop_front();
             }
+            busy_ = req;
+            rendering_ = true;
         }
         if (req.page < 0 || req.page >= doc->pageCount())
             continue;

@@ -243,7 +243,11 @@ void ReaderTab::buildSidebar()
     switcher->setContentsMargins(4, 4, 4, 0);
     sidebar_ = new QStackedWidget(side);
     annotations_ = new AnnotationSidebar(sidebar_);
-    annotations_->imageProvider = [this](const Json& a) { return view_->annotationImage(a, 1.5); };
+    // 1.5 px per point on every screen: the card gives the image the screen's pixel ratio
+    // (at 1.5 device pixels per point, it came out half as large on a high-density one)
+    annotations_->imageProvider = [this](const Json& a) {
+        return view_->annotationImage(a, 1.5 * devicePixelRatioF());
+    };
     thumbnails_ = new QListWidget(sidebar_);
     thumbnails_->setViewMode(QListView::IconMode);
     thumbnails_->setFlow(QListView::LeftToRight);

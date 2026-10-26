@@ -387,6 +387,8 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
     connect(&imagesTimer_, &QTimer::timeout, this, [this] {
         cache_.clear();
         ++generation_;
+        if (worker_)
+            worker_->setQueue({});  // nor those still to come (shown again, they are asked for)
         releaseFreedMemory();
     });
 }
@@ -445,8 +447,8 @@ void PdfView::showEvent(QShowEvent* e)
     QAbstractScrollArea::showEvent(e);
     releaseTimer_.stop();
     imagesTimer_.stop();
-    if (worker_ && cache_.empty())
-        requestRenders();
+    if (worker_)
+        requestRenders();  // (only the pages it has no image of, e.g. all after imagesTimer_)
     if (!worker_ && !path_.empty())
         // not for a tab shown only in passing, e.g. while several tabs are being closed
         QTimer::singleShot(50, this, [this] {
@@ -754,6 +756,7 @@ void PdfView::requestRenders()
     if (!worker_)
         return;
     double dpr = devicePixelRatioF();
+    renderDpr_ = dpr;
     double want = scale_ * dpr;
     auto [first, last] = visiblePages(viewport()->height() * 0.75);
     if (first < 0)
@@ -799,7 +802,7 @@ void PdfView::onRendered(int page, double scale, quint64 generation, bool thumbn
     cache_[page] = {img, scale};
     auto [first, last] = visiblePages();
     if (page >= first && page <= last)
-        viewport()->update();
+        viewport()->update(pageRects_[page].translated(-scrollOffset()).toAlignedRect());
 }
 
 void PdfView::requestThumbnails(double scale)
@@ -857,6 +860,10 @@ void PdfView::paintEvent(QPaintEvent*)
         return;
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     double dpr = devicePixelRatioF();
+    // moved to a screen of another pixel density (nothing else asks for pages then): the
+    // pages at this one, instead of the others' stretched until the next scroll
+    if (worker_ && dpr != renderDpr_)
+        requestRenders();
     for (int i = first; i <= last; ++i) {
         QRectF r = pageRects_[i].translated(-scrollOffset());
         p.fillRect(r.adjusted(1, 2, 2, 3), QColor(0, 0, 0, 45));
@@ -934,7 +941,7 @@ void PdfView::paintAnnotations(QPainter& p, int page)
         bool selected = a.key == selectedAnn_;
         QPointF d = selected ? delta : QPointF();
         QColor c = a.color;
-        auto paths = erasedPaths_.count(a.key) ? erasedPaths_[a.key] : a.paths;
+        const auto& paths = erasedPaths_.count(a.key) ? erasedPaths_[a.key] : a.paths;  // (not copied each paint)
         if (a.type == "highlight" || a.type == "underline") {
             for (auto& r : onNext ? a.nextRects : a.rects) {
                 QRectF v = toView(page, r);

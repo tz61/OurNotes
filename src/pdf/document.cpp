@@ -712,11 +712,16 @@ std::vector<Link> Document::links(int n)
 
 // --- coordinates ---------------------------------------------------------------------------
 
-static fz_matrix pageMatrix(Document::Impl& im, fz_page* page, int n)
+// The page is loaded (load()) only the first time: the view converts every annotation's
+// rects and ink points on each reload, which reloaded every page with annotations
+// through the small page cache.
+template <class Load>
+static fz_matrix pageMatrix(Document::Impl& im, int n, Load load)
 {
     auto it = im.pdfToPage.find(n);
     if (it != im.pdfToPage.end())
         return it->second;
+    fz_page* page = load();
     fz_matrix ctm = fz_identity;
     if (im.pdf) {
         fz_try(im.ctx)
@@ -733,27 +738,27 @@ static fz_matrix pageMatrix(Document::Impl& im, fz_page* page, int n)
 
 Point Document::pdfToPage(int n, Point p)
 {
-    auto m = pageMatrix(*d_, (fz_page*)loadPage(n), n);
+    auto m = pageMatrix(*d_, n, [&] { return (fz_page*)loadPage(n); });
     auto r = fz_transform_point(fz_make_point(p.x, p.y), m);
     return {r.x, r.y};
 }
 
 Point Document::pageToPdf(int n, Point p)
 {
-    auto m = fz_invert_matrix(pageMatrix(*d_, (fz_page*)loadPage(n), n));
+    auto m = fz_invert_matrix(pageMatrix(*d_, n, [&] { return (fz_page*)loadPage(n); }));
     auto r = fz_transform_point(fz_make_point(p.x, p.y), m);
     return {r.x, r.y};
 }
 
 Rect Document::pdfToPage(int n, const Rect& r)
 {
-    auto m = pageMatrix(*d_, (fz_page*)loadPage(n), n);
+    auto m = pageMatrix(*d_, n, [&] { return (fz_page*)loadPage(n); });
     return toRect(fz_transform_rect(toFz(r.normalized()), m));
 }
 
 Rect Document::pageToPdf(int n, const Rect& r)
 {
-    auto m = fz_invert_matrix(pageMatrix(*d_, (fz_page*)loadPage(n), n));
+    auto m = fz_invert_matrix(pageMatrix(*d_, n, [&] { return (fz_page*)loadPage(n); }));
     return toRect(fz_transform_rect(toFz(r.normalized()), m));
 }
 

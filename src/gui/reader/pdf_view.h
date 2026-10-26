@@ -255,6 +255,7 @@ private:
     double scale_ = 96.0 / 72.0;     // DIP per point
     Fit fit_ = Fit::Width;
     quint64 generation_ = 0;
+    double renderDpr_ = 0;  // the devicePixelRatioF() pages were last asked for at
     bool darkPages_ = false;
     int tone_ = 0;  // the page colour (pageTone) for darkPages_
     std::map<int, Cached> cache_;

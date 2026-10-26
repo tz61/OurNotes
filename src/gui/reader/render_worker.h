@@ -30,7 +30,8 @@ public:
     ~RenderWorker() override;
 
     void setQueue(std::deque<Request> requests);
-    void addRequests(const std::deque<Request>& requests);  // appended, e.g. thumbnails
+    // Appended, e.g. thumbnails; a page asked for again replaces its waiting request.
+    void addRequests(const std::deque<Request>& requests);
 
 signals:
     void rendered(int page, double scale, quint64 generation, bool thumbnail, bool dark, const QImage& image);
@@ -44,6 +45,8 @@ private:
     std::condition_variable cv_;
     std::deque<Request> queue_;
     std::deque<Request> background_;
+    Request busy_;           // being rendered, while rendering_
+    bool rendering_ = false;
     bool stop_ = false;
 };
 
