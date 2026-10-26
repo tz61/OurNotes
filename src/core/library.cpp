@@ -747,7 +747,9 @@ std::vector<ItemRow> Library::itemRows(int64_t lib)
     std::vector<ItemRow> out;
     auto st = db_.query(R"SQL(
         SELECT key, item_type, parent_key, title, creator, year, date, publication, date_added, date_modified,
-               content_type, link_mode, trashed
+               content_type, link_mode, trashed,
+               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.filename') END,
+               CASE WHEN item_type = 'attachment' THEN json_extract(data, '$.path') END
         FROM items WHERE library_id=? AND item_type != 'annotation')SQL",
                         lib);
     while (st.step()) {
@@ -765,6 +767,8 @@ std::vector<ItemRow> Library::itemRows(int64_t lib)
         r.contentType = st.str(10);
         r.linkMode = st.str(11);
         r.trashed = st.i64(12) != 0;
+        r.filename = st.str(13);
+        r.path = st.str(14);
         out.push_back(std::move(r));
     }
     return out;

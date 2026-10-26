@@ -203,6 +203,12 @@ void ItemsModel::reload()
     }
 
     // per-item summaries: note count and the attachment shown in the Attachments column
+    // (whether its file is there from the row, not from each attachment's data read and
+    // parsed: reloads follow every change, a note's autosave too)
+    auto fileMissing = [&](const ItemRow& r) {
+        Json att{{"key", r.key}, {"linkMode", r.linkMode}, {"filename", r.filename}, {"path", r.path}};
+        return !lib.attachmentFileExists(scope_.libraryId, att);
+    };
     for (auto& root : roots_) {
         int bestScore = -1;
         for (auto& c : root->children) {
@@ -220,16 +226,13 @@ void ItemsModel::reload()
                 root->bestContent = qs(ct);
                 root->bestLinkMode = qs(c->row.linkMode);
                 if (c->row.linkMode != "linked_url") {
-                    auto data = lib.item(scope_.libraryId, c->row.key);
-                    c->fileMissing = data && !lib.attachmentFileExists(scope_.libraryId, *data);
+                    c->fileMissing = fileMissing(c->row);
                     root->fileMissing = c->fileMissing;
                 }
             }
         }
-        if (root->row.itemType == "attachment" && root->row.linkMode != "linked_url") {
-            auto data = lib.item(scope_.libraryId, root->row.key);
-            root->fileMissing = data && !lib.attachmentFileExists(scope_.libraryId, *data);
-        }
+        if (root->row.itemType == "attachment" && root->row.linkMode != "linked_url")
+            root->fileMissing = fileMissing(root->row);
     }
     sortNodes(roots_);
     numberRows(roots_);
