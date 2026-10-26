@@ -480,10 +480,10 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
         auto img = f.toImageFormat();
         QString attrs;
         qreal w = size.isValid() ? size.width() : img.width(), h = size.isValid() ? size.height() : img.height();
-        if (w > 0)
-            attrs += QString(" width=\"%1\"").arg(qRound(w));
+        if (w > 0)  // (a pixel at least; no larger than a picture is: past an int's range, qRound is undefined)
+            attrs += QString(" width=\"%1\"").arg(qRound(std::clamp<qreal>(w, 1, kLargestPictureSide)));
         if (h > 0)
-            attrs += QString(" height=\"%1\"").arg(qRound(h));
+            attrs += QString(" height=\"%1\"").arg(qRound(std::clamp<qreal>(h, 1, kLargestPictureSide)));
         auto name = img.name();
         QString latex;
         if (parseMathResourceName(name, &latex, nullptr))

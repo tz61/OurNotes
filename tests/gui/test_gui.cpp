@@ -6364,6 +6364,32 @@ TEST_CASE("notes: a figure copied with a table beside it is pasted whole, the ta
     watchdog.join();
 }
 
+TEST_CASE("notes: a line of pictures with sizes no picture has is saved with sizes, not past an int's range")
+{
+    app();
+    for (auto* odd : {"<img src=\"b\" width=\"100000000\" height=\"1\">", "<img src=\"b\" width=\"2000000000\" height=\"1\">",
+                      "<img src=\"b\" width=\"1\" height=\"1000000000\">"}) {
+        CAPTURE(odd);
+        NoteTextEdit edit;
+        edit.resize(600, 500);
+        edit.show();
+        edit.setHtml(QString("<p><img src=\"a\" width=\"100\" height=\"100\">") + odd + "</p><p>after</p>");
+        edit.prepareDocument();
+        QApplication::processEvents();
+        auto html = documentToNoteHtml(edit.document());
+        CAPTURE(html.toStdString());
+        static const QRegularExpression size(R"re((?:width|height)="(-?\d+)")re");
+        int n = 0;
+        for (auto it = size.globalMatch(html); it.hasNext(); ++n) {
+            auto v = it.next().captured(1).toLongLong();
+            CHECK(v > 0);
+            CHECK(v <= kLargestPictureSide);
+        }
+        CHECK(n == 4);
+        CHECK(html.contains("<p>after</p>"));
+    }
+}
+
 TEST_CASE("notes: picture files pasted or dropped together are one row")
 {
     app();

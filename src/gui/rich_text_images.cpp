@@ -118,7 +118,7 @@ bool pictureKnown(const QTextDocument* doc, const QTextImageFormat& format)
 QSizeF pictureSize(const QTextDocument* doc, const QTextImageFormat& format)
 {
     QSizeF natural = naturalPictureSize(doc, format);
-    qreal w = format.width(), h = format.height();
+    qreal w = std::min(format.width(), kLargestPictureSide), h = std::min(format.height(), kLargestPictureSide);
     if (w > 0 && h > 0)
         return {w, h};
     if (natural.isEmpty())

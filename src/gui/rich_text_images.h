@@ -21,6 +21,9 @@ namespace on::gui {
 // than the text is made smaller, a row as a whole, so that it stays on one line.
 constexpr QSizeF kDefaultPictureBox(360, 240);
 constexpr qreal kPictureGap = 4;
+// A side of a picture as laid out or saved, at most (a size stored that is larger is no
+// picture's: from others, odd).
+constexpr qreal kLargestPictureSide = 100000;
 bool isPicture(const QTextFormat& format);
 // The positions of a block's pictures when it has nothing else; empty otherwise.
 std::vector<int> pictureRow(const QTextBlock& block);
