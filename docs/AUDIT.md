@@ -158,8 +158,8 @@ on purpose).
 ## Round 5: a second sweep, four fresh lenses (lifecycles, sync under load, drawing, the CLI)
 
 Twenty candidates; the five ranked highest were each given to a skeptic (all held).
-The whole suite under ASan + UBSan + LeakSanitizer again at the head of this branch:
-clean (the 12 bytes MicroTeX keeps from its start aside).
+The GUI, CLI, sync and core tests under ASan + UBSan + LeakSanitizer again with these
+fixes: clean (the 12 bytes MicroTeX keeps from its start aside).
 
 | Kind | Where | What |
 |---|---|---|
@@ -171,13 +171,23 @@ clean (the 12 bytes MicroTeX keeps from its start aside).
 
 Found, not verified (left for review; each is a lead, not a confirmed defect):
 
-- `core/sync/engine.cpp` `pull`: `continue` inside the remote-reset `do … while` leaves the loop, so the whole library may be pushed back.
 - `sync/store.cpp` `Store::changes`, `Store::push`: every row's JSON parsed while holding the server-wide mutex; each pushed object's stored JSON parsed only to compare versions.
 - `core/sync/engine.cpp` `syncFiles`: every sync downloads and parses the full file list of every library, even when nothing changed.
-- `core/util.cpp` `htmlUnescape`: numeric references to surrogates or past U+10FFFF become invalid UTF-8 (`items --json` output).
-- `cli/agent_commands.cpp` `base64Decode`: a left shift of a signed int past its range (UB) on any `data:` picture.
 - `cli/extra_commands.cpp` `index`, `empty-trash`: every item of every library parsed to find PDFs; `cite`/`export` drop unknown keys silently and exit 0.
-- `item_pane.cpp` `RelatedBox`: a long related title makes the Info page wider than the pane; `AutoTextEdit::sizeHint` one pixel short a line (last lines of long fields cut).
-- `note_editor.cpp` `adaptColors`: switching light → dark draws note links in the text colour and saves that colour into the note.
 - `search_field.cpp`: the Aa toggle made 18×16, drawn into 16×16; `metadata_progress.cpp`: rows keep the old theme's text colour.
 - `search_field.cpp`: the search history popup outlives its tab; `storage_window.cpp`: Refresh starts new scans without cancelling the old.
+
+## Round 6: the leads of round 5, verified
+
+Eight leads given to skeptics; six held and are fixed, two are not worth their code
+(`Store::changes`/`push` parsing under the server's lock: bounded by page and batch
+limits; `syncFiles` asking for the file list at each sync: one small request).
+
+| Kind | Where | What |
+|---|---|---|
+| sync | `core/sync/engine.cpp` `pull` | After a remote reset (a restored backup), `continue` in the `do … while` ended the pull at once: an editable library pushed every object (each the server had came back a conflict), a read-only one failed with 403, and an empty one pulled nothing, until the next sync. The first page is asked for again from version 0. |
+| correctness | `core/util.cpp` `htmlUnescape` | `&#xD800;` or `&#x110000;` became bytes that are no UTF-8: one such note made `items --json` fail for the whole library (nlohmann throws on them). U+FFFD instead, as browsers do. Test in `test_util.cpp`. |
+| UB | `cli/agent_commands.cpp` `base64Decode` | A signed int shifted left past its range on any `data:` picture longer than a few bytes. Only the pending bits are kept. |
+| rendering / data | `note_editor.cpp` `adaptColors` | From a light theme to a dark one, links (coloured with the palette's link colour) were taken for text of a colour of their own and shown in the text colour. They take the new palette's link colour. |
+| rendering | `item_pane.cpp` `AutoTextEdit::sizeHint` | Lines are laid out at their height rounded up, measured rounded to nearest: a pixel short a line, so long abstracts, titles and comments lost their last lines. |
+| rendering | `item_pane.cpp` `RelatedBox` | A related item's long title made the Info page wider than the pane, cutting off every field's right side. |
