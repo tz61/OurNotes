@@ -21,6 +21,7 @@ class QVariantAnimation;
 namespace on::gui {
 
 class CommentBubble;
+class LinkPreview;
 class RenderWorker;
 class SelectionPopup;
 
@@ -60,7 +61,7 @@ public:
     // Where a link in the PDF leads, shown small while the mouse rests on it: the preview,
     // and the part of the page in it (points); for tests.
     QWidget* linkPreview() const;
-    QRectF linkPreviewArea() const { return previewArea_; }
+    QRectF linkPreviewArea() const;  // (on the page it shows)
 
     double zoom() const;  // 1.0 = 100 %
     void setZoom(double zoom, QPointF anchor = {-1, -1});
@@ -95,7 +96,7 @@ public:
     CommentBubble* commentBubble() const { return bubble_; }
     QImage annotationImage(const Json& annotation, double scale);
 
-    bool hasTextSelection() const { return selPage_ >= 0 && selFrom_ >= 0; }
+    bool hasTextSelection() const { return selAnchorPage_ >= 0 && selFocusPage_ >= 0; }
     QString selectedText() const;
     PdfQuote selectedQuote() const;
     void clearTextSelection();
@@ -129,6 +130,7 @@ signals:
     void zoomChanged(double zoom);
     void viewChanged();  // scrolled or zoomed
     void annotationCreated(const on::Json& data);
+    void annotationsCreated(const std::vector<on::Json>& data);  // one per page of a selection across pages
     void annotationChanged(const on::Json& data);
     void annotationDeleted(const QString& key);
     void annotationSelected(const QString& key);
@@ -235,6 +237,7 @@ private:
     // painting
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
+    void paintLinks(QPainter& p, int page);
     void showPopup();
     void hidePopup();
     void updateCursor(QPointF viewPos);
@@ -263,7 +266,13 @@ private:
     std::vector<AnnView> anns_;
     QString selectedAnn_;
 
-    int selPage_ = -1, selFrom_ = -1, selTo_ = -1, selAnchor_ = -1;
+    // the text selected: from where the drag began (anchor: page, character) to where the
+    // mouse is (focus), on one page or across pages; no focus yet: nothing selected
+    int selAnchorPage_ = -1, selAnchor_ = -1, selFocusPage_ = -1, selFocus_ = -1;
+    struct SelSpan {  // its characters [from, to] on a page
+        int page, from, to;
+    };
+    std::vector<SelSpan> selectionSpans() const;  // in reading order, page by page
     Drag drag_ = Drag::None;
     int dragPage_ = -1;
     QPointF dragStart_;  // page space
@@ -295,10 +304,11 @@ private:
     void hoverLink(int page, int index);
     void showLinkPreview();
     void hideLinkPreview();
-    QLabel* linkPreview_ = nullptr;
+    QImage drawnPart(int page, const QRectF& area, double scale);  // as the page is drawn (dark, its colour)
+    LinkPreview* linkPreview_ = nullptr;
     QTimer linkPreviewTimer_;
+    QTimer previewLeaveTimer_;  // the mouse left the link: hidden, unless it went into the preview
     int previewPage_ = -1, previewIndex_ = -1;  // the link the mouse rests on
-    QRectF previewArea_;
 
     // where pictures are drawn on a page (page points), which the page colour leaves as they
     // are; one over most of the page (a scan) is its paper

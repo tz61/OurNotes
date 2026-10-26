@@ -83,6 +83,12 @@ ReaderTab::ReaderTab(int64_t libraryId, const QString& attachmentKey, QWidget* p
     splitter_->setCollapsible(1, false);
 
     connect(view_, &PdfView::annotationCreated, this, &ReaderTab::createAnnotation);
+    connect(view_, &PdfView::annotationsCreated, this, [this](const std::vector<Json>& made) {
+        undo_->beginMacro(tr("Add Annotation"));  // (one step to undo, as one selection)
+        for (auto& data : made)
+            createAnnotation(data);
+        undo_->endMacro();
+    });
     connect(view_, &PdfView::annotationChanged, this, &ReaderTab::saveAnnotation);
     connect(view_, &PdfView::annotationDeleted, this, &ReaderTab::deleteAnnotation);
     connect(view_, &PdfView::annotationSelected, this, [this](const QString& key) {

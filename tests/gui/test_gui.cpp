@@ -1768,8 +1768,48 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     CHECK(preview->geometry().top() > onLink.y());  // (under the link)
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         view.grab().save(dir + "/pdf-link-preview.png");
-    QTest::mouseMove(view.viewport(), onLink + QPoint(0, 80));  // (off it)
+    // the link tinted blue (this PDF marks it no other way); its text as dark
+    {
+        auto img = view.viewport()->grab().toImage();
+        auto tint = img.pixelColor((view.pageToViewport(0, {92.5, 77.5}) * img.devicePixelRatio()).toPoint());
+        CHECK(tint.blue() > tint.red() + 25);
+        auto paper = img.pixelColor((view.pageToViewport(0, {300, 400}) * img.devicePixelRatio()).toPoint());
+        CHECK(paper == QColor(Qt::white));
+    }
+    // off it, elsewhere: gone a moment later
+    QTest::mouseMove(view.viewport(), onLink + QPoint(200, 300));
+    CHECK(preview->isVisible());
+    CHECK(QTest::qWaitFor([&] { return !preview->isVisible(); }, 2000));
+
+    // into it (off the link, through the gap): kept while the mouse is in it; the wheel
+    // scrolls it, down, across (Shift), Ctrl+wheel zooms it
+    QTest::mouseMove(view.viewport(), onLink);
+    REQUIRE(QTest::qWaitFor([&] { return preview->isVisible(); }, 2000));
+    QTest::mouseMove(view.viewport(), QPoint(onLink.x(), preview->geometry().top() - 2));
+    QTest::mouseMove(preview, QPoint(30, 30));
+    QTest::qWait(500);
+    REQUIRE(preview->isVisible());
+    auto wheel = [&](int dy, Qt::KeyboardModifiers mods) {
+        QPointF at(30, 30);
+        QWheelEvent e(at, preview->mapToGlobal(at), QPoint(), QPoint(0, dy), Qt::NoButton, mods, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(preview, &e);
+    };
+    wheel(-120, {});  // (down)
+    CHECK(view.linkPreviewArea().top() > area.top() + 5);
+    CHECK(bar->value() == 0);  // (the page did not scroll)
+    wheel(-120, Qt::ShiftModifier);
+    CHECK(view.linkPreviewArea().left() > area.left() + 5);
+    double wide = view.linkPreviewArea().width();
+    wheel(120, Qt::ControlModifier);
+    CHECK(view.linkPreviewArea().width() < wide - 1);
+    // out of it: gone; shown again, as it began
+    QTest::mouseMove(view.viewport(), onLink + QPoint(200, 300));
     CHECK(!preview->isVisible());
+    QTest::mouseMove(view.viewport(), onLink);
+    REQUIRE(QTest::qWaitFor([&] { return preview->isVisible(); }, 2000));
+    CHECK(view.linkPreviewArea() == area);
+    QTest::mouseMove(view.viewport(), onLink + QPoint(200, 300));
+    CHECK(QTest::qWaitFor([&] { return !preview->isVisible(); }, 2000));
 
     // followed: there; Ctrl+Left back to where it was followed from, Ctrl+Right to where that
     // went back from
@@ -1808,6 +1848,49 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     QTest::mouseClick(view.viewport(), Qt::BackButton, {}, QPoint(10, 10));
     CHECK(view.currentPage() == 1);
     CHECK(view.pageToViewport(1, {0, 0}).y() == doctest::Approx(view.pageToViewport(1, {0, 0}).y()));
+}
+
+TEST_CASE("reader: text selected across pages is highlighted on both, one annotation a page, one step to undo")
+{
+    app();
+    Env env;
+    auto file = env.dir.path / "pages.pdf";
+    writeManyPagesPdf(file, 4);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto pdf = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    ReaderTab tab(env.lib, qs(pdf));
+    tab.resize(1200, 900);
+    tab.show();
+    QTest::qWait(100);
+    auto* view = tab.view();
+    view->setZoom(0.4);  // (two pages in sight)
+    view->goToPage(0);
+    QApplication::processEvents();
+    auto charAt = [&](int page, int index) {
+        auto& box = view->document()->text(page).chars[index].box;
+        return view->pageToViewport(page, QPointF((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2));
+    };
+    // "Page 1" on the first page, "Page 2" on the next: from "ge 1" to "Pa"
+    drag(view->viewport(), charAt(0, 2), charAt(1, 1));
+    REQUIRE(view->hasTextSelection());
+    CHECK(view->selectedText() == "ge 1 Pa");
+    view->setTool(ReaderTool::Highlight);
+    drag(view->viewport(), charAt(0, 2), charAt(1, 1));
+    QApplication::processEvents();
+    auto made = env.library.annotations(env.lib, pdf);
+    REQUIRE(made.size() == 2);
+    std::sort(made.begin(), made.end(), [](const Json& a, const Json& b) {
+        return a["annotationPosition"]["pageIndex"] < b["annotationPosition"]["pageIndex"];
+    });
+    CHECK(made[0]["annotationPosition"]["pageIndex"] == 0);
+    CHECK(jstr(made[0], "annotationText") == "ge 1");
+    CHECK(made[1]["annotationPosition"]["pageIndex"] == 1);
+    CHECK(jstr(made[1], "annotationText") == "Pa");
+    // one step to undo
+    view->setFocus();
+    QTest::keyClick(view, Qt::Key_Z, Qt::ControlModifier);
+    QApplication::processEvents();
+    CHECK(env.library.annotations(env.lib, pdf).empty());
 }
 
 TEST_CASE("pdf view: a click on an annotation selects it, Delete deletes it; a click on it selected edits its comment")

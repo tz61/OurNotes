@@ -146,6 +146,149 @@ private:
     }
 };
 
+// Where a link leads, small, under it (see PdfView::showLinkPreview): the pages as drawn, from
+// where the link points on. With the mouse in it, the wheel scrolls it (with Shift, or a
+// sideways wheel: across), on into the pages after and before; Ctrl+wheel zooms it, a drag
+// moves it. Each time it is shown it begins afresh.
+class LinkPreview : public QWidget {
+public:
+    explicit LinkPreview(QWidget* parent) : QWidget(parent)
+    {
+        setObjectName("linkPreview");
+        setCursor(Qt::OpenHandCursor);
+        hide();
+    }
+
+    std::function<QImage(int page, const QRectF& area, double scale)> draw;  // a page's part (points)
+    std::function<QSizeF(int page)> pageSize;  // points
+    int pages = 0;
+    std::function<void(bool inside)> hovered;  // the mouse came in, or left
+
+    void start(int page, QPointF at, QSize size, double scale)
+    {
+        page_ = page;
+        at_ = at;
+        scale_ = scale;
+        tiles_.clear();
+        resize(size);
+        update();
+    }
+    QRectF area() const { return QRectF(at_, QSizeF(size()) / scale_); }  // on page(), points
+    int page() const { return page_; }
+    double scale() const { return scale_; }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.fillRect(rect(), palette().color(QPalette::Dark));  // (between pages)
+        double y = -at_.y() * scale_;  // the top of page_, here
+        for (int page = page_; page < pages && y < height(); ++page) {
+            QSizeF size = pageSize(page);
+            QRectF onWidget(-at_.x() * scale_, y, size.width() * scale_, size.height() * scale_);
+            QRectF shown = onWidget & QRectF(rect());
+            if (!shown.isEmpty()) {
+                auto& tile = tileFor(page, QRectF((shown.topLeft() - onWidget.topLeft()) / scale_, shown.size() / scale_));
+                p.drawImage(QRectF(onWidget.topLeft() + tile.area.topLeft() * scale_, tile.area.size() * scale_), tile.image);
+            }
+            y += size.height() * scale_ + kGap;
+        }
+        p.setPen(palette().color(QPalette::Mid));
+        p.drawRect(rect().adjusted(0, 0, -1, -1));
+    }
+    void wheelEvent(QWheelEvent* e) override
+    {
+        if (e->modifiers() & Qt::ControlModifier) {
+            if (double steps = e->angleDelta().y() / 120.0; steps != 0)
+                zoom(std::pow(1.1, steps), e->position());
+        } else {
+            QPointF d = e->pixelDelta().isNull() ? QPointF(e->angleDelta()) / 3 : QPointF(e->pixelDelta());
+            if ((e->modifiers() & Qt::ShiftModifier) && d.x() == 0)
+                d = QPointF(d.y(), 0);
+            scrollBy(-d);
+        }
+        e->accept();  // (not the page's)
+    }
+    void mousePressEvent(QMouseEvent* e) override
+    {
+        dragFrom_ = e->position();
+        setCursor(Qt::ClosedHandCursor);
+    }
+    void mouseMoveEvent(QMouseEvent* e) override
+    {
+        if (e->buttons() & Qt::LeftButton) {
+            scrollBy(dragFrom_ - e->position());
+            dragFrom_ = e->position();
+        }
+    }
+    void mouseReleaseEvent(QMouseEvent*) override { setCursor(Qt::OpenHandCursor); }
+    void enterEvent(QEnterEvent*) override
+    {
+        if (hovered)
+            hovered(true);
+    }
+    void leaveEvent(QEvent*) override
+    {
+        if (hovered)
+            hovered(false);
+    }
+
+private:
+    static constexpr int kGap = 6;  // pixels between pages
+    struct Tile {
+        QRectF area;  // points
+        QImage image;
+    };
+
+    double gap() const { return kGap / scale_; }  // points
+    void scrollBy(QPointF pixels)
+    {
+        at_ += pixels / scale_;
+        settle();
+        update();
+    }
+    void zoom(double factor, QPointF pos)
+    {
+        double scale = std::clamp(scale_ * factor, 0.4, 4.0);
+        QPointF under = at_ + pos / scale_;  // (stays under the mouse)
+        scale_ = scale;
+        at_ = under - pos / scale_;
+        tiles_.clear();
+        settle();
+        update();
+    }
+    // the top on the page it is in; not past the first page's top, the last one's foot, the sides
+    void settle()
+    {
+        while (at_.y() < 0 && page_ > 0)
+            at_.ry() += pageSize(--page_).height() + gap();
+        while (page_ + 1 < pages && at_.y() >= pageSize(page_).height() + gap())
+            at_.ry() -= pageSize(page_++).height() + gap();
+        QSizeF shown = QSizeF(size()) / scale_, page = pageSize(page_);
+        if (page_ + 1 >= pages)
+            at_.setY(std::min(at_.y(), std::max(0.0, page.height() - shown.height())));
+        at_.setY(std::max(0.0, at_.y()));
+        at_.setX(std::clamp(at_.x(), 0.0, std::max(0.0, page.width() - shown.width())));
+    }
+    // a part of a page drawn, around what is to be shown (moving a little draws nothing again)
+    const Tile& tileFor(int page, const QRectF& needed)
+    {
+        auto it = tiles_.find(page);
+        if (it == tiles_.end() || !it->second.area.contains(needed)) {
+            QRectF area = needed.adjusted(-needed.width() / 2, -needed.height(), needed.width() / 2, needed.height()) &
+                          QRectF(QPointF(), pageSize(page));
+            it = tiles_.insert_or_assign(page, Tile{area, draw(page, area, scale_)}).first;
+        }
+        return it->second;
+    }
+
+    int page_ = 0;
+    QPointF at_;  // the top left, on page_ (points)
+    double scale_ = 1;
+    std::map<int, Tile> tiles_;
+    QPointF dragFrom_;
+};
+
 PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
 {
     setFocusPolicy(Qt::StrongFocus);
@@ -162,14 +305,24 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
         if (!hoverKey_.isEmpty() && commentKeyAt(mousePos_) == hoverKey_)
             showComment(hoverKey_, false);
     });
-    linkPreview_ = new QLabel(viewport());
-    linkPreview_->setObjectName("linkPreview");
-    linkPreview_->setStyleSheet("QLabel#linkPreview { border: 1px solid palette(mid); background: palette(base); }");
-    linkPreview_->setAttribute(Qt::WA_TransparentForMouseEvents);  // (the mouse is on the link, not on it)
-    linkPreview_->hide();
+    linkPreview_ = new LinkPreview(viewport());
+    linkPreview_->draw = [this](int page, const QRectF& area, double scale) { return drawnPart(page, area, scale); };
+    linkPreview_->pageSize = [this](int page) { return pageSizes_[page]; };
+    linkPreview_->hovered = [this](bool inside) {
+        if (inside)
+            previewLeaveTimer_.stop();  // (moved from the link into it: kept)
+        else
+            hideLinkPreview();
+    };
     linkPreviewTimer_.setSingleShot(true);
     linkPreviewTimer_.setInterval(350);
     connect(&linkPreviewTimer_, &QTimer::timeout, this, &PdfView::showLinkPreview);
+    previewLeaveTimer_.setSingleShot(true);
+    previewLeaveTimer_.setInterval(300);  // (time to move the mouse from the link into it)
+    connect(&previewLeaveTimer_, &QTimer::timeout, this, [this] {
+        if (!linkPreview_->underMouse())
+            hideLinkPreview();
+    });
     unhoverTimer_.setSingleShot(true);
     unhoverTimer_.setInterval(250);
     connect(&unhoverTimer_, &QTimer::timeout, this, [this] {
@@ -728,6 +881,7 @@ void PdfView::paintEvent(QPaintEvent*)
             p.fillRect(r, pageToneColor(darkPages_, tone_));
             p.restore();
         }
+        paintLinks(p, i);
         paintAnnotations(p, i);
         paintTextSelection(p, i);
         if (placePage_ == i && placeShown_ > 0) {  // a place a link named (showPlace)
@@ -862,15 +1016,31 @@ void PdfView::paintAnnotations(QPainter& p, int page)
     p.restore();
 }
 
+// The links on a page tinted blue: a PDF does not always mark its links (a reference's number,
+// a figure's) apart from its text. Multiplied in (on dark pages: screened), the text in them
+// stays as dark (as light).
+void PdfView::paintLinks(QPainter& p, int page)
+{
+    if (!links_.count(page))
+        links_[page] = doc_->links(page);
+    if (links_[page].empty())
+        return;
+    p.save();
+    p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
+    QColor tint = darkPages_ ? QColor(20, 42, 95) : QColor(196, 214, 255);
+    for (auto& link : links_[page])
+        p.fillRect(toView(page, toQ(link.rect)), tint);
+    p.restore();
+}
+
 void PdfView::paintTextSelection(QPainter& p, int page)
 {
-    if (selPage_ != page || selFrom_ < 0)
-        return;
-    auto& text = doc_->text(page);
     QColor c = palette().color(QPalette::Highlight);
     c.setAlphaF(0.35);
-    for (auto& r : text.rectsOf(selFrom_, selTo_))
-        p.fillRect(toView(page, toQ(r)), c);
+    for (auto& span : selectionSpans())
+        if (span.page == page)
+            for (auto& r : doc_->text(page).rectsOf(span.from, span.to))
+                p.fillRect(toView(page, toQ(r)), c);
 }
 
 // --- annotations -------------------------------------------------------------------------------
@@ -1042,22 +1212,30 @@ void PdfView::createFromSelection(const QString& type, const QString& color)
 {
     if (!hasTextSelection() || !editable_)
         return;
-    auto& text = doc_->text(selPage_);
-    std::vector<QRectF> rects;
-    for (auto& r : text.rectsOf(selFrom_, selTo_))
-        rects.push_back(toQ(r));
-    if (rects.empty())
-        return;
-    double top = rects.front().top();
-    for (auto& r : rects)
-        top = std::min(top, r.top());
-    auto data = baseAnnotation(type, selPage_, std::min(selFrom_, selTo_), top);
-    data["annotationColor"] = ss(color);
-    data["annotationText"] = ss(selectedText());
-    data["annotationPosition"] = positionFromRects(selPage_, rects);
+    // one on each page the text is on (as Zotero has them), its part of the text there
+    std::vector<Json> made;
+    for (auto& span : selectionSpans()) {
+        auto& text = doc_->text(span.page);
+        std::vector<QRectF> rects;
+        for (auto& r : text.rectsOf(span.from, span.to))
+            rects.push_back(toQ(r));
+        if (rects.empty())
+            continue;
+        double top = rects.front().top();
+        for (auto& r : rects)
+            top = std::min(top, r.top());
+        auto data = baseAnnotation(type, span.page, span.from, top);
+        data["annotationColor"] = ss(color);
+        data["annotationText"] = text.textOf(span.from, span.to);
+        data["annotationPosition"] = positionFromRects(span.page, rects);
+        made.push_back(data);
+    }
     clearTextSelection();
     hidePopup();
-    emit annotationCreated(data);
+    if (made.size() == 1)
+        emit annotationCreated(made[0]);
+    else if (made.size() > 1)
+        emit annotationsCreated(made);
 }
 
 void PdfView::createInk()
@@ -1401,21 +1579,46 @@ void PdfView::closeTextEditor(bool commit)
 
 // --- selection --------------------------------------------------------------------------------
 
-QString PdfView::selectedText() const
+std::vector<PdfView::SelSpan> PdfView::selectionSpans() const
 {
     if (!hasTextSelection())
         return {};
-    return qs(doc_->text(selPage_).textOf(selFrom_, selTo_));
+    auto first = std::make_pair(selAnchorPage_, selAnchor_), last = std::make_pair(selFocusPage_, selFocus_);
+    if (last < first)
+        std::swap(first, last);
+    std::vector<SelSpan> spans;
+    for (int page = first.first; page <= last.first; ++page) {
+        int count = (int)doc_->text(page).chars.size();
+        int from = page == first.first ? first.second : 0, to = page == last.first ? last.second : count - 1;
+        if (count > 0 && from <= to)
+            spans.push_back({page, from, to});
+    }
+    return spans;
+}
+
+QString PdfView::selectedText() const
+{
+    QString out;
+    for (auto& span : selectionSpans()) {
+        auto part = qs(doc_->text(span.page).textOf(span.from, span.to));
+        if (out.endsWith('-') && !part.isEmpty() && part[0].isLower())
+            out.chop(1);  // (a word broken at the foot of the page)
+        else if (!out.isEmpty())
+            out += ' ';
+        out += part;
+    }
+    return out;
 }
 
 PdfQuote PdfView::selectedQuote() const
 {
     PdfQuote quote;
-    if (!hasTextSelection())
+    auto spans = selectionSpans();
+    if (spans.empty())
         return quote;
     quote.text = selectedText();
-    quote.page = selPage_;
-    for (auto& r : doc_->text(selPage_).rectsOf(selFrom_, selTo_))
+    quote.page = spans[0].page;  // (where it begins)
+    for (auto& r : doc_->text(spans[0].page).rectsOf(spans[0].from, spans[0].to))
         quote.place = quote.place.isNull() ? toQ(r) : quote.place.united(toQ(r));
     return quote;
 }
@@ -1527,8 +1730,14 @@ std::pair<int, int> PdfView::pageLinkAt(QPointF pos)
 
 void PdfView::hoverLink(int page, int index)
 {
-    if (page == previewPage_ && index == previewIndex_)
+    if (page == previewPage_ && index == previewIndex_) {
+        previewLeaveTimer_.stop();  // (back on it)
         return;
+    }
+    if (page < 0 && linkPreview_->isVisible()) {  // off the link: a moment to get into the preview
+        previewLeaveTimer_.start();
+        return;
+    }
     hideLinkPreview();
     previewPage_ = page;
     previewIndex_ = index;
@@ -1539,8 +1748,42 @@ void PdfView::hoverLink(int page, int index)
 void PdfView::hideLinkPreview()
 {
     linkPreviewTimer_.stop();
+    previewLeaveTimer_.stop();
     linkPreview_->hide();
     previewPage_ = previewIndex_ = -1;
+}
+
+QRectF PdfView::linkPreviewArea() const { return linkPreview_->area(); }
+
+QImage PdfView::drawnPart(int page, const QRectF& area, double scale)
+{
+    double dpr = devicePixelRatioF();
+    QImage image;
+    try {
+        auto img = doc_->renderClip(page, float(scale * dpr), toP(area));
+        image = QImage(img.pixels.data(), img.width, img.height, img.stride, QImage::Format_RGB888).copy();
+    } catch (const std::exception&) {
+        image = QImage(QSize(1, 1), QImage::Format_RGB888);
+        image.fill(Qt::white);
+    }
+    if (darkPages_) {  // as the page is drawn
+        std::vector<pdf::Rect> keep;
+        for (auto r : doc_->imageRects(page))
+            keep.push_back({float(r.x0 - area.left()), float(r.y0 - area.top()), float(r.x1 - area.left()),
+                            float(r.y1 - area.top())});
+        darkenPage(image, keep, scale * dpr, doc_->pageSize(page));
+    }
+    if (tone_ > 0) {  // (as the page is drawn, see paintEvent)
+        QPainter p(&image);
+        QRegion paper(image.rect());
+        for (auto& picture : pictureRects(page))
+            paper -= QRegion(QRectF((picture.topLeft() - area.topLeft()) * scale * dpr, picture.size() * scale * dpr)
+                                 .toAlignedRect());
+        p.setClipRegion(paper);
+        p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
+        p.fillRect(image.rect(), pageToneColor(darkPages_, tone_));
+    }
+    return image;
 }
 
 void PdfView::showLinkPreview()
@@ -1587,34 +1830,8 @@ void PdfView::showLinkPreview()
     double scale = std::min(scale_, widest / std::max(1.0, right - left));
     double top = std::clamp(y - 8, 0.0, std::max(0.0, size.height() - 40));
     double height = std::min(size.height() - top, std::clamp(viewport()->height() * 0.3, 120.0, 240.0) / scale);
-    previewArea_ = QRectF(left, top, right - left, height);
-    double dpr = devicePixelRatioF();
-    QImage image;
-    try {
-        auto img = doc_->renderClip(target, float(scale * dpr), toP(previewArea_));
-        image = QImage(img.pixels.data(), img.width, img.height, img.stride, QImage::Format_RGB888).copy();
-    } catch (const std::exception&) {
-        return;
-    }
-    if (darkPages_) {  // as the page is drawn
-        std::vector<pdf::Rect> keep;
-        for (auto r : doc_->imageRects(target))
-            keep.push_back({float(r.x0 - left), float(r.y0 - top), float(r.x1 - left), float(r.y1 - top)});
-        darkenPage(image, keep, scale * dpr, doc_->pageSize(target));
-    }
-    if (tone_ > 0) {  // (as the page is drawn, see paintEvent)
-        QPainter p(&image);
-        QRegion paper(image.rect());
-        for (auto& picture : pictureRects(target))
-            paper -= QRegion(QRectF((picture.topLeft() - previewArea_.topLeft()) * scale * dpr, picture.size() * scale * dpr)
-                                 .toAlignedRect());
-        p.setClipRegion(paper);
-        p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
-        p.fillRect(image.rect(), pageToneColor(darkPages_, tone_));
-    }
-    image.setDevicePixelRatio(dpr);
-    linkPreview_->setPixmap(QPixmap::fromImage(image));
-    linkPreview_->adjustSize();
+    linkPreview_->pages = pageCount();
+    linkPreview_->start(target, {left, top}, QSize(int(std::ceil((right - left) * scale)), int(std::ceil(height * scale))), scale);
     // under the link (over it, near the bottom), from the mouse on, inside the view
     QRectF at = toView(previewPage_, toQ(link.rect));
     int w = linkPreview_->width(), h = linkPreview_->height();
@@ -1629,7 +1846,7 @@ void PdfView::showLinkPreview()
 
 void PdfView::clearTextSelection()
 {
-    selPage_ = selFrom_ = selTo_ = selAnchor_ = -1;
+    selAnchorPage_ = selAnchor_ = selFocusPage_ = selFocus_ = -1;
     viewport()->update();
 }
 
@@ -1645,17 +1862,19 @@ void PdfView::copySelection()
 
 void PdfView::showPopup()
 {
-    if (!hasTextSelection() || !editable_)
+    auto spans = selectionSpans();
+    if (spans.empty() || !editable_)
         return;
-    auto rects = doc_->text(selPage_).rectsOf(selFrom_, selTo_);
-    if (rects.empty())
+    auto firstRects = doc_->text(spans.front().page).rectsOf(spans.front().from, spans.front().to);
+    auto lastRects = doc_->text(spans.back().page).rectsOf(spans.back().from, spans.back().to);
+    if (firstRects.empty() || lastRects.empty())
         return;
-    QRectF last = toView(selPage_, toQ(rects.back()));
+    QRectF last = toView(spans.back().page, toQ(lastRects.back()));
     popup_->adjustSize();
     QPoint pos(int(last.center().x() - popup_->width() / 2), int(last.bottom() + 6));
     pos.setX(std::clamp(pos.x(), 2, std::max(2, viewport()->width() - popup_->width() - 2)));
     if (pos.y() + popup_->height() > viewport()->height())
-        pos.setY(int(toView(selPage_, toQ(rects.front())).top() - popup_->height() - 6));
+        pos.setY(int(toView(spans.front().page, toQ(firstRects.front())).top() - popup_->height() - 6));
     popup_->move(pos);
     popup_->show();
     popup_->raise();
@@ -1819,10 +2038,11 @@ void PdfView::mousePressEvent(QMouseEvent* e)
         }
         auto& text = doc_->text(page);
         int idx = text.hitTest({(float)pt.x(), (float)pt.y()}, false);
-        if (triple && selPage_ == page && idx >= 0) {
+        if (triple && selAnchorPage_ == page && idx >= 0) {
             auto [a, b] = text.lineAt(idx);
-            selFrom_ = selAnchor_ = a;
-            selTo_ = b;
+            selAnchorPage_ = selFocusPage_ = page;
+            selAnchor_ = a;
+            selFocus_ = b;
             viewport()->update();
             return;
         }
@@ -1832,9 +2052,9 @@ void PdfView::mousePressEvent(QMouseEvent* e)
         if (idx < 0)
             idx = text.hitTest({(float)pt.x(), (float)pt.y()}, true);
         if (idx >= 0) {
-            selPage_ = page;
-            selAnchor_ = selFrom_ = selTo_ = idx;
-            selFrom_ = -1;  // nothing selected until the mouse moves
+            selAnchorPage_ = page;
+            selAnchor_ = idx;
+            selFocusPage_ = selFocus_ = -1;  // nothing selected until the mouse moves
             drag_ = Drag::Selecting;
         }
         viewport()->update();
@@ -1927,19 +2147,24 @@ void PdfView::mouseMoveEvent(QMouseEvent* e)
     dragNow_ = pt;
     switch (drag_) {
     case Drag::Selecting: {
-        auto& text = doc_->text(dragPage_);
-        int page = pageAt(content);
-        int idx;
-        if (page > dragPage_)
-            idx = (int)text.chars.size() - 1;
-        else if (page < dragPage_)
-            idx = 0;
-        else
-            idx = text.hitTest({(float)pt.x(), (float)pt.y()}, true);
-        if (idx >= 0 && (idx != selAnchor_ || selFrom_ >= 0 ||
+        // on to the page the mouse is over (a selection across pages): its character nearest
+        // the mouse; on a page without text, the last (or first) of the page before (after) it
+        int page = pageAt(content, true), idx = -1, step = page < selAnchorPage_ ? 1 : -1;
+        for (; page >= 0 && page < pageCount(); page += step) {
+            auto& text = doc_->text(page);
+            if (page == pageAt(content, true)) {
+                QPointF at = toPage(page, content);
+                idx = text.hitTest({(float)at.x(), (float)at.y()}, true);
+            } else if (!text.chars.empty()) {
+                idx = step < 0 ? (int)text.chars.size() - 1 : 0;
+            }
+            if (idx >= 0 || page == selAnchorPage_)
+                break;
+        }
+        if (idx >= 0 && (page != selAnchorPage_ || idx != selAnchor_ || selFocusPage_ >= 0 ||
                          std::hypot(pt.x() - dragStart_.x(), pt.y() - dragStart_.y()) > 2)) {
-            selFrom_ = std::min(selAnchor_, idx);
-            selTo_ = std::max(selAnchor_, idx);
+            selFocusPage_ = page;
+            selFocus_ = idx;
         }
         break;
     }
@@ -2054,9 +2279,9 @@ void PdfView::mouseDoubleClickEvent(QMouseEvent* e)
     if (idx < 0)
         return;
     auto [a, b] = text.wordAt(idx);
-    selPage_ = page;
-    selAnchor_ = selFrom_ = a;
-    selTo_ = b;
+    selAnchorPage_ = selFocusPage_ = page;
+    selAnchor_ = a;
+    selFocus_ = b;
     drag_ = Drag::None;
     tripleClick_.start();
     viewport()->update();
