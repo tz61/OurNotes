@@ -836,6 +836,7 @@ TEST_CASE("cli: a passage across a page break, highlighted as one annotation on 
     CHECK(cli.run({"annotate", paper, "--quote", "from here. left column words", "--page", "2"}).first == 0);
     CHECK(cli.run({"annotate", paper, "--quote", "from here. left column words", "--page", "1"}).first == 1);
     CHECK(cli.run({"annotate", paper, "--quote", "the details. nowhere at all"}).first == 1);
+    CHECK(cli.run({"annotate", paper, "--quote", "See [1] for a"}).first == 1);  // (not the "a" in "Back")
     CHECK(lib.annotations(mine, pdf).size() == 2);
 }
 
