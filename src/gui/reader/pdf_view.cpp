@@ -869,6 +869,7 @@ void PdfView::paintEvent(QPaintEvent*)
             QPointF at(std::round(r.x() * dpr) / dpr, std::round(r.y() * dpr) / dpr);
             p.setRenderHint(QPainter::SmoothPixmapTransform, false);
             p.drawImage(at, it->second.image);
+            paintLinks(p, i, it->second.image, at);
             p.setRenderHint(QPainter::SmoothPixmapTransform);
         } else if (it != cache_.end()) {
             p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
@@ -884,7 +885,6 @@ void PdfView::paintEvent(QPaintEvent*)
             p.fillRect(r, pageToneColor(darkPages_, tone_));
             p.restore();
         }
-        paintLinks(p, i);
         paintAnnotations(p, i);
         paintTextSelection(p, i);
         if (placePage_ == i && placeShown_ > 0) {  // a place a link named (showPlace)
@@ -1020,10 +1020,36 @@ void PdfView::paintAnnotations(QPainter& p, int page)
     p.restore();
 }
 
-// The links on a page tinted blue: a PDF does not always mark its links (a reference's number,
-// a figure's) apart from its text. Multiplied in (on dark pages: screened), the text in them
-// stays as dark (as light).
-void PdfView::paintLinks(QPainter& p, int page)
+namespace {
+
+// Whether the ink in a part of a page is coloured (most of what is not paper: a link's own
+// colour), or black or gray (on dark pages: white).
+bool colouredInk(const QImage& part, bool darkPages)
+{
+    int ink = 0, coloured = 0;
+    for (int y = 0; y < part.height(); ++y) {
+        auto* line = reinterpret_cast<const QRgb*>(part.constScanLine(y));
+        for (int x = 0; x < part.width(); ++x) {
+            int r = qRed(line[x]), g = qGreen(line[x]), b = qBlue(line[x]);
+            int most = std::max({r, g, b}), least = std::min({r, g, b});
+            if (darkPages ? most < 70 : least > 185)
+                continue;  // (paper, and the edges of letters)
+            ++ink;
+            if (most - least > 60)
+                ++coloured;
+        }
+    }
+    return ink > 0 && coloured * 2 > ink;
+}
+
+} // namespace
+
+// The text of the links on a page marked, and bold: a PDF does not always mark its links (a
+// reference's number, a figure's) apart from its text. Its part of the page (`image`, drawn at
+// `at`): black or gray ink turned blue (on dark pages: the light ink light blue), the paper as
+// it is; ink of a colour of its own kept. Drawn again a pixel to the right, the darker
+// (lighter) of the two kept: thicker strokes. Not over pictures.
+void PdfView::paintLinks(QPainter& p, int page, const QImage& image, QPointF at)
 {
     if (!highlightPdfLinks())
         return;
@@ -1031,11 +1057,31 @@ void PdfView::paintLinks(QPainter& p, int page)
         links_[page] = doc_->links(page);
     if (links_[page].empty())
         return;
+    double dpr = image.devicePixelRatio() > 0 ? image.devicePixelRatio() : 1;
+    QColor ink = darkPages_ ? QColor(150, 190, 255) : QColor(20, 100, 235);
     p.save();
-    p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
-    QColor tint = darkPages_ ? QColor(20, 42, 95) : QColor(196, 214, 255);
-    for (auto& link : links_[page])
-        p.fillRect(toView(page, toQ(link.rect)), tint);
+    for (auto& link : links_[page]) {
+        QRectF area = toQ(link.rect);
+        bool onPicture = false;
+        for (auto& picture : pictureRects(page))
+            if (auto common = picture & area; common.width() * common.height() > 0.3 * area.width() * area.height())
+                onPicture = true;
+        QRect pixels = QRectF(area.topLeft() * scale_ * dpr, area.size() * scale_ * dpr).toAlignedRect() & image.rect();
+        if (onPicture || pixels.isEmpty())
+            continue;
+        QImage part = image.copy(pixels).convertToFormat(QImage::Format_RGB32);
+        if (!colouredInk(part, darkPages_)) {  // (screened: black ink blue, white paper white)
+            QPainter q(&part);
+            q.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Multiply : QPainter::CompositionMode_Screen);
+            q.fillRect(part.rect(), ink);
+        }
+        part.setDevicePixelRatio(dpr);
+        QPointF to = at + QPointF(pixels.topLeft()) / dpr;
+        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        p.drawImage(to, part);
+        p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
+        p.drawImage(to + QPointF(1 / dpr, 0), part);  // (bold)
+    }
     p.restore();
 }
 

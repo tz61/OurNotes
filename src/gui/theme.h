@@ -32,7 +32,7 @@ QColor formulaColor(const QColor& textColor);
 // default) and "/reader/darkPagesInLightMode" (light by default).
 bool darkPdfPages();
 void setDarkPdfPages(bool dark);  // for the current theme; every PDF follows
-// Links in PDFs tinted blue (on unless turned off); every PDF follows.
+// Links in PDFs marked, bold and (black ones) blue (on unless turned off); every PDF follows.
 bool highlightPdfLinks();
 void setHighlightPdfLinks(bool on);
 // The page colour, 0..100, for light pages (white .. gray) and dark ones (black .. gray),

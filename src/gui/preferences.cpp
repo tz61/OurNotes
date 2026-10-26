@@ -139,7 +139,7 @@ QWidget* PreferencesDialog::generalPage()
         ctx.config().save();
         emit ctx.appearanceChanged();
     });
-    auto* links = new QCheckBox(tr("Highlight links in PDFs in blue"), page);
+    auto* links = new QCheckBox(tr("Mark links in PDFs: bold, and blue when they have no colour of their own"), page);
     links->setObjectName("highlightLinks");
     links->setToolTip(tr("Some PDFs do not mark their links (a reference's number, a figure's) apart from the text."));
     links->setChecked(highlightPdfLinks());

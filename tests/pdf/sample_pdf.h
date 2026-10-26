@@ -49,11 +49,11 @@ inline void writeManyPagesPdf(const on::fs::path& path, int pages)
 
 // A three-page PDF with links in it: on page 1, "[1]" (72..300 wide at y 700) leads to an
 // entry in the right column of page 3 (x 320, 372 points from its top), set in two columns
-// there; on page 2, "page one" leads to the top of page 1.
+// there; on page 2, "Back to page", in green, leads to the top of page 1.
 inline void writeLinkedPdf(const on::fs::path& path)
 {
     std::string one = "BT /F1 12 Tf 72 700 Td (See [1] for the details.) Tj ET\n";
-    std::string two = "BT /F1 12 Tf 72 700 Td (Back to page one, from here.) Tj ET\n";
+    std::string two = "BT /F1 12 Tf 0 0.55 0 rg 72 700 Td (Back to page one, from here.) Tj ET\n";  // (green)
     std::string three;
     for (int i = 0; i < 4; ++i) {
         std::string y = std::to_string(410 - 14 * i);

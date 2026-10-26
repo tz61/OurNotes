@@ -1769,14 +1769,6 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     CHECK(preview->geometry().top() > onLink.y());  // (under the link)
     if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
         view.grab().save(dir + "/pdf-link-preview.png");
-    // the link tinted blue (this PDF marks it no other way); its text as dark
-    {
-        auto img = view.viewport()->grab().toImage();
-        auto tint = img.pixelColor((view.pageToViewport(0, {92.5, 77.5}) * img.devicePixelRatio()).toPoint());
-        CHECK(tint.blue() > tint.red() + 25);
-        auto paper = img.pixelColor((view.pageToViewport(0, {300, 400}) * img.devicePixelRatio()).toPoint());
-        CHECK(paper == QColor(Qt::white));
-    }
     // off it, elsewhere: gone a moment later
     QTest::mouseMove(view.viewport(), onLink + QPoint(200, 300));
     CHECK(preview->isVisible());
@@ -1859,7 +1851,7 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     CHECK(view.pageToViewport(1, {0, 0}).y() == doctest::Approx(view.pageToViewport(1, {0, 0}).y()));
 }
 
-TEST_CASE("pdf view: links are tinted blue unless that is turned off, in every PDF")
+TEST_CASE("pdf view: links' text is blue and bold (in a colour of its own: that colour, bold) unless turned off")
 {
     app();
     Env env;
@@ -1870,26 +1862,59 @@ TEST_CASE("pdf view: links are tinted blue unless that is turned off, in every P
     view.resize(800, 900);
     view.open(file);
     view.show();
-    QApplication::processEvents();
-    auto inLink = [&] {  // (a spot of the link's box beside its text)
-        auto img = view.viewport()->grab().toImage();
-        return img.pixelColor((view.pageToViewport(0, {92.5, 77.5}) * img.devicePixelRatio()).toPoint());
+    struct Ink {
+        int count = 0, blue = 0, green = 0;
     };
+    auto inkIn = [&](int page, QRectF area) {  // in a link's box: pixels that are not paper
+        auto img = view.viewport()->grab().toImage();
+        double d = img.devicePixelRatio();
+        QRect pixels(QPointF(view.pageToViewport(page, area.topLeft()) * d).toPoint(),
+                     QPointF(view.pageToViewport(page, area.bottomRight()) * d).toPoint());
+        Ink ink;
+        for (int y = pixels.top(); y <= pixels.bottom(); ++y)
+            for (int x = pixels.left(); x <= pixels.right(); ++x) {
+                auto c = img.pixelColor(x, y);
+                if (std::min({c.red(), c.green(), c.blue()}) > 185)
+                    continue;
+                ++ink.count;
+                ink.blue += c.blue() > c.red() + 60 && c.blue() > c.green() + 30;
+                ink.green += c.green() > c.red() + 40 && c.green() > c.blue() + 20;
+            }
+        return ink;
+    };
+    QRectF one(92, 77, 20, 20), back(72, 77, 108, 20);  // "[1]" on page 1, "Back to page" on page 2
+    REQUIRE(QTest::qWaitFor([&] { return inkIn(0, one).count > 0; }));  // (rendered)
     CHECK(highlightPdfLinks());
-    CHECK(inLink().blue() > inLink().red() + 25);
+    auto marked = inkIn(0, one);
+    CHECK(marked.blue > marked.count / 3);  // black: blue
     setHighlightPdfLinks(false);
     QApplication::processEvents();
-    CHECK(inLink() == QColor(Qt::white));
+    auto plain = inkIn(0, one);
+    CHECK(plain.blue == 0);
+    CHECK(marked.count > plain.count);  // (bold: thicker)
     CHECK(env.config.get("/reader/highlightLinks", true) == false);
-    // in Preferences too
+    // green of its own: kept, bold
+    view.goToPage(1);
+    REQUIRE(QTest::qWaitFor([&] { return inkIn(1, back).count > 0; }));
+    auto green = inkIn(1, back);
+    setHighlightPdfLinks(true);
+    QApplication::processEvents();
+    auto greenMarked = inkIn(1, back);
+    CHECK(greenMarked.blue == 0);
+    CHECK(greenMarked.green > greenMarked.count / 3);
+    CHECK(greenMarked.count > green.count);
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view.grab().save(dir + "/pdf-links-marked.png");
+    // turned off in Preferences too
     SyncController sync;
     PreferencesDialog dialog(&sync);
     auto* box = dialog.findChild<QCheckBox*>("highlightLinks");
     REQUIRE(box);
-    CHECK(!box->isChecked());
-    box->setChecked(true);
+    CHECK(box->isChecked());
+    box->setChecked(false);
     QApplication::processEvents();
-    CHECK(inLink().blue() > inLink().red() + 25);
+    CHECK(!highlightPdfLinks());
+    CHECK(inkIn(1, back).count == green.count);
 }
 
 TEST_CASE("reader: text highlighted across two pages is one annotation, on both (Zotero's nextPageRects)")
