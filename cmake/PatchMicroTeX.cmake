@@ -494,3 +494,19 @@ ournotes_microtex_fix(src/box/box_factory.cpp [=[
 ournotes_microtex_fix(src/atom/atom_matrix.cpp [=[
   int count = (int) floor(x);]=] [=[
   int count = (int) floor(std::min(x, 1000.f));  // OurNotes]=])
+
+# ---- Leaks (found with LeakSanitizer)
+
+# A matrix, align, gather or multline environment that does not parse (as one typed in
+# place is, a key at a time) threw before anything owned its rows: they leaked at each
+# render. Owned from the start; the atom made at the end shares them.
+ournotes_microtex_fix(src/core/macro_impl.h [=[sptr<ArrayFormula>(arr)]=] [=[std::move(arrOwner)]=])
+ournotes_microtex_fix(src/core/macro_impl.h [=[
+  auto* arr = new ArrayFormula();]=] [=[
+  auto* arr = new ArrayFormula();
+  sptr<ArrayFormula> arrOwner(arr);  // OurNotes]=])
+
+# asprintf's string given back with delete (malloc'ed: free)
+ournotes_microtex_fix(src/latex.cpp [=[
+    delete userdata_fallback;]=] [=[
+    free(userdata_fallback);  // OurNotes]=])
