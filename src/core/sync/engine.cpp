@@ -232,9 +232,7 @@ void SyncEngine::pull(LibraryInfo& lib, SyncReport& report)
                 library_.resetSyncState(lib.id, targetId_);
                 since = 0;
                 lib.syncVersion = 0;
-                cursor.clear();
-                newVersion = -1;
-                continue;
+                page = transport_.changes(lib.uid, since, cursor, kPageSize);  // (no cursor yet: a continue would end the loop)
             }
             newVersion = page.version;
         }
