@@ -300,6 +300,11 @@ private:
     int previewPage_ = -1, previewIndex_ = -1;  // the link the mouse rests on
     QRectF previewArea_;
 
+    // where pictures are drawn on a page (page points), which the page colour leaves as they
+    // are; one over most of the page (a scan) is its paper
+    const std::vector<QRectF>& pictureRects(int page);
+    std::map<int, std::vector<QRectF>> pictureRects_;
+
     int placePage_ = -1;  // a place shown (showPlace), fading
     QRectF place_;
     double placeShown_ = 0;

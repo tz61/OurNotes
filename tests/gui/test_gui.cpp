@@ -838,6 +838,67 @@ TEST_CASE("reader: L turns the pages dark or light, the page colour tints them, 
     applyAppearance(Appearance::System);
 }
 
+TEST_CASE("reader: the page colour tints the paper only, not the text nor the pictures on it")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "picture.pdf";
+    writeImagePdf(file);  // a line of text, a red square picture (72..172, 192..292 from the top)
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Paper"}});
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key"));
+    applyAppearance(Appearance::Light);
+    ReaderTab tab(env.lib, key);
+    tab.resize(1200, 900);
+    tab.show();
+    auto* view = tab.view();
+    auto* tone = tab.findChild<QSlider*>("pageTone");
+    REQUIRE(tone);
+    auto at = [&](QPointF point) {
+        auto img = view->viewport()->grab().toImage();
+        return img.pixelColor((view->pageToViewport(0, point) * img.devicePixelRatio()).toPoint());
+    };
+    auto lightnessOfText = [&](bool brightest) {  // in the first letters' boxes
+        auto img = view->viewport()->grab().toImage();
+        int least = 255, most = 0;
+        auto& text = view->document()->text(0);
+        for (int i = 0; i < 4; ++i) {
+            auto& b = text.chars[i].box;
+            QRectF r(view->pageToViewport(0, {b.x0, b.y0}) * img.devicePixelRatio(),
+                     view->pageToViewport(0, {b.x1, b.y1}) * img.devicePixelRatio());
+            for (int y = int(r.top()); y < int(r.bottom()); ++y)
+                for (int x = int(r.left()); x < int(r.right()); ++x) {
+                    least = std::min(least, img.pixelColor(x, y).lightness());
+                    most = std::max(most, img.pixelColor(x, y).lightness());
+                }
+        }
+        return brightest ? most : least;
+    };
+    auto darkestOfText = [&] { return lightnessOfText(false); };
+    REQUIRE(QTest::qWaitFor([&] { return darkestOfText() < 40 && at({122, 242}) == QColor(Qt::red); }));  // (rendered)
+    CHECK(at({400, 600}) == QColor(Qt::white));
+    int ink = darkestOfText();
+    tone->setValue(50);
+    CHECK(at({400, 600}) == QColor(191, 191, 191));  // the paper, gray
+    CHECK(at({122, 242}) == QColor(Qt::red));         // the picture as it is
+    CHECK(darkestOfText() == ink);                     // the text too
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view->grab().save(dir + "/page-colour-light.png");
+
+    // dark pages: black paper towards gray, the text as light, the picture as it is
+    view->setFocus();
+    QTest::keyClick(view, Qt::Key_L);
+    REQUIRE(view->darkPages());
+    tone->setValue(50);
+    REQUIRE(QTest::qWaitFor([&] { return at({400, 600}) == QColor(64, 64, 64) && lightnessOfText(true) > 200; }));
+    CHECK(lightnessOfText(true) == QColor(226, 226, 226).lightness());  // (the ink as light as without)
+    CHECK(at({122, 242}) == QColor(Qt::red));
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view->grab().save(dir + "/page-colour-dark.png");
+    QTest::keyClick(view, Qt::Key_L);
+    applyAppearance(Appearance::System);
+}
+
 TEST_CASE("reader: [ and ] show or hide the panels, I and N open Info and Notes")
 {
     app();

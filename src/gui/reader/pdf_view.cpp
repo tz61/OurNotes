@@ -14,6 +14,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPlainTextEdit>
+#include <QRegion>
 #include <QScrollBar>
 #include <QStyleHints>
 #include <QToolButton>
@@ -253,6 +254,8 @@ void PdfView::open(const fs::path& path)
     }
     path_ = path;
     cache_.clear();
+    links_.clear();
+    pictureRects_.clear();
     startWorker();
     relayout(false);
 }
@@ -714,10 +717,16 @@ void PdfView::paintEvent(QPaintEvent*)
         } else if (it != cache_.end()) {
             p.drawImage(r, it->second.image);  // another zoom's, until this one's arrives
         }
-        if (tone_ > 0) {  // the page colour: white (or black) paper towards gray
-            p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
+        if (tone_ > 0) {  // the page colour: white (or black) paper towards gray, not the text on
+            // it (no lighter, or darker, than the gray) nor the pictures
+            p.save();
+            QRegion paper(r.toAlignedRect());
+            for (auto& picture : pictureRects(i))
+                paper -= QRegion(toView(i, picture).toAlignedRect());
+            p.setClipRegion(paper);
+            p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
             p.fillRect(r, pageToneColor(darkPages_, tone_));
-            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            p.restore();
         }
         paintAnnotations(p, i);
         paintTextSelection(p, i);
@@ -1481,6 +1490,23 @@ void PdfView::goForward()
 
 QWidget* PdfView::linkPreview() const { return linkPreview_; }
 
+const std::vector<QRectF>& PdfView::pictureRects(int page)
+{
+    auto it = pictureRects_.find(page);
+    if (it != pictureRects_.end())
+        return it->second;
+    std::vector<QRectF> rects;
+    try {
+        double area = pageSizes_[page].width() * pageSizes_[page].height();
+        for (auto& r : doc_->imageRects(page))
+            if (double(r.width()) * r.height() <= 0.75 * area)
+                rects.push_back(toQ(r));
+    } catch (const std::exception&) {
+        // (none known: the page colour over all of it)
+    }
+    return pictureRects_[page] = std::move(rects);
+}
+
 std::pair<int, int> PdfView::pageLinkAt(QPointF pos)
 {
     if (pageRects_.empty() || tool_ != ReaderTool::Select || pos.x() < 0)
@@ -1575,6 +1601,16 @@ void PdfView::showLinkPreview()
         for (auto r : doc_->imageRects(target))
             keep.push_back({float(r.x0 - left), float(r.y0 - top), float(r.x1 - left), float(r.y1 - top)});
         darkenPage(image, keep, scale * dpr, doc_->pageSize(target));
+    }
+    if (tone_ > 0) {  // (as the page is drawn, see paintEvent)
+        QPainter p(&image);
+        QRegion paper(image.rect());
+        for (auto& picture : pictureRects(target))
+            paper -= QRegion(QRectF((picture.topLeft() - previewArea_.topLeft()) * scale * dpr, picture.size() * scale * dpr)
+                                 .toAlignedRect());
+        p.setClipRegion(paper);
+        p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Lighten : QPainter::CompositionMode_Darken);
+        p.fillRect(image.rect(), pageToneColor(darkPages_, tone_));
     }
     image.setDevicePixelRatio(dpr);
     linkPreview_->setPixmap(QPixmap::fromImage(image));

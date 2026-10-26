@@ -46,7 +46,7 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   I and N open Info and Notes, and L turns the pages dark or back to the PDF's own
   colours (in a light theme too); Ctrl+Shift+T reopens a closed tab. A slider in the
   toolbar sets the page colour for all PDFs: white to gray, or black to gray for dark
-  pages. See [Key bindings](#key-bindings).
+  pages; only the paper, not the text or the pictures on it. See [Key bindings](#key-bindings).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   References: *Copy Reference* on text selected in a PDF (its context menu, or the button
