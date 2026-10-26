@@ -11,6 +11,7 @@
 #include <QLayout>
 #include <QToolButton>
 #include <QAbstractTextDocumentLayout>
+#include <QScrollArea>
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QHeaderView>
@@ -1622,6 +1623,62 @@ TEST_CASE("comments: plain text with formulas, to the editor and back")
     NoteTextEdit edit;
     edit.setHtml(commentHtmlForEditor("a $x_y$ b, costs $5 and $10"));
     CHECK(countMath(edit.document()) == 1);
+}
+
+TEST_CASE("reader: the paper's tags show in Info beside the PDF")
+{
+    app();
+    Env env;
+    auto file = env.dir.path / "sample.pdf";
+    writeSamplePdf(file);
+    Json tags = Json::array();
+    for (auto* t : {"Computer Science - Artificial Intelligence", "Computer Science - Computer Vision and Pattern Recognition",
+                    "Computer Science - Machine Learning",
+                    "Electrical Engineering and Systems Science - Image and Video Processing"})
+        tags.push_back(Json{{"tag", t}, {"type", 1}});
+    auto paper = jstr(env.library.createItem(env.lib, Json{{"itemType", "preprint"}, {"title", "I-JEPA"}, {"tags", tags}}), "key");
+    auto pdf = jstr(env.library.importAttachment(env.lib, file, paper), "key");
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    window.openAttachment(env.lib, qs(pdf));
+    QTest::qWait(300);
+    auto* tabs = window.findChild<QTabWidget*>("mainTabs");
+    auto* reader = qobject_cast<ReaderTab*>(tabs->currentWidget());
+    REQUIRE(reader);
+    auto* context = reader->findChild<QTabWidget*>("readerContextTabs");
+    context->setCurrentIndex(0);
+    QTest::qWait(200);
+    auto laidOut = [&] {
+        std::vector<QWidget*> chips;
+        for (auto* w : reader->findChildren<QWidget*>("tagChip"))
+            chips.push_back(w);
+        CHECK(chips.size() == 4);
+        for (auto* chip : chips) {
+            INFO(chip->geometry().x() << "," << chip->geometry().y() << " " << chip->width() << "x" << chip->height()
+                 << " visible " << chip->isVisible() << " parent width " << chip->parentWidget()->width());
+            CHECK(chip->isVisible());
+            CHECK(chip->width() <= chip->parentWidget()->width());
+            CHECK(chip->height() < 40);
+        }
+    };
+    laidOut();
+    // made again while Notes is in front (after a sync, say): placed when Info is shown again
+    // (they were left at 640 x 480, one big pill over the others)
+    context->setCurrentIndex(1);
+    QTest::qWait(100);
+    emit env.context.changed(0, "*", "", {});
+    QTest::qWait(200);
+    context->setCurrentIndex(0);
+    QTest::qWait(200);
+    laidOut();
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
+        for (auto* area : context->findChildren<QScrollArea*>())  // (down to the tags)
+            area->verticalScrollBar()->setValue(area->verticalScrollBar()->maximum());
+        QTest::qWait(100);
+        window.grab().save(dir + "/reader-tags.png");
+    }
 }
 
 TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left goes back, Ctrl+Right forward")

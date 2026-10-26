@@ -13,11 +13,20 @@ FlowLayout::FlowLayout(QWidget* parent, int spacing) : QLayout(parent), spacing_
 
 FlowLayout::~FlowLayout() { clear(); }
 
-void FlowLayout::addItem(QLayoutItem* item) { items_.append(item); }
+// (invalidated, as Qt's layouts are: else one whose widget is hidden then, a tab not in
+// front, kept its old layout when shown again, its new items at 640 x 480 over the rest)
+void FlowLayout::addItem(QLayoutItem* item)
+{
+    items_.append(item);
+    invalidate();
+}
 
 QLayoutItem* FlowLayout::takeAt(int index)
 {
-    return index >= 0 && index < items_.size() ? items_.takeAt(index) : nullptr;
+    if (index < 0 || index >= items_.size())
+        return nullptr;
+    invalidate();
+    return items_.takeAt(index);
 }
 
 void FlowLayout::clear()
