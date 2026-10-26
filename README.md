@@ -22,10 +22,14 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   images), attachments and their files, annotations (highlights, underlines, notes,
   images, ink), tag colours, reading positions and CSL styles. Zotero's files are only
   read. Re-running the import picks up items changed in Zotero since.
-- **PDF reader** — continuous scrolling, zoom/fit, thumbnails, outline, links, find.
+- **PDF reader** — continuous scrolling, zoom/fit, thumbnails, outline, links, find. A
+  link in the PDF that the mouse rests on shows where it leads, small (a reference: its
+  column, from it on); followed, Ctrl+Left (or the mouse's back button) goes back to where it
+  was followed from and Ctrl+Right forward again, as in a browser.
   Annotation tools: highlight, underline, sticky note, text box, area (image), ink and
-  eraser, eight colours, comments, move/resize. A comment shows over the page while the
-  mouse rests on its annotation and is edited right there after a click, with `$…$`
+  eraser, eight colours, comments, move/resize. A click on an annotation selects it (Delete
+  deletes it); a comment shows over the page while the mouse rests on its annotation and is
+  edited right there after a click on the annotation selected (or on its badge), with `$…$`
   formulas as in notes. Annotations are stored like Zotero's
   (PDF user-space coordinates) and imported Zotero annotations line up exactly.
   Annotations already inside a PDF are shown read-only; *File → Export PDF with

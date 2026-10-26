@@ -83,7 +83,7 @@ struct OutlineEntry {
 struct Link {
     Rect rect;
     int page = -1;  // internal target, -1 for external
-    float y = 0;
+    float x = 0, y = 0;  // where on that page (NaN: not said)
     std::string uri;
 };
 

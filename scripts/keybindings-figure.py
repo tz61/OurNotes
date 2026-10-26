@@ -20,6 +20,7 @@ SECTIONS = [
         ("Ctrl+F", "Find in the document"),
         ("Ctrl+Z / Ctrl+Y", "Undo / redo annotation changes"),
         ("Delete", "Delete the selected annotation"),
+        ("Ctrl+Left / Ctrl+Right", "Back to where a link was followed / forward"),
         ("Ctrl+= / Ctrl+-", "Zoom in / out (also Ctrl+wheel)"),
         ("Shift+wheel", "Scroll sideways"),
         ("Esc", "Clear the selection, close a comment"),

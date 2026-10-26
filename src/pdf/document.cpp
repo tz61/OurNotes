@@ -679,12 +679,12 @@ std::vector<OutlineEntry> Document::outline()
     return out;
 }
 
-static int resolveLink(fz_context* ctx, fz_document* doc, const char* uri, float* y)
+static int resolveLink(fz_context* ctx, fz_document* doc, const char* uri, float* y, float* x = nullptr)
 {
-    float x = 0;
+    float ignored = 0;
     fz_location loc = fz_make_location(-1, -1);
     fz_var(loc);
-    fz_try(ctx) { loc = fz_resolve_link(ctx, doc, uri, &x, y); }
+    fz_try(ctx) { loc = fz_resolve_link(ctx, doc, uri, x ? x : &ignored, y); }
     fz_catch(ctx) { return -1; }
     return pageNumber(ctx, doc, loc);
 }
@@ -703,7 +703,7 @@ std::vector<Link> Document::links(int n)
         link.rect = toRect(l->rect);
         link.uri = l->uri ? l->uri : "";
         if (l->uri && !fz_is_external_link(ctx, l->uri))
-            link.page = resolveLink(ctx, d_->doc, l->uri, &link.y);
+            link.page = resolveLink(ctx, d_->doc, l->uri, &link.y, &link.x);
         out.push_back(std::move(link));
     }
     fz_drop_link(ctx, links);

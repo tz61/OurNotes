@@ -7,6 +7,8 @@
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QHelpEvent>
+#include <QKeySequence>
+#include <QLabel>
 #include <QMenu>
 #include <QNativeGestureEvent>
 #include <QPainter>
@@ -159,6 +161,14 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
         if (!hoverKey_.isEmpty() && commentKeyAt(mousePos_) == hoverKey_)
             showComment(hoverKey_, false);
     });
+    linkPreview_ = new QLabel(viewport());
+    linkPreview_->setObjectName("linkPreview");
+    linkPreview_->setStyleSheet("QLabel#linkPreview { border: 1px solid palette(mid); background: palette(base); }");
+    linkPreview_->setAttribute(Qt::WA_TransparentForMouseEvents);  // (the mouse is on the link, not on it)
+    linkPreview_->hide();
+    linkPreviewTimer_.setSingleShot(true);
+    linkPreviewTimer_.setInterval(350);
+    connect(&linkPreviewTimer_, &QTimer::timeout, this, &PdfView::showLinkPreview);
     unhoverTimer_.setSingleShot(true);
     unhoverTimer_.setInterval(250);
     connect(&unhoverTimer_, &QTimer::timeout, this, [this] {
@@ -292,6 +302,7 @@ void PdfView::showEvent(QShowEvent* e)
 void PdfView::hideEvent(QHideEvent* e)
 {
     QAbstractScrollArea::hideEvent(e);
+    hideLinkPreview();
     if (!e->spontaneous()) {  // another tab was chosen (not a minimised window)
         bubble_->finish(true);
         imagesTimer_.start();
@@ -562,6 +573,7 @@ void PdfView::scrollContentsBy(int, int)
 void PdfView::scrolled()
 {
     hidePopup();
+    hideLinkPreview();
     placeComment();
     if (textEditor_ && !editingKey_.isEmpty())
         if (auto* a = findAnn(editingKey_))
@@ -1403,6 +1415,7 @@ void PdfView::showPlace(int page, const QRectF& place)
 {
     if (page < 0 || page >= pageCount())
         return;
+    remember();  // (Ctrl+Left: back to where it was)
     goToPage(page, place.isNull() ? -1 : place.top());
     if (place.isNull())
         return;
@@ -1410,6 +1423,172 @@ void PdfView::showPlace(int page, const QRectF& place)
     place_ = place;
     placeFade_->stop();
     placeFade_->start();
+}
+
+PdfView::Place PdfView::place() const
+{
+    if (pageRects_.empty())
+        return {};
+    auto corner = scrollOffset();
+    int page = pageAt(corner, true);
+    return {page, toPage(page, corner)};
+}
+
+void PdfView::goTo(const Place& place)
+{
+    if (place.page < 0 || place.page >= (int)pageRects_.size())
+        return;
+    QPointF corner = pageRects_[place.page].topLeft() + place.at * scale_;  // (at this zoom)
+    horizontalScrollBar()->setValue(int(std::lround(corner.x())));
+    verticalScrollBar()->setValue(int(std::lround(corner.y())));
+}
+
+void PdfView::remember()
+{
+    if (pageRects_.empty())
+        return;
+    back_.push_back(place());
+    if (back_.size() > 200)
+        back_.erase(back_.begin());
+    forward_.clear();  // (a new way from here: what was forward of it is gone)
+}
+
+void PdfView::followLink(int page, double y)
+{
+    remember();
+    goToPage(page, std::isfinite(y) ? y : -1);
+}
+
+void PdfView::goBack()
+{
+    if (back_.empty())
+        return;
+    forward_.push_back(place());
+    auto to = back_.back();
+    back_.pop_back();
+    goTo(to);
+}
+
+void PdfView::goForward()
+{
+    if (forward_.empty())
+        return;
+    back_.push_back(place());
+    auto to = forward_.back();
+    forward_.pop_back();
+    goTo(to);
+}
+
+QWidget* PdfView::linkPreview() const { return linkPreview_; }
+
+std::pair<int, int> PdfView::pageLinkAt(QPointF pos)
+{
+    if (pageRects_.empty() || tool_ != ReaderTool::Select || pos.x() < 0)
+        return {-1, -1};
+    QPointF content = pos + scrollOffset();
+    int page = pageAt(content, false);
+    if (page < 0)
+        return {-1, -1};
+    QPointF pt = toPage(page, content);
+    if (!links_.count(page))
+        links_[page] = doc_->links(page);
+    auto& links = links_[page];
+    for (int i = 0; i < (int)links.size(); ++i)
+        if (links[i].page >= 0 && toQ(links[i].rect).contains(pt))
+            return {page, i};
+    return {-1, -1};
+}
+
+void PdfView::hoverLink(int page, int index)
+{
+    if (page == previewPage_ && index == previewIndex_)
+        return;
+    hideLinkPreview();
+    previewPage_ = page;
+    previewIndex_ = index;
+    if (page >= 0)
+        linkPreviewTimer_.start();
+}
+
+void PdfView::hideLinkPreview()
+{
+    linkPreviewTimer_.stop();
+    linkPreview_->hide();
+    previewPage_ = previewIndex_ = -1;
+}
+
+void PdfView::showLinkPreview()
+{
+    if (previewPage_ < 0 || !links_.count(previewPage_) || previewIndex_ >= (int)links_[previewPage_].size())
+        return;
+    auto link = links_[previewPage_][previewIndex_];
+    int target = link.page;
+    if (target < 0 || target >= pageCount())
+        return;
+    QSizeF size = pageSizes_[target];
+    double x = std::isfinite(link.x) ? link.x : 0, y = std::isfinite(link.y) ? std::max<double>(0, link.y) : 0;
+    // as wide as the text there: the line at the place (nearest it across), and the lines
+    // under it beside that one (a reference in one column of two: that column)
+    double left = 0, right = size.width();
+    auto& text = doc_->text(target);
+    const pdf::TextLine* first = nullptr;
+    double best = 1e9;
+    for (auto& line : text.lines) {
+        if (line.vertical || line.box.y1 < y - 2 || line.box.y0 > y + 40)
+            continue;
+        double across = x < line.box.x0 ? line.box.x0 - x : x > line.box.x1 ? x - line.box.x1 : 0;
+        double score = 2 * across + std::max(0.0, line.box.y0 - y);
+        if (score < best) {
+            best = score;
+            first = &line;
+        }
+    }
+    if (first) {
+        left = first->box.x0;
+        right = first->box.x1;
+        for (int pass = 0; pass < 2; ++pass)
+            for (auto& line : text.lines)
+                if (!line.vertical && line.box.y1 >= y && line.box.y0 <= y + 200 && line.box.x0 < right &&
+                    line.box.x1 > left) {
+                    left = std::min<double>(left, line.box.x0);
+                    right = std::max<double>(right, line.box.x1);
+                }
+        left = std::max(0.0, left - 8);
+        right = std::min(size.width(), right + 8);
+    }
+    // at the page's zoom, unless that is wider than a preview
+    double widest = std::clamp(viewport()->width() * 0.6, 260.0, 600.0);
+    double scale = std::min(scale_, widest / std::max(1.0, right - left));
+    double top = std::clamp(y - 8, 0.0, std::max(0.0, size.height() - 40));
+    double height = std::min(size.height() - top, std::clamp(viewport()->height() * 0.3, 120.0, 240.0) / scale);
+    previewArea_ = QRectF(left, top, right - left, height);
+    double dpr = devicePixelRatioF();
+    QImage image;
+    try {
+        auto img = doc_->renderClip(target, float(scale * dpr), toP(previewArea_));
+        image = QImage(img.pixels.data(), img.width, img.height, img.stride, QImage::Format_RGB888).copy();
+    } catch (const std::exception&) {
+        return;
+    }
+    if (darkPages_) {  // as the page is drawn
+        std::vector<pdf::Rect> keep;
+        for (auto r : doc_->imageRects(target))
+            keep.push_back({float(r.x0 - left), float(r.y0 - top), float(r.x1 - left), float(r.y1 - top)});
+        darkenPage(image, keep, scale * dpr, doc_->pageSize(target));
+    }
+    image.setDevicePixelRatio(dpr);
+    linkPreview_->setPixmap(QPixmap::fromImage(image));
+    linkPreview_->adjustSize();
+    // under the link (over it, near the bottom), from the mouse on, inside the view
+    QRectF at = toView(previewPage_, toQ(link.rect));
+    int w = linkPreview_->width(), h = linkPreview_->height();
+    int px = std::clamp(int(mousePos_.x()) - 24, 4, std::max(4, viewport()->width() - w - 4));
+    int py = int(at.bottom()) + 6;
+    if (py + h > viewport()->height() - 4)
+        py = std::max(4, int(at.top()) - 6 - h);
+    linkPreview_->move(px, py);
+    linkPreview_->show();
+    linkPreview_->raise();
 }
 
 void PdfView::clearTextSelection()
@@ -1519,6 +1698,11 @@ void PdfView::updateCursor(QPointF pos)
 
 void PdfView::mousePressEvent(QMouseEvent* e)
 {
+    hideLinkPreview();
+    if (e->button() == Qt::BackButton || e->button() == Qt::ForwardButton) {  // (a mouse's side buttons)
+        e->button() == Qt::BackButton ? goBack() : goForward();
+        return;
+    }
     if (e->button() != Qt::LeftButton || pageRects_.empty()) {
         QAbstractScrollArea::mousePressEvent(e);
         return;
@@ -1571,8 +1755,10 @@ void PdfView::mousePressEvent(QMouseEvent* e)
                 return;
             }
             if (auto* a = annotationAt(page, pt)) {
+                // the first click selects it (Delete deletes it); a click on it selected (not a
+                // drag) edits its comment
+                pressedAnn_ = selectedAnn_ == a->key ? a->key : QString();
                 selectedAnn_ = a->key;
-                pressedAnn_ = a->key;  // a click (not a drag) edits its comment
                 clearTextSelection();
                 emit annotationSelected(a->key);
                 if (!a->external && editable_ && a->type != "highlight" && a->type != "underline")
@@ -1687,6 +1873,10 @@ void PdfView::mouseMoveEvent(QMouseEvent* e)
         }
     }
     if (drag_ == Drag::None) {
+        if (e->buttons() == Qt::NoButton) {
+            auto [page, index] = pageLinkAt(e->position());
+            hoverLink(page, index);
+        }
         updateCursor(e->position());
         QAbstractScrollArea::mouseMoveEvent(e);
         return;
@@ -1749,7 +1939,7 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
                 showPopup();
         } else if (!pressedLink_.isEmpty()) {
             if (pressedLinkPage_ >= 0)
-                goToPage(pressedLinkPage_, pressedLinkY_);
+                followLink(pressedLinkPage_, pressedLinkY_);
             else if (pressedLink_.startsWith("http") || pressedLink_.startsWith("mailto:"))
                 QDesktopServices::openUrl(QUrl(pressedLink_));
         }
@@ -1791,7 +1981,7 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
     case Drag::None:
         if (!pressedLink_.isEmpty() && tool_ == ReaderTool::Select) {
             if (pressedLinkPage_ >= 0)
-                goToPage(pressedLinkPage_, pressedLinkY_);
+                followLink(pressedLinkPage_, pressedLinkY_);
             else if (pressedLink_.startsWith("http") || pressedLink_.startsWith("mailto:"))
                 QDesktopServices::openUrl(QUrl(pressedLink_));
         }
@@ -1856,6 +2046,13 @@ void PdfView::wheelEvent(QWheelEvent* e)
 
 void PdfView::keyPressEvent(QKeyEvent* e)
 {
+    hideLinkPreview();
+    // back to where a link was followed from, and forward again (a browser's Alt+Left/Right)
+    if ((e->modifiers() & ~Qt::KeypadModifier) == Qt::ControlModifier &&
+        (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right)) {
+        e->key() == Qt::Key_Left ? goBack() : goForward();
+        return;
+    }
     // 1 … 8: the tools, in the toolbar's order. Only the page itself takes them: in a
     // comment, a text box or any other field the digit is typed (and never gets here).
     if ((e->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier && e->key() >= Qt::Key_1 && e->key() <= Qt::Key_8) {
@@ -1991,6 +2188,13 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
             menu.addAction(icon("new-note"), tr("Add to Note"), this, [this] { emit quoteToNote(selectedQuote()); });
         menu.addSeparator();
     }
+    if (canGoBack() || canGoForward()) {
+        auto shortcut = [](Qt::Key key) { return "\t" + QKeySequence(Qt::CTRL | key).toString(QKeySequence::NativeText); };
+        menu.addAction(icon("prev"), tr("Back") + shortcut(Qt::Key_Left), this, &PdfView::goBack)->setEnabled(canGoBack());
+        menu.addAction(icon("next"), tr("Forward") + shortcut(Qt::Key_Right), this, &PdfView::goForward)
+            ->setEnabled(canGoForward());
+        menu.addSeparator();
+    }
     menu.addAction(icon("zoom-in"), tr("Zoom In"), this, &PdfView::zoomIn);
     menu.addAction(icon("zoom-out"), tr("Zoom Out"), this, &PdfView::zoomOut);
     menu.addAction(icon("fit-width"), tr("Fit Width"), this, &PdfView::fitWidth);
@@ -2014,6 +2218,7 @@ bool PdfView::viewportEvent(QEvent* e)
         return true;
     }
     if (e->type() == QEvent::Leave) {
+        hideLinkPreview();
         mousePos_ = {-1, -1};
         hoverKey_.clear();
         hoverTimer_.stop();

@@ -14,6 +14,7 @@
 #include "core/json.h"
 #include "pdf/document.h"
 
+class QLabel;
 class QPlainTextEdit;
 class QVariantAnimation;
 
@@ -49,6 +50,17 @@ public:
     // A place on a page (points from its top left), as a link to it names: scrolled to, and
     // marked for a moment.
     void showPlace(int page, const QRectF& place);
+    // Links followed in the PDF (and places shown for links in notes) keep where the view was:
+    // goBack (Ctrl+Left, the mouse's back button) returns there, goForward (Ctrl+Right) to
+    // where it went back from. A link followed after going back drops what was forward.
+    bool canGoBack() const { return !back_.empty(); }
+    bool canGoForward() const { return !forward_.empty(); }
+    void goBack();
+    void goForward();
+    // Where a link in the PDF leads, shown small while the mouse rests on it: the preview,
+    // and the part of the page in it (points); for tests.
+    QWidget* linkPreview() const;
+    QRectF linkPreviewArea() const { return previewArea_; }
 
     double zoom() const;  // 1.0 = 100 %
     void setZoom(double zoom, QPointF anchor = {-1, -1});
@@ -268,6 +280,26 @@ private:
     double pressedLinkY_ = 0;
     std::map<int, std::vector<pdf::Link>> links_;
 
+    struct Place {  // where the view is: its top left corner, on a page (points from its top left)
+        int page = -1;
+        QPointF at;
+    };
+    Place place() const;
+    void goTo(const Place& place);
+    void remember();  // where the view is, before a link moves it (see goBack)
+    void followLink(int page, double y);
+    std::vector<Place> back_, forward_;
+
+    // the link to a page under a point of the viewport: its page and index there (-1s: none)
+    std::pair<int, int> pageLinkAt(QPointF pos);
+    void hoverLink(int page, int index);
+    void showLinkPreview();
+    void hideLinkPreview();
+    QLabel* linkPreview_ = nullptr;
+    QTimer linkPreviewTimer_;
+    int previewPage_ = -1, previewIndex_ = -1;  // the link the mouse rests on
+    QRectF previewArea_;
+
     int placePage_ = -1;  // a place shown (showPlace), fading
     QRectF place_;
     double placeShown_ = 0;
@@ -285,7 +317,7 @@ private:
     QTimer hoverTimer_;    // the mouse rests on an annotation: show its comment
     QTimer unhoverTimer_;  // it left: hide the comment
     QString hoverKey_;
-    QString pressedAnn_;  // a click on it edits its comment
+    QString pressedAnn_;  // a click on it (selected already, or on its badge) edits its comment
     QPointF pressPos_;
     QPointF mousePos_{-1, -1};  // in the viewport, while the mouse is over it
 };

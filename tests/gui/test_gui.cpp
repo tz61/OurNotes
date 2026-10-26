@@ -1624,6 +1624,110 @@ TEST_CASE("comments: plain text with formulas, to the editor and back")
     CHECK(countMath(edit.document()) == 1);
 }
 
+TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left goes back, Ctrl+Right forward")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "linked.pdf";
+    writeLinkedPdf(file);
+    PdfView view;
+    view.resize(800, 900);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    auto* bar = view.verticalScrollBar();
+    auto onLink = view.pageToViewport(0, {102, 87}).toPoint();  // "[1]"
+    auto* preview = view.linkPreview();
+
+    // resting on it: where it leads, small: the reference's column (the right one of two), from it on
+    QTest::mouseMove(view.viewport(), onLink + QPoint(0, 80));
+    QTest::mouseMove(view.viewport(), onLink);
+    REQUIRE(QTest::qWaitFor([&] { return preview->isVisible(); }, 2000));
+    auto area = view.linkPreviewArea();
+    CHECK(area.left() > 300);
+    CHECK(area.left() < 330);
+    CHECK(area.top() == doctest::Approx(364).epsilon(0.01));
+    CHECK(preview->geometry().top() > onLink.y());  // (under the link)
+    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty())
+        view.grab().save(dir + "/pdf-link-preview.png");
+    QTest::mouseMove(view.viewport(), onLink + QPoint(0, 80));  // (off it)
+    CHECK(!preview->isVisible());
+
+    // followed: there; Ctrl+Left back to where it was followed from, Ctrl+Right to where that
+    // went back from
+    CHECK(!view.canGoBack());
+    int start = bar->value();
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, onLink);
+    CHECK(view.currentPage() == 2);
+    REQUIRE(view.canGoBack());
+    int read = bar->value() - 50;  // (looked a little further up there: the last page)
+    bar->setValue(read);
+    QTest::keyClick(&view, Qt::Key_Left, Qt::ControlModifier);
+    CHECK(bar->value() == start);
+    CHECK(view.canGoForward());
+    QTest::keyClick(&view, Qt::Key_Right, Qt::ControlModifier);
+    CHECK(bar->value() == read);
+    CHECK(!view.canGoForward());
+    QTest::keyClick(&view, Qt::Key_Left, Qt::ControlModifier);
+    CHECK(bar->value() == start);
+
+    // gone back, a link followed from elsewhere: the newest, what was forward of it gone
+    view.goToPage(1);
+    int page2 = bar->value();
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, view.pageToViewport(1, {120, 87}).toPoint());
+    CHECK(view.currentPage() == 0);
+    CHECK(!view.canGoForward());
+    int top = bar->value();
+    QTest::keyClick(&view, Qt::Key_Right, Qt::ControlModifier);
+    CHECK(bar->value() == top);
+    QTest::keyClick(&view, Qt::Key_Left, Qt::ControlModifier);
+    CHECK(bar->value() == page2);
+    CHECK(!view.canGoBack());
+    // the mouse's side buttons too; a zoom between keeps the place
+    QTest::mouseClick(view.viewport(), Qt::ForwardButton, {}, QPoint(10, 10));
+    CHECK(bar->value() == top);
+    view.zoomIn();
+    QTest::mouseClick(view.viewport(), Qt::BackButton, {}, QPoint(10, 10));
+    CHECK(view.currentPage() == 1);
+    CHECK(view.pageToViewport(1, {0, 0}).y() == doctest::Approx(view.pageToViewport(1, {0, 0}).y()));
+}
+
+TEST_CASE("pdf view: a click on an annotation selects it, Delete deletes it; a click on it selected edits its comment")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 900);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    Json highlight;
+    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) { highlight = d; });
+    view.setTool(ReaderTool::Highlight);
+    drag(view.viewport(), charCenter(view, 0), charCenter(view, 10));
+    REQUIRE(highlight.is_object());
+    view.setTool(ReaderTool::Select);
+    view.setAnnotations({highlight});
+    QString deleted;
+    QObject::connect(&view, &PdfView::annotationDeleted, [&](const QString& key) { deleted = key; });
+    auto on = charCenter(view, 4).toPoint();
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(view.selectedAnnotation() == qs(jstr(highlight, "key")));
+    CHECK(!view.commentBubble()->isVisible());
+    QTest::keyClick(&view, Qt::Key_Delete);
+    CHECK(deleted == qs(jstr(highlight, "key")));
+    // (back again, say after an undo: a click selects it, a second edits its comment)
+    view.setAnnotations({highlight});
+    deleted.clear();
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(!view.commentBubble()->isVisible());
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(view.commentBubble()->isEditing());
+    CHECK(deleted.isEmpty());
+}
+
 TEST_CASE("comments: shown over the page on hover, edited in place after a click")
 {
     app();
@@ -1666,7 +1770,13 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     QTest::mouseMove(view.viewport(), off);
     CHECK(QTest::qWaitFor([&] { return !bubble->isVisible(); }, 2000));
 
-    // a click edits it; Escape saves
+    // a click selects it, nothing more (Delete would delete it); a second edits its comment;
+    // Escape saves
+    QString selected;
+    QObject::connect(&view, &PdfView::annotationSelected, [&](const QString& key) { selected = key; });
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
+    CHECK(selected == qs(jstr(highlight, "key")));
+    CHECK(!bubble->isEditing());
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
     REQUIRE(bubble->isVisible());
     CHECK(bubble->isEditing());
@@ -1689,6 +1799,8 @@ TEST_CASE("comments: shown over the page on hover, edited in place after a click
     // a highlight without a comment gets an empty box to write in; read-only shows only
     highlight["annotationComment"] = "";
     view.setAnnotations({highlight});
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);  // (selected)
+    CHECK(!bubble->isVisible());
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, on);
     CHECK(bubble->isEditing());
     QTest::keyClick(bubble->editor(), Qt::Key_Escape);
@@ -7623,6 +7735,7 @@ TEST_CASE("reader: keys 1 to 8 pick the tools, but not while typing")
     view->setAnnotations({highlight});
     QTest::keyClick(view, Qt::Key_1);
     QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 2).toPoint());
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 2).toPoint());  // (the first selects it, the second edits its comment)
     auto* bubble = view->commentBubble();
     REQUIRE(bubble->isEditing());
     QTest::keyClicks(bubble->editor(), "page 5");
@@ -7668,6 +7781,7 @@ TEST_CASE("reader: Ctrl+Space turns no page; keys a comment or a text box has no
     REQUIRE(anns.size() == 1);
     QTest::keyClick(&view, Qt::Key_1);
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 2).toPoint());
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 2).toPoint());  // (the first selects it, the second edits its comment)
     auto* bubble = view.commentBubble();
     REQUIRE(bubble->isEditing());
     int at = bar->value();
