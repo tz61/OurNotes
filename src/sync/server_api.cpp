@@ -150,7 +150,7 @@ Json readJson(const ContentReader& reader, size_t limit)
         throw SyncError("request body too large", 413);
     if (!ok)
         throw SyncError("could not read request body", 400);
-    auto j = Json::parse(body, nullptr, false);
+    auto j = parseExternalJson(body);
     if (!j.is_object())
         throw SyncError("request body must be a JSON object", 400);
     return j;

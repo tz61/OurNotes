@@ -36,6 +36,14 @@ TEST_CASE("string helpers")
     CHECK(htmlToText("<div><p>Hello &amp; <b>world</b></p><p>Second</p></div>") == "Hello & world\nSecond");
     CHECK(noteTitle("<h1>Title</h1><p>body</p>") == "Title");
     CHECK(safeFilename("a/b:c?.pdf") == "a_b_c_.pdf");
+    // long names are cut, their extension kept; a long "extension" (a synced filename) is
+    // no extension, and nothing is read past the end of the name
+    CHECK(safeFilename(std::string(300, 'y') + ".pdf") == std::string(196, 'y') + ".pdf");
+    CHECK(safeFilename("a." + std::string(300, 'x')) == "a." + std::string(198, 'x'));
+    // JSON from elsewhere nested deeper than OurNotes writes is not taken
+    CHECK(parseExternalJson(R"({"a": [1, {"b": "]]]"}]})").is_object());
+    CHECK(parseExternalJson(std::string(100000, '[') + std::string(100000, ']')).is_discarded());
+    CHECK(parseExternalJson(R"(["\"[[[[", "{{{"])", 2).is_array());
     CHECK(isoToEpoch("1970-01-02T00:00:00Z") == 86400);
     CHECK(epochToIso(86400) == "1970-01-02T00:00:00Z");
     CHECK(isValidKey(newKey()));
