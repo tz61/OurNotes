@@ -376,6 +376,15 @@ TEST_CASE("cli: items made from nothing, of another type, their authors, copied,
     CHECK(creators[2] == Json{{"creatorType", "author"}, {"name", "Google Brain"}});
     CHECK(cli.run({"creators", key, "Parmar, Niki", "--add"}).first == 0);
     CHECK((*lib.item(mine, key))["creators"].size() == 4);
+    // added in the order given, --add before, after or among them
+    CHECK(cli.run({"creators", key, "Uszkoreit, Jakob", "--add", "Jones, Llion"}).first == 0);
+    CHECK(cli.run({"creators", key, "--add", "Gomez, Aidan", "Kaiser, Lukasz"}).first == 0);
+    creators = (*lib.item(mine, key))["creators"];
+    REQUIRE(creators.size() == 8);
+    CHECK(creators[4]["lastName"] == "Uszkoreit");
+    CHECK(creators[5]["lastName"] == "Jones");
+    CHECK(creators[6]["lastName"] == "Gomez");
+    CHECK(creators[7]["lastName"] == "Kaiser");
     CHECK(cli.run({"creators", key}).second.find("editor: Shazeer, Noam") != npos);
     CHECK(cli.run({"creators", key, "interviewer:Doe, Jo"}).first == 1);  // not a book's
     CHECK(cli.run({"creators", key, "--clear"}).first == 0);

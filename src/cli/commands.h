@@ -29,6 +29,7 @@ struct Args {
     std::string command;
     std::vector<std::string> positionals;
     std::map<std::string, std::string> options;
+    std::map<std::string, size_t> optionAt;  // how many positionals came before each option
 
     Args(int argc, char** argv)
     {
@@ -48,6 +49,8 @@ struct Args {
             }
             bool named = !text && a.size() > 1 && a[0] == '-' && a.find_first_of(" \t\r\n") == std::string::npos;
             bool takesValue = named && std::find(valued.begin(), valued.end(), a) != valued.end();
+            if (named)
+                optionAt[a] = positionals.size();
             if (takesValue && i + 1 < argc) {
                 options[a] = argv[++i];
             } else if (named) {

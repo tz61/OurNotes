@@ -257,8 +257,10 @@ int cmdCreators(Library& lib, Args& args)
         throw Error(key + " is a " + type + ": only a regular item has authors");
     std::vector<std::string> names(args.positionals.begin() + std::min<size_t>(1, args.positionals.size()),
                                    args.positionals.end());
-    if (auto first = args.option("--add"); !first.empty() && first != "1")  // --add "Doe, Jane" ...
-        names.insert(names.begin(), first);
+    if (auto first = args.option("--add"); !first.empty() && first != "1") {  // --add "Doe, Jane": where it was
+        size_t at = args.optionAt.count("--add") ? args.optionAt.at("--add") : 1;  // (KEY first)
+        names.insert(names.begin() + std::min(at > 0 ? at - 1 : 0, names.size()), first);
+    }
     if (names.empty() && !args.flag("--clear")) {
         auto creators = item.value("creators", Json::array());
         if (args.flag("--json")) {
