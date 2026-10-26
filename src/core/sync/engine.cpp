@@ -554,6 +554,8 @@ void SyncEngine::syncFiles(LibraryInfo& lib, SyncReport& report)
                 fs::copy_file(path, copyFile, fs::copy_options::overwrite_existing);
                 library_.importAttachment(lib.id, copyFile, jstr(att, "parentItem"), false,
                                           jstr(att, "title") + " (conflicted copy " + nowIso().substr(0, 10) + ")");
+                // kept: not a conflict again if the download is skipped (on demand) or fails
+                library_.setSyncedMd5(lib.id, key, localMd5);
                 fs::remove_all(copy, ec);
                 download(it->second);
                 ++report.conflicts;
