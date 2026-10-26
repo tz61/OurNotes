@@ -105,6 +105,11 @@ TEST_CASE("markdownToNoteHtml: a note as an agent writes it")
                   "<pre class=\"math\">$$\\sum_i x_i$$</pre>"
                   "<pre>int main() { return 1 &lt; 2; }</pre><hr><h3>deep</h3></div>");
     CHECK(markdownToNoteHtml("costs $5 and $10") == "<div data-schema-version=\"9\"><p>costs $5 and $10</p></div>");
+    // a ** or __ that closes nothing is text, not an empty emphasis
+    CHECK(markdownToNoteHtml("Runtime is O(n**2) at worst") ==
+          "<div data-schema-version=\"9\"><p>Runtime is O(n**2) at worst</p></div>");
+    CHECK(markdownToNoteHtml("*args and **kwargs, __x") ==
+          "<div data-schema-version=\"9\"><p>*args and **kwargs, __x</p></div>");
 }
 
 TEST_CASE("markdownToNoteHtml: tables, as GitHub has them")

@@ -515,11 +515,11 @@ std::string inlineMarkdown(std::string_view line)
                 continue;
             }
         }
-        // (an _ inside a word, as in snake_case, is not emphasis)
+        // (an _ inside a word, as in snake_case, is not emphasis; nor is nothing: the ** of n**2)
         if ((c == '*' || c == '_') && i + 1 < line.size() && line[i + 1] != ' ' &&
             (c == '*' || i == 0 || !std::isalnum((unsigned char)line[i - 1]))) {
             auto end = line.find(c, i + 1);
-            if (end != npos && line[end - 1] != ' ') {
+            if (end != npos && end > i + 1 && line[end - 1] != ' ') {
                 out += "<em>" + inlineMarkdown(line.substr(i + 1, end - i - 1)) + "</em>";
                 i = end + 1;
                 continue;
