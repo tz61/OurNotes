@@ -10,6 +10,8 @@
 #include <QMessageBox>
 #include <QLayout>
 #include <QToolButton>
+#include <QHelpEvent>
+#include <QToolTip>
 #include <QAbstractTextDocumentLayout>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -5943,6 +5945,57 @@ TEST_CASE("notes: pasted from elsewhere in dark mode, a link's own colour is not
     REQUIRE(block.text() == "“A” (Doe, 2020)");
     CHECK(block.blockFormat().topMargin() == 0);
     CHECK(block.blockFormat().bottomMargin() == 0);
+}
+
+TEST_CASE("notes: a tooltip in a synced note's text is shown as text, its <img> not read; links follow the theme")
+{
+    app();
+    TempDir tmp;
+    auto picture = tmp.path / "big.png";
+    QImage big(600, 400, QImage::Format_RGB32);
+    big.fill(Qt::red);
+    REQUIRE(big.save(qpath(picture)));
+    NoteTextEdit edit;
+    edit.resize(500, 300);
+    edit.show();
+    auto img = ("<img src=\"" + qpath(picture) + "\">").toHtmlEscaped();
+    edit.setHtml("<p><span title=\"" + img + "\">Hover here</span> and <a href=\"https://x.org/\">a link</a></p>");
+    QApplication::processEvents();
+    auto at = edit.cursorRect(edit.document()->find("ver here")).center();
+    QHelpEvent help(QEvent::ToolTip, at, edit.viewport()->mapToGlobal(at));
+    QApplication::sendEvent(edit.viewport(), &help);
+    QApplication::processEvents();
+    CHECK(QToolTip::isVisible());
+    CHECK(QToolTip::text().contains("&lt;img"));  // (as text)
+    for (auto* w : QApplication::topLevelWidgets())
+        if (QString(w->metaObject()->className()) == "QTipLabel" && w->isVisible())
+            CHECK(w->height() < 200);  // (not the picture, read from its file: 600 x 400)
+    QToolTip::hideText();
+
+    // a link: the theme's link colour, in a dark one and back in the light one
+    auto link = [&] { return edit.document()->find("a link").charFormat().foreground().color(); };
+    auto light = edit.palette(), dark = light;
+    dark.setColor(QPalette::Base, QColor(0x1b, 0x1e, 0x20));
+    dark.setColor(QPalette::Text, QColor(0xfc, 0xfc, 0xfc));
+    dark.setColor(QPalette::Link, QColor(0x1d, 0x99, 0xf3));
+    light.setColor(QPalette::Link, QColor(0x29, 0x80, 0xb9));
+    edit.setPalette(light);
+    CHECK(link() == QColor(0x29, 0x80, 0xb9));
+    edit.setPalette(dark);
+    CHECK(link() == QColor(0x1d, 0x99, 0xf3));
+    edit.setPalette(light);
+    CHECK(link() == QColor(0x29, 0x80, 0xb9));
+    // a link made over text whose colour is hidden for contrast: saved without that colour
+    QTextCursor c(edit.document());
+    c.movePosition(QTextCursor::End);
+    QTextCharFormat f;
+    f.setAnchor(true);
+    f.setAnchorHref("https://y.org/");
+    f.setProperty(kOriginalForegroundProperty, QColor(0x20, 0x20, 0x20));
+    c.insertText(" another", f);
+    auto html = documentToNoteHtml(edit.document());
+    CHECK(html.contains("<a href=\"https://y.org/\">"));
+    CHECK(!html.contains("#202020"));
 }
 
 TEST_CASE("notes: LaTeX pasted into an empty caption looks as it is saved: a caption's text, a formula alone too")

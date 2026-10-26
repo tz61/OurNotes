@@ -452,7 +452,7 @@ QString fragmentHtml(const QTextFragment& frag, const QTextCharFormat& blockDefa
     if (isMonospace(f) && !isMonospace(blockDefault))
         wrap("code");
     QStringList style;
-    if (f.hasProperty(kOriginalForegroundProperty))
+    if (f.hasProperty(kOriginalForegroundProperty) && !f.isAnchor())  // (a link's colour is not its own)
         style << "color: " + f.property(kOriginalForegroundProperty).value<QColor>().name();
     else if (f.hasProperty(QTextFormat::ForegroundBrush) && !f.isAnchor())
         style << "color: " + f.foreground().color().name();

@@ -30,6 +30,8 @@
 #include <QToolBar>
 #include <QTimer>
 #include <QToolButton>
+#include <QHelpEvent>
+#include <QToolTip>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
@@ -760,13 +762,21 @@ void NoteTextEdit::adaptColors()
             if (f.isImageFormat() && !parseMathResourceName(f.toImageFormat().name(), nullptr, nullptr))
                 continue;  // pictures have no colour; formulas do
             bool hidden = f.hasProperty(kOriginalForegroundProperty);
+            if (f.isAnchor() && !f.anchorHref().isEmpty()) {
+                // a link: the palette's link colour, in this theme and back in the other (its
+                // own is neither shown nor saved, as when pasted)
+                if (!hidden && f.foreground().color() == palette().link().color())
+                    continue;
+                f.clearProperty(kOriginalForegroundProperty);
+                f.setForeground(palette().link());
+                changes.push_back({frag.position(), frag.position() + frag.length(), f});
+                continue;
+            }
             if (!hidden && !f.hasProperty(QTextFormat::ForegroundBrush))
                 continue;
             QColor original = hidden ? f.property(kOriginalForegroundProperty).value<QColor>() : f.foreground().color();
             bool unreadable = unreadableOn(original, base);
-            if (unreadable && !hidden && f.isAnchor()) {
-                f.setForeground(palette().link());  // (a link's colour is the palette's, not its own: as when pasted)
-            } else if (unreadable && !hidden) {
+            if (unreadable && !hidden) {
                 f.setProperty(kOriginalForegroundProperty, original);
                 f.clearForeground();
             } else if (!unreadable && hidden) {
@@ -1595,6 +1605,18 @@ int NoteTextEdit::formulaKey(const QKeyEvent* e) const
 // surrounding shortcut does not take it.
 bool NoteTextEdit::event(QEvent* e)
 {
+    // A tooltip of the note's text (a title= in a synced note's HTML, a formula's source),
+    // which comes here when the note itself has none to show: as it is. Qt showed it as rich
+    // text, which reads the files its <img> tags name, not through this note's loadResource.
+    if (e->type() == QEvent::ToolTip) {
+        auto* help = static_cast<QHelpEvent*>(e);
+        auto tip = cursorForPosition(viewport()->mapFrom(this, help->pos())).charFormat().toolTip();
+        if (tip.isEmpty())
+            QToolTip::hideText();
+        else
+            QToolTip::showText(help->globalPos(), asPlainText(tip), this);
+        return true;
+    }
     if (e->type() == QEvent::ShortcutOverride) {
         auto* k = static_cast<QKeyEvent*>(e);
         // the note's, not the window's (zoom applies to the PDF there)
