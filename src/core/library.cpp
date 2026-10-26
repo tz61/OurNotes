@@ -1129,9 +1129,21 @@ std::vector<std::string> Library::copyItems(int64_t fromLib, const std::vector<s
         d["collections"] = !d.contains("parentItem") && !collectionKey.empty() ? Json::array({collectionKey})
                                                                                : Json::array();
         if (d.contains("note") && d["note"].is_string()) {
+            // each image's key looked up (not every key copied looked for in every note)
+            static const std::string attr = "data-attachment-key=\"";
             auto html = d["note"].get<std::string>();
-            for (auto& [from, to] : newKeys)
-                html = replaceAll(html, "data-attachment-key=\"" + from + "\"", "data-attachment-key=\"" + to + "\"");
+            for (auto pos = html.find(attr); pos != std::string::npos; pos = html.find(attr, pos)) {
+                pos += attr.size();
+                auto end = html.find('"', pos);
+                if (end == std::string::npos)
+                    break;
+                auto to = newKeys.find(html.substr(pos, end - pos));
+                if (to != newKeys.end()) {
+                    html.replace(pos, end - pos, to->second);
+                    end = pos + to->second.size();
+                }
+                pos = end;
+            }
             d["note"] = html;
         }
         if (schema::isStoredLinkMode(jstr(d, "linkMode"))) {  // its own copy of the file
@@ -1719,7 +1731,8 @@ std::optional<StoredObject> Library::getObject(int64_t lib, const std::string& t
 void Library::putRemoteObject(int64_t lib, const std::string& type, const std::string& key, const Json& data,
                               int64_t version)
 {
-    bool existed = getObject(lib, type, key).has_value();
+    bool existed = db_.scalarInt("SELECT 1 FROM " + tableFor(type) + " WHERE library_id=? AND key=?", lib, key)
+                       .has_value();  // (without reading its data: done for every object pulled)
     sql::Transaction tx(db_);
     writeObject(lib, type, key, data, version, true, false);
     db_.run("DELETE FROM tombstones WHERE library_id=? AND type=? AND key=?", lib, type, key);

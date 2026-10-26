@@ -290,9 +290,21 @@ void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type
     if (type == "setting")
         c.title = key;
     c.title = shortened(c.title);
-    auto it = std::find_if(report.changes.begin(), report.changes.end(),
-                           [&](const SyncChange& o) { return o.libraryId == lib && o.type == type && o.key == key; });
-    if (it != report.changes.end()) {
+    auto reindex = [&](size_t from) {
+        for (size_t i = from; i < report.changes.size(); ++i) {
+            auto& o = report.changes[i];
+            changeIndex_[{o.libraryId, o.type, o.key}] = i;
+        }
+    };
+    if (indexed_ != &report || indexedSize_ != report.changes.size()) {  // another report, or changed elsewhere
+        changeIndex_.clear();
+        reindex(0);
+        indexed_ = &report;
+    }
+    auto found = changeIndex_.find({lib, type, key});
+    if (found != changeIndex_.end()) {
+        size_t pos = found->second;
+        auto it = report.changes.begin() + (std::ptrdiff_t)pos;
         // the last change wins, but an object that came or went in this sync stays added
         if (it->action == "added" && action == "changed")
             c.action = "added";
@@ -301,10 +313,14 @@ void SyncEngine::record(SyncReport& report, int64_t lib, const std::string& type
         if (c.by.empty() && !incoming && !it->incoming)
             c.by = it->by;
         report.changes.erase(it);
+        changeIndex_.erase(found);
+        reindex(pos);
     }
     if (auto info = library_.library(lib))
         c.library = info->name;
+    changeIndex_[{lib, type, key}] = report.changes.size();
     report.changes.push_back(std::move(c));
+    indexedSize_ = report.changes.size();
 }
 
 void SyncEngine::applyRemote(int64_t lib, const RemoteObject& o, SyncReport& report)
@@ -388,8 +404,8 @@ bool SyncEngine::push(LibraryInfo& lib, SyncReport& report)
         int64_t rev;
     };
     std::vector<Pending> pending;
-    for (auto& d : dirty)
-        pending.push_back({{d.type, d.key, d.version, false, d.data}, d.rev});
+    for (auto& d : dirty)  // (moved: a first sync has every object here)
+        pending.push_back({{d.type, d.key, d.version, false, std::move(d.data)}, d.rev});
     for (auto& t : tombs)
         pending.push_back({{t.type, t.key, t.version, true, nullptr}, 0});
 
@@ -453,11 +469,16 @@ void SyncEngine::syncFiles(LibraryInfo& lib, SyncReport& report)
     for (auto& f : transport_.files(lib.uid))
         remote[f.key] = f;
 
+    // only the attachments are read (every sync), not the whole library
     std::vector<Json> attachments;
-    for (auto& d : library_.allItems(lib.id, true))
-        if (jstr(d, "itemType") == "attachment" && schema::isStoredLinkMode(jstr(d, "linkMode")) &&
-            !jstr(d, "filename").empty())
-            attachments.push_back(d);
+    {
+        auto st = library_.db().query("SELECT data FROM items WHERE library_id=? AND item_type='attachment'", lib.id);
+        while (st.step()) {
+            auto d = Json::parse(st.str(0));
+            if (schema::isStoredLinkMode(jstr(d, "linkMode")) && !jstr(d, "filename").empty())
+                attachments.push_back(std::move(d));
+        }
+    }
 
     int done = 0;
     for (auto& att : attachments) {

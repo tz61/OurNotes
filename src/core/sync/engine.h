@@ -1,7 +1,9 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "core/library.h"
@@ -82,6 +84,11 @@ private:
     Transport& transport_;
     std::string targetId_;
     SyncOptions options_;
+    // Where each object is in the changes of the report record() last added to (by library,
+    // type, key), so that a sync of many objects does not search them all for each one.
+    std::map<std::tuple<int64_t, std::string, std::string>, size_t> changeIndex_;
+    const SyncReport* indexed_ = nullptr;
+    size_t indexedSize_ = 0;
 };
 
 } // namespace on::sync
