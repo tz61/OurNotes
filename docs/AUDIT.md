@@ -137,3 +137,20 @@ tests' samples): `importBibtex`, `importRis`, `importCslJson`, `detectFormat`,
 `parseItemLink`, ~4.9 million inputs. No crash, no memory error, no leak.
 
 Left: a 12-byte allocation MicroTeX makes once at start (fonts), never freed.
+
+## Round 4: the reader code that came in meanwhile (048f1ee..786d741)
+
+Reviewed, then each finding given to a skeptic told to refute it (six of eight held).
+
+| Kind | Where | What |
+|---|---|---|
+| leak | `pdf_view.cpp` `LinkPreview::tileFor` | The link preview kept a rendered tile (≈8–10 MB at 2x) for every page wheeled through, until the next preview. Now the pages shown and one each side; none while hidden. |
+| perf | `pdf_view.cpp` `paintLinks` | Each link's tint (an image copy, a pixel scan, a fill, two composited draws) was made again on every paint, at every step of a scroll: 6–28 ms a page for 50–400 links. Made once per rendered image, kept with it. |
+| perf | `LinkPreview::tileFor` | Rounding put the area needed a hair past the tile at a page's edge, so ~12% of positions rendered the tile again at every paint. |
+| rendering | `LinkPreview::paintEvent`, `tileFor` | Tiles were rendered to whole pixels but drawn into fractional rects without smoothing: columns dropped, text off by a pixel and shimmering while scrolling. Snapped to device pixels as the main view does. |
+| behaviour | `LinkPreview::zoom` | A preview begun outside [0.4, 4] jumped to the limit at the first Ctrl+wheel, zooming the wrong way. |
+| correctness | `cli/annotation_commands.cpp` `passageAcross` | A quote not in the PDF could be "found" across a page break from a phrase mid-page and any matching word on the next (exit 0, a wrong highlight saved and synced). Both halves must now be whole words near the break. Test in `test_cli.cpp`. |
+
+Refuted: `pictureRects()` running page content on the GUI thread (cached per page, once
+a document); the preview's leave timer restarting on each move (as comment bubbles do,
+on purpose).
