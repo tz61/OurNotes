@@ -810,6 +810,35 @@ std::tuple<int, int, int> pngInfo(const fs::path& file)
 }
 } // namespace
 
+TEST_CASE("cli: a passage across a page break, highlighted as one annotation on both pages")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Paper"}}), "key");
+    auto pdfPath = cli.dir.path / "linked.pdf";
+    writeLinkedPdf(pdfPath);  // page 1: "See [1] for the details.", page 2: "Back to page one, from here."
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+
+    // its first words at the end of page 1, the rest at the top of page 2 (in any case)
+    auto [code, out] = cli.run({"annotate", paper, "--quote", "for the details. back to page", "--type", "underline"});
+    INFO(out);
+    REQUIRE(code == 0);
+    auto made = *lib.item(mine, trim(out));
+    auto position = made["annotationPosition"];
+    CHECK(position["pageIndex"] == 0);
+    CHECK(position["rects"].size() == 1);
+    REQUIRE(position["nextPageRects"].size() == 1);
+    CHECK(jstr(made, "annotationText") == "for the details. Back to page");
+    // (on page 2, high on it: where "Back" is)
+    CHECK(position["nextPageRects"][0][3].get<double>() > 690);
+    // starting where --page says; one that is nowhere, nor across any break, is refused
+    CHECK(cli.run({"annotate", paper, "--quote", "from here. left column words", "--page", "2"}).first == 0);
+    CHECK(cli.run({"annotate", paper, "--quote", "from here. left column words", "--page", "1"}).first == 1);
+    CHECK(cli.run({"annotate", paper, "--quote", "the details. nowhere at all"}).first == 1);
+    CHECK(lib.annotations(mine, pdf).size() == 2);
+}
+
 TEST_CASE("cli: a page with its annotations as a picture, or a doodle's place on it, or the doodle alone")
 {
     Cli cli;

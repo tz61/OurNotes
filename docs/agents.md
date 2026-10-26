@@ -176,7 +176,11 @@ ournotes-cli render INK23456 --no-page -o doodle.png     # the doodle alone, on 
 It prints the picture's path; `--dpi` (150), `--rect X0,Y0,X1,Y1` for a part of a page,
 `--margin` (18 points) around an annotation.
 
-`--quote` finds the words (in any case) on `--page`, or on the first page that has them.
+`--quote` finds the words (in any case) on `--page`, or on the first page that has them. A
+passage that goes on onto the next page is found too, its first words at the end of one
+page and the rest at the top of the next (a page number or running head between them left
+out): highlighted or underlined, it is one annotation on both pages, as the app and Zotero
+keep it (`nextPageRects` in its position).
 Areas (`--type image --rect X0,Y0,X1,Y1`) and drawings (`--type ink --ink "X,Y X,Y"`)
 are made too; `view-state KEY --page N --zoom 150` sets where the app opens a PDF.
 

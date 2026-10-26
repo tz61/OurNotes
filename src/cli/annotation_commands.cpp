@@ -3,8 +3,10 @@
 // drawing put on a page; an annotation's comment, colour, text and tags changed; a note
 // made from them; a copy of the PDF with them in it; where the PDF is opened (page, zoom).
 
+#include <cctype>
 #include <cmath>
 #include <ctime>
+#include <cwctype>
 #include <iostream>
 
 #include "cli/commands.h"
@@ -75,10 +77,99 @@ int pageOption(const Args& args, pdf::Document& doc)
 
 struct Passage {
     int page = 0, from = 0, to = 0;  // chars [from, to] of the page's text
+    int nextFrom = -1, nextTo = -1;  // and [nextFrom, nextTo] of the next page's: across the break
 };
 
+// Text as compared: in lower case, every run of spaces (and line breaks) one space.
+std::u32string folded(const std::string& utf8)
+{
+    std::u32string out;
+    for (size_t i = 0; i < utf8.size();) {
+        unsigned char c = utf8[i];
+        int n = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+        char32_t cp = n == 1 ? c : n == 2 ? c & 0x1f : n == 3 ? c & 0x0f : c & 0x07;
+        for (int k = 1; k < n && i + k < utf8.size(); ++k)
+            cp = (cp << 6) | (utf8[i + k] & 0x3f);
+        i += n;
+        bool space = cp == U' ' || cp == U'\t' || cp == U'\n' || cp == U'\r' || cp == 0xa0;
+        if (space && (out.empty() || out.back() == U' '))
+            continue;
+        out += space ? U' ' : cp < 0x80 ? char32_t(std::tolower(int(cp))) : char32_t(std::towlower(wint_t(cp)));
+    }
+    while (!out.empty() && out.back() == U' ')
+        out.pop_back();
+    return out;
+}
+
+// A page's text as read, folded likewise (a word broken at a line's end whole), each letter's
+// character on the page (-1: the space between two lines).
+struct Reading {
+    std::u32string text;
+    std::vector<int> at;
+};
+
+Reading reading(const pdf::PageText& page)
+{
+    Reading r;
+    for (int i = 0; i < (int)page.chars.size(); ++i) {
+        char32_t c = page.chars[i].c;
+        if (i > 0 && page.chars[i].line != page.chars[i - 1].line) {
+            if (!r.text.empty() && r.text.back() == U'-' && c < 0x80 && std::islower(int(c))) {
+                r.text.pop_back();  // (hyphen-ated)
+                r.at.pop_back();
+            } else if (!r.text.empty() && r.text.back() != U' ') {
+                r.text += U' ';
+                r.at.push_back(-1);
+            }
+        }
+        bool space = c == U' ' || c == U'\t' || c == 0xa0;
+        if (space && (r.text.empty() || r.text.back() == U' '))
+            continue;
+        r.text += space ? U' ' : c < 0x80 ? char32_t(std::tolower(int(c))) : char32_t(std::towlower(wint_t(c)));
+        r.at.push_back(i);
+    }
+    return r;
+}
+
+// The characters a stretch of a reading covers.
+std::pair<int, int> charsOf(const Reading& r, size_t from, size_t length)
+{
+    int first = -1, last = -1;
+    for (size_t k = from; k < from + length; ++k)
+        if (r.at[k] >= 0) {
+            first = first < 0 ? r.at[k] : first;
+            last = r.at[k];
+        }
+    return {first, last};
+}
+
+// A quote across a page break: its first words at the end of `page` (the last place there),
+// the rest at the start of the next (the first), what lies between them (a page number, a
+// running head) left out.
+std::optional<Passage> passageAcross(pdf::Document& doc, const std::u32string& quote, int page)
+{
+    if (page + 1 >= doc.pageCount())
+        return std::nullopt;
+    auto before = reading(doc.text(page)), after = reading(doc.text(page + 1));
+    for (size_t k = quote.size(); k-- > 1;) {  // (the longest beginning first)
+        if (quote[k] != U' ' || k + 1 >= quote.size())
+            continue;
+        auto head = quote.substr(0, k), tail = quote.substr(k + 1);
+        auto i = before.text.rfind(head);
+        auto j = after.text.find(tail);
+        if (i == std::u32string::npos || j == std::u32string::npos)
+            continue;
+        auto [from, to] = charsOf(before, i, head.size());
+        auto [nextFrom, nextTo] = charsOf(after, j, tail.size());
+        if (from >= 0 && nextFrom >= 0)
+            return Passage{page, from, to, nextFrom, nextTo};
+    }
+    return std::nullopt;
+}
+
 // The first passage that reads `quote` (in any case), on `page` or else anywhere: the
-// characters inside the places the search found (on lines of any direction).
+// characters inside the places the search found (on lines of any direction); else one that
+// begins on `page` (or any) and goes on at the top of the next (see passageAcross).
 std::optional<Passage> findPassage(pdf::Document& doc, const std::string& quote, int page)
 {
     int first = page >= 0 ? page : 0, last = page >= 0 ? page : doc.pageCount() - 1;
@@ -99,6 +190,11 @@ std::optional<Passage> findPassage(pdf::Document& doc, const std::string& quote,
         if (from >= 0)
             return Passage{p, from, to};
     }
+    // across a page break (from `page` on into the next)
+    auto wanted = folded(quote);
+    for (int p = first; p <= std::min(last, doc.pageCount() - 2); ++p)
+        if (auto found = passageAcross(doc, wanted, p))
+            return found;
     return std::nullopt;
 }
 
@@ -171,6 +267,12 @@ int cmdAnnotate(Library& lib, Args& args, Config& config)
         offset = found.from;
         data["annotationText"] = text.textOf(found.from, found.to);
         data["annotationPosition"] = positionFromRects(*doc, p, rects);
+        if (found.nextFrom >= 0) {  // across two pages: one annotation, the rest on the next (as Zotero has it)
+            auto& next = doc->text(p + 1);
+            data["annotationPosition"]["nextPageRects"] =
+                positionFromRects(*doc, p + 1, next.rectsOf(found.nextFrom, found.nextTo))["rects"];
+            data["annotationText"] = jstr(data, "annotationText") + " " + next.textOf(found.nextFrom, found.nextTo);
+        }
     } else if (type == "note" || type == "text") {
         // where: --at X,Y; or by the passage --quote reads (a note left of it, a text box under it)
         pdf::Point at{20, 20};
