@@ -3107,6 +3107,60 @@ TEST_CASE("notes: a table's cells line up on their first lines, formulas or not;
           oneLine.image.height() + 8);  // in an environment it stays
 }
 
+TEST_CASE("notes: a formula on a later line of a cell is drawn below the line above it")
+{
+    app();
+    Env env;
+    auto red = [](const char* latex) {
+        return std::string("<span style=\"color: #ff0000\"><span class=\"math\">$") + latex + "$</span></span>";
+    };
+    // after a <br>, or in a later paragraph
+    std::vector<std::string> cells = {"gyp<br>" + red("\\begin{pmatrix}a\\\\b\\end{pmatrix}"),
+                                      "gyp<br>" + red("\\displaystyle\\frac{a}{b}"), "gyp<br>" + red("x^2"),
+                                      "<p>gyp</p><p>" + red("\\begin{pmatrix}a\\\\b\\end{pmatrix}") + "</p>"};
+    std::string row;
+    for (auto& cell : cells)
+        row += "<td>" + cell + "</td>";
+    auto note = env.library.createNote(env.lib, "<div data-schema-version=\"9\"><table><tr><th>A</th><th>B</th>"
+                                                "<th>C</th><th>D</th></tr><tr>" + row + "</tr></table></div>");
+    NoteEditor editor;
+    editor.resize(900, 500);
+    editor.show();
+    editor.setNote(env.lib, qs(jstr(note, "key")));
+    auto* doc = editor.findChild<NoteTextEdit*>()->document();
+    QApplication::processEvents();
+    QTextTable* table = nullptr;
+    for (auto* f : doc->rootFrame()->childFrames())
+        table = table ? table : qobject_cast<QTextTable*>(f);
+    REQUIRE(table);
+    REQUIRE(countMath(doc) == 4);
+    QImage image(doc->size().toSize(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    {
+        QPainter p(&image);
+        doc->drawContents(&p);
+    }
+    for (int c = 0; c < (int)cells.size(); ++c) {
+        // the ink of the formula (red), and of "gyp" above it (dark): one below the other
+        auto first = table->cellAt(1, c).firstCursorPosition().block();
+        QRectF r = doc->documentLayout()->blockBoundingRect(first);
+        qreal lineBottom = r.top() + first.layout()->lineAt(0).height();
+        int formulaTop = image.height(), textBottom = -1;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = int(r.left()); x < int(r.right()) && x < image.width(); ++x) {
+                QRgb px = image.pixel(x, y);
+                if (qRed(px) > 160 && qGreen(px) < 140 && qBlue(px) < 140)
+                    formulaTop = std::min(formulaTop, y);
+                else if (qRed(px) < 140 && qGreen(px) < 140 && qBlue(px) < 140 && y <= lineBottom)
+                    textBottom = std::max(textBottom, y);
+            }
+        CAPTURE(cells[c]);
+        REQUIRE(formulaTop < image.height());
+        REQUIRE(textBottom >= 0);
+        CHECK(formulaTop > textBottom);
+    }
+}
+
 TEST_CASE("notes: Markdown and web tables pasted in are tables, with a header row and lines")
 {
     app();

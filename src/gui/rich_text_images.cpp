@@ -185,14 +185,19 @@ FittedImageHandler::Geometry FittedImageHandler::geometry(QTextDocument* doc, in
         // In a table, the cells' first lines line up on their text at the top of their row:
         // a formula reaches no higher above the line than the text does, so as not to push
         // its cell's text below the others'. What it has above that goes into the cell's
-        // room at the top (the padding); only a taller formula makes its line taller.
+        // room at the top (the padding); only a taller formula makes its line taller. On a
+        // later line (a later paragraph, after a <br>), that room would be the line above.
+        // (A line that wraps is not told apart: the lines are not laid out yet.)
         auto* table = qobject_cast<QTextTable*>(doc->frameAt(pos));  // (not a cursor: it would lay out)
-        if (table && img.verticalAlignment() == QTextCharFormat::AlignMiddle) {
+        auto block = doc->findBlock(pos);
+        if (table && img.verticalAlignment() == QTextCharFormat::AlignMiddle &&
+            table->cellAt(pos).firstPosition() == block.position() &&
+            !block.text().left(pos - block.position()).contains(QChar::LineSeparator)) {
             qreal room = table->format().cellPadding();
             qreal ascent = std::max(m.descent + halfX, m.ascent - room);
             // with no text in its paragraph to hold the line up, as high as text would be
             static const QRegularExpression text(QString("[^\\s") + QChar::ObjectReplacementCharacter + "]");
-            if (!doc->findBlock(pos).text().contains(text))
+            if (!block.text().contains(text))
                 ascent = std::max(ascent, metrics.ascent());
             g.size.setHeight(2 * ascent - halfX);  // as tall above the baseline as that, at AlignMiddle
             g.top = ascent - m.ascent;  // above the box when the formula is taller
