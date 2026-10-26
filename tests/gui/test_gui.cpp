@@ -1851,6 +1851,24 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     CHECK(view.pageToViewport(1, {0, 0}).y() == doctest::Approx(view.pageToViewport(1, {0, 0}).y()));
 }
 
+TEST_CASE("dark pages: a part of a page darkened stays dark beside a picture outside it, and keeps one inside")
+{
+    app();
+    pdf::Size page{612, 792};
+    // a part of a page (as the link preview draws), a picture of the page far below it
+    QImage part(100, 50, QImage::Format_RGB888);
+    part.fill(Qt::white);
+    darkenPage(part, {pdf::Rect{0, 500, 100, 600}}, 1.0, page);
+    CHECK(part.pixelColor(50, 25).lightness() < 40);  // (it came back white: all of it drawn again)
+    // a picture in it: its own colours
+    QImage withPicture(100, 50, QImage::Format_RGB888);
+    withPicture.fill(Qt::white);
+    QPainter(&withPicture).fillRect(QRect(10, 10, 20, 20), Qt::red);
+    darkenPage(withPicture, {pdf::Rect{10, 10, 30, 30}}, 1.0, page);
+    CHECK(withPicture.pixelColor(20, 20) == QColor(Qt::red));
+    CHECK(withPicture.pixelColor(60, 25).lightness() < 40);
+}
+
 TEST_CASE("pdf view: links' text is blue and bold (in a colour of its own: that colour, bold) unless turned off")
 {
     app();

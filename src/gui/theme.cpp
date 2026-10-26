@@ -242,6 +242,8 @@ void darkenPage(QImage& image, const std::vector<pdf::Rect>& keep, double scale,
             continue;
         QRect px = QRectF(r.x0 * scale, r.y0 * scale, r.width() * scale, r.height() * scale).toAlignedRect() &
                    image.rect();
+        if (px.isEmpty())
+            continue;  // (a picture outside a part of a page: an empty source would draw all of it)
         p.drawImage(px.topLeft(), original, px);
     }
 }
