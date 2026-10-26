@@ -462,3 +462,30 @@ TEST_CASE("items: an attachment whose data cannot be read leaves the item list r
         fine |= r.filename == "fine.pdf" && r.path == "/somewhere/fine.pdf";
     CHECK(fine);
 }
+
+TEST_CASE("items: a stored file kept under its own long name (as Zotero's importer copies it) is found")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto id = lib.defaultLibrary();
+    std::string title;
+    for (int i = 0; i < 80; ++i)
+        title += "\u957f";  // (3 bytes each: 240)
+    auto name = title + ".pdf";
+    auto att = lib.createItem(id, Json{{"itemType", "attachment"}, {"linkMode", "imported_file"}, {"title", "Long"},
+                                       {"contentType", "application/pdf"}, {"filename", name}});
+    auto key = jstr(att, "key");
+    auto dir = lib.storageDir() / key;
+    fs::create_directories(dir);
+    std::ofstream(dir / u8path(name)) << "%PDF-1.4";
+    CHECK(lib.attachmentFileExists(id, att));
+    CHECK(lib.attachmentFile(id, att) == dir / u8path(name));
+    // one under the shortened name is still the one: the file this app keeps
+    std::ofstream(dir / u8path(safeFilename(name))) << "%PDF-1.4";
+    CHECK(lib.attachmentFile(id, att) == dir / u8path(safeFilename(name)));
+    // and no name leads out of the item's folder
+    auto out = att;
+    out["filename"] = "../" + std::string(250, 'x') + ".pdf";
+    std::ofstream(lib.storageDir() / (std::string(250, 'x') + ".pdf")) << "x";
+    CHECK(lib.attachmentFile(id, out).parent_path() == dir);
+}

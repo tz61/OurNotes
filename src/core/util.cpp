@@ -739,7 +739,10 @@ std::string safeFilename(std::string_view name, std::string_view fallback)
         out.erase(out.begin());
     if (out.size() > 200) {
         auto ext = fs::path(out).extension().string();
-        if (ext.size() > 20)  // a name with a dot in it, not an extension (200 - its size wrapped round)
+        // a name with a dot in it, not an extension, when what follows the dot is longer than all
+        // that is kept (200 - its size wrapped round). (Not sooner: a name made from a shorter
+        // one, as before, is where its file is kept.)
+        if (ext.size() > 200)
             ext.clear();
         size_t cut = 200 - ext.size();
         while (cut > 0 && ((unsigned char)out[cut] & 0xC0) == 0x80)

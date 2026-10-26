@@ -47,6 +47,9 @@ TEST_CASE("string helpers")
     // no extension, and nothing is read past the end of the name
     CHECK(safeFilename(std::string(300, 'y') + ".pdf") == std::string(196, 'y') + ".pdf");
     CHECK(safeFilename("a." + std::string(300, 'x')) == "a." + std::string(198, 'x'));
+    // (a long name with a dot in it, as before: where its file was kept)
+    CHECK(safeFilename(std::string(190, 'a') + ". Subtitle of the work, part two") ==
+          std::string(168, 'a') + ". Subtitle of the work, part two");
     // JSON from elsewhere nested deeper than OurNotes writes is not taken
     CHECK(parseExternalJson(R"({"a": [1, {"b": "]]]"}]})").is_object());
     CHECK(parseExternalJson(std::string(100000, '[') + std::string(100000, ']')).is_discarded());

@@ -1251,7 +1251,19 @@ fs::path Library::attachmentFile(int64_t lib, const Json& att)
         auto key = jstr(att, "key");
         if (filename.empty() || !isValidKey(key))
             return {};
-        return storageDir() / key / u8path(safeFilename(filename));
+        auto safe = safeFilename(filename);
+        auto file = storageDir() / key / u8path(safe);
+        // a file kept under its own name, which safeFilename changes (Zotero's importer copies
+        // its files as Zotero named them: over 200 bytes, a long title in Chinese, say): there
+        // when it is, only in storage/<KEY>/
+        std::error_code ec;
+        if (safe != filename && filename.find_first_of("/\\") == std::string::npos && filename != "." &&
+            filename != ".." && !fs::exists(file, ec)) {
+            auto own = storageDir() / key / u8path(filename);
+            if (fs::is_regular_file(own, ec))
+                return own;
+        }
+        return file;
     }
     if (mode == "linked_file") {
         auto path = jstr(att, "path");
