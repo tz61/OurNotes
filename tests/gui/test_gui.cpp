@@ -1798,10 +1798,18 @@ TEST_CASE("pdf view: a link rested on shows where it leads; followed, Ctrl+Left 
     wheel(-120, {});  // (down)
     CHECK(view.linkPreviewArea().top() > area.top() + 5);
     CHECK(bar->value() == 0);  // (the page did not scroll)
+    // (Shift and Ctrl pressed for that, on the page that has the keys, keep it)
+    QTest::keyPress(&view, Qt::Key_Shift);
+    CHECK(preview->isVisible());
     wheel(-120, Qt::ShiftModifier);
+    QTest::keyRelease(&view, Qt::Key_Shift);
     CHECK(view.linkPreviewArea().left() > area.left() + 5);
     double wide = view.linkPreviewArea().width();
+    QTest::keyPress(&view, Qt::Key_Control);
+    CHECK(preview->isVisible());
     wheel(120, Qt::ControlModifier);
+    QTest::keyRelease(&view, Qt::Key_Control);
+    CHECK(preview->isVisible());
     CHECK(view.linkPreviewArea().width() < wide - 1);
     // out of it: gone; shown again, as it began
     QTest::mouseMove(view.viewport(), onLink + QPoint(200, 300));

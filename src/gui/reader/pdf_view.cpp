@@ -2312,7 +2312,10 @@ void PdfView::wheelEvent(QWheelEvent* e)
 
 void PdfView::keyPressEvent(QKeyEvent* e)
 {
-    hideLinkPreview();
+    // (not Shift or Ctrl alone: held down for the link preview's wheel, across or zooming)
+    static const std::set<int> modifiers{Qt::Key_Shift, Qt::Key_Control, Qt::Key_Meta, Qt::Key_Alt, Qt::Key_AltGr};
+    if (!modifiers.count(e->key()))
+        hideLinkPreview();
     // back to where a link was followed from, and forward again (a browser's Alt+Left/Right)
     if ((e->modifiers() & ~Qt::KeypadModifier) == Qt::ControlModifier &&
         (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right)) {
