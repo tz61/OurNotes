@@ -85,6 +85,38 @@ inline void writeLinkedPdf(const on::fs::path& path)
     std::ofstream(path, std::ios::binary) << pdf;
 }
 
+// Two pages, a sentence broken between them: page 1 ends "... However, the" (then its number),
+// page 2 begins with a figure's caption, long, and then "resulting representations are
+// typically lower".
+inline void writeBrokenSentencePdf(const on::fs::path& path)
+{
+    std::string one = "BT /F1 11 Tf 72 700 Td (The approaches learn from views of an image.) Tj ET\n"
+                      "BT /F1 11 Tf 72 686 Td (They need no augmentations. However, the) Tj ET\n"
+                      "BT /F1 9 Tf 300 60 Td (1) Tj ET\n";
+    std::string two;
+    for (int i = 0; i < 8; ++i)  // (some 600 letters of caption)
+        two += "BT /F1 9 Tf 72 " + std::to_string(740 - 11 * i) +
+               " Td (Figure 2. Common architectures for self-supervised learning, line " + std::to_string(i + 1) +
+               ".) Tj ET\n";
+    two += "BT /F1 11 Tf 72 620 Td (resulting representations are typically lower in level.) Tj ET\n";
+    auto stream = [](int id, const std::string& content) {
+        return std::to_string(id) + " 0 obj << /Length " + std::to_string(content.size()) + " >> stream\n" + content +
+               "endstream endobj\n";
+    };
+    std::string pdf = "%PDF-1.4\n"
+                      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+                      "2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >> endobj\n"
+                      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
+                      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R "
+                      "/Resources << /Font << /F1 4 0 R >> >> >> endobj\n"
+                      "5 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R "
+                      "/Resources << /Font << /F1 4 0 R >> >> >> endobj\n" +
+                      stream(6, one) + stream(7, two) +
+                      "xref\n0 1\n0000000000 65535 f \n"
+                      "trailer << /Size 8 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
+    std::ofstream(path, std::ios::binary) << pdf;
+}
+
 // A one-page PDF with a line of text and a red 2x2 image drawn as a 100x100 pt
 // square with its lower-left corner at (72, 500). With `clipped`, only the left half
 // of the image is visible.

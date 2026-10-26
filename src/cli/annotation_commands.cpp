@@ -145,11 +145,15 @@ std::pair<int, int> charsOf(const Reading& r, size_t from, size_t length)
 
 // A quote across a page break: its first words at the end of `page` (the last place there),
 // the rest at the start of the next (the first), what lies between them (a page number, a
-// running head) left out. Whole words, by the break: not "Table 3" mid-page and any "4" on
-// the next for "Table 4".
+// running head, footnotes, a figure and its caption) left out. Whole words, and each part
+// more than a word or two letters ("See [1] for" and an "a" on the next page is not "See
+// [1] for a"), near the break.
 std::optional<Passage> passageAcross(pdf::Document& doc, const std::u32string& quote, int page)
 {
-    constexpr size_t kNearBreak = 200;  // letters a page number, a running head may take, at most
+    constexpr size_t kNearBreak = 3000;  // letters (a caption, footnotes) between a part and the break, at most
+    auto substantial = [](const std::u32string& part) {
+        return part.size() >= 12 || part.find(U' ') != std::u32string::npos;
+    };
     if (page + 1 >= doc.pageCount())
         return std::nullopt;
     auto before = reading(doc.text(page)), after = reading(doc.text(page + 1));
@@ -158,6 +162,8 @@ std::optional<Passage> passageAcross(pdf::Document& doc, const std::u32string& q
         if (quote[k] != U' ' || k + 1 >= quote.size())
             continue;
         auto head = quote.substr(0, k), tail = quote.substr(k + 1);
+        if (!substantial(head) || !substantial(tail))
+            continue;
         auto i = ends.rfind(head + U' ');
         auto j = starts.find(U' ' + tail);  // (where it begins in after.text)
         if (i == std::u32string::npos || j == std::u32string::npos)

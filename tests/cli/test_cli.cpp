@@ -838,6 +838,19 @@ TEST_CASE("cli: a passage across a page break, highlighted as one annotation on 
     CHECK(cli.run({"annotate", paper, "--quote", "the details. nowhere at all"}).first == 1);
     CHECK(cli.run({"annotate", paper, "--quote", "See [1] for a"}).first == 1);  // (not the "a" in "Back")
     CHECK(lib.annotations(mine, pdf).size() == 2);
+
+    // a figure's long caption at the top of the next page, a page number at the foot: left out
+    auto brokenPath = cli.dir.path / "broken.pdf";
+    writeBrokenSentencePdf(brokenPath);
+    auto other = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Other"}}), "key");
+    auto broken = jstr(lib.importAttachment(mine, brokenPath, other), "key");
+    auto [code2, out2] = cli.run({"annotate", other, "--quote", "However, the resulting representations are typically"});
+    INFO(out2);
+    REQUIRE(code2 == 0);
+    auto across = *lib.item(mine, trim(out2));
+    CHECK(jstr(across, "annotationText") == "However, the resulting representations are typically");
+    CHECK(across["annotationPosition"]["nextPageRects"].size() == 1);
+    CHECK(lib.annotations(mine, broken).size() == 1);
 }
 
 TEST_CASE("cli: a page with its annotations as a picture, or a doodle's place on it, or the doodle alone")
