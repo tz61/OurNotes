@@ -260,7 +260,7 @@ void MetadataProgressDialog::onResult(int index, const std::optional<formats::Pd
         row->setIcon(0, statusIcon(Status::Found));
         row->setText(1, jqs(match->item, "title"));
         row->setToolTip(1, jqs(match->item, "title") + "\n" + tr("Double-click to show it in the library"));
-        row->setForeground(1, palette().color(QPalette::Text));
+        row->setForeground(1, QBrush());  // the list's own text colour, which follows light and dark
         row->setText(2, qs(match->source));
     } else {
         ++missed_;
