@@ -24,7 +24,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   read. Re-running the import picks up items changed in Zotero since.
 - **PDF reader** — continuous scrolling, zoom/fit, thumbnails, outline, links, find. Links
   in the PDF are shown bold, in blue when they have no colour of their own (View → Highlight
-  Links in PDFs, the page's context menu or Preferences turn that off). One that the mouse rests on shows where it leads, small (a
+  Links in PDFs, the page's context menu or Preferences turn that off). A citation such as
+  [12] that the PDF does not link is a link all the same, to that entry of its numbered
+  references. One that the mouse rests on shows where it leads, small (a
   reference: its column, from it on); with the mouse in that preview, the wheel scrolls it
   (Shift: across, on into the next pages), Ctrl+wheel zooms it and a drag moves it, until
   the mouse leaves it. Followed, Ctrl+Left (or the mouse's back button) goes back to where

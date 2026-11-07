@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <list>
 #include <mutex>
+#include <optional>
 
 extern "C" {
 #include <mupdf/fitz.h>
@@ -256,6 +257,21 @@ std::string PageText::utf8() const
 
 // --- Document ---------------------------------------------------------------------------
 
+namespace {
+
+// A document's numbered references: where each entry's line is, and where the list is
+struct ReferenceList {
+    struct Entry {
+        int page = 0;
+        Point at;
+    };
+    std::map<int, Entry> entries;
+    int page = 0, at = 0;  // its first entry: the page, and its first character there
+    int lastPage = 0, lastAt = 0;  // its last entry
+};
+
+} // namespace
+
 struct Document::Impl {
     fz_context* ctx = nullptr;
     fz_document* doc = nullptr;
@@ -264,6 +280,7 @@ struct Document::Impl {
     std::list<int> lru;
     std::map<int, PageText> texts;
     std::map<int, fz_matrix> pdfToPage;
+    std::optional<std::vector<ReferenceList>> references;  // (found once, see citationLinks)
 
     ~Impl()
     {
@@ -707,6 +724,283 @@ std::vector<Link> Document::links(int n)
         out.push_back(std::move(link));
     }
     fz_drop_link(ctx, links);
+    try {
+        auto cited = citationLinks(n, out);
+        out.insert(out.end(), cited.begin(), cited.end());
+    } catch (const std::exception&) {
+        // (the file's links, then)
+    }
+    return out;
+}
+
+// --- citations -------------------------------------------------------------------------------
+
+// A paper's "[12]" that its PDF does not link (many have no such links, or for their figures
+// only) is a link all the same, made from the text: to that entry of its list of references.
+
+namespace {
+
+bool isDash(uint32_t c) { return c == '-' || (c >= 0x2010 && c <= 0x2015) || c == 0x2212; }
+
+bool isBlank(uint32_t c) { return c == ' ' || c == '\t' || c == 0xA0 || (c >= 0x2000 && c <= 0x200A) || c == 0x202F; }
+
+bool isDigit(uint32_t c) { return c >= '0' && c <= '9'; }
+
+// A letter or digit, of any script (not a sign: + or the like comes before a bracket too)
+bool isAlphanumeric(uint32_t c)
+{
+    return c < 0x80 ? std::isalnum((int)c) != 0 : c >= 0xC0 && c < 0x2000 && c != 0xD7 && c != 0xF7;
+}
+
+// A number's digits from chars[i] on, i moved past them: 0 if there are none or too many
+int readNumber(const std::vector<TextChar>& chars, int& i, int end)
+{
+    int from = i, n = 0;
+    for (; i < end && isDigit(chars[i].c); ++i)
+        if (i - from < 5)
+            n = n * 10 + int(chars[i].c - '0');
+    return i - from > 4 ? 0 : n;
+}
+
+// "REFERENCES", "VII. References", "R EFERENCES" (small capitals, spaced apart in the text)
+bool isReferencesHeading(const PageText& text, const TextLine& line)
+{
+    if (line.count > 40)
+        return false;
+    std::string letters;
+    for (int i = line.first; i < line.first + line.count; ++i)
+        if (uint32_t c = text.chars[i].c; c < 128 && std::isalpha((int)c))
+            letters += (char)std::tolower((int)c);
+    letters.erase(0, letters.find_first_not_of("ivx"));  // (a section's number)
+    return letters == "references" || letters == "bibliography" || letters == "referencesandnotes" ||
+           letters == "literaturecited";
+}
+
+// The number of an entry of a list of references that a line begins with, or 0: "[12]", or
+// "12." (dotted: only under the heading of such a list is that one, see citationLinks).
+int entryNumber(const PageText& text, const TextLine& line, int* at, bool* dotted)
+{
+    int i = line.first, end = line.first + line.count;
+    while (i < end && isBlank(text.chars[i].c))
+        ++i;
+    *at = i;
+    *dotted = i < end && text.chars[i].c != '[';
+    if (!*dotted && i < end) {
+        int n = readNumber(text.chars, ++i, end);
+        return i < end && text.chars[i].c == ']' ? n : 0;
+    }
+    int n = readNumber(text.chars, i, end);
+    return i < end && text.chars[i].c == '.' && (i + 1 == end || isBlank(text.chars[i + 1].c)) ? n : 0;
+}
+
+// Numbers in brackets in a page's text, as a paper cites: each one's box, with the bracket
+// next to it if any. Not what is only written like them: x[1], [0.5, 1], [32, 32, 8].
+struct CitedNumbers {
+    int at = 0;  // its "["
+    std::vector<std::pair<int, Rect>> numbers;
+};
+
+std::vector<CitedNumbers> citedNumbers(const PageText& text)
+{
+    auto& chars = text.chars;
+    int size = (int)chars.size();
+    auto sameLine = [&](int a, int b) { return b >= 0 && b < size && chars[a].line == chars[b].line; };
+    auto skipBlanks = [&](int i) {
+        while (i < size && isBlank(chars[i].c))
+            ++i;
+        return i;
+    };
+    std::vector<CitedNumbers> out;
+    for (int i = 0; i < size; ++i) {
+        if (chars[i].c != '[')
+            continue;
+        CitedNumbers cited;
+        cited.at = i;
+        int j = skipBlanks(i + 1), firstDigit = j, lastDigit = j, last = 0;
+        bool closed = false, range = false, values = false;
+        while (j < size && isDigit(chars[j].c)) {
+            int from = j, n = readNumber(chars, j, size);
+            if (n <= 0)
+                break;
+            Rect box = chars[from].box;
+            for (int k = from + 1; k < j; ++k)
+                box = box.united(chars[k].box);
+            if (range && n <= last)
+                break;
+            for (auto& number : cited.numbers)
+                values = values || number.first == n;
+            last = n;
+            lastDigit = j - 1;
+            cited.numbers.push_back({n, box});
+            j = skipBlanks(j);
+            if (j >= size)
+                break;
+            uint32_t c = chars[j].c;
+            if (c == ']') {
+                closed = true;
+                break;
+            }
+            if (c != ',' && c != ';' && !isDash(c))
+                break;
+            range = isDash(c);
+            j = skipBlanks(j + 1);
+        }
+        if (!closed)
+            continue;
+        uint32_t before = sameLine(i, i - 1) ? chars[i - 1].c : 0, after = sameLine(j, j + 1) ? chars[j + 1].c : 0;
+        if (isAlphanumeric(after))  // [1]x
+            continue;
+        if (isAlphanumeric(before)) {
+            // x[1], 2[3], Table[1, 20]; but HOVER[9], D4RL[68], tree search[7, 2, 5]
+            int letters = 0;
+            for (int k = i - 1; sameLine(i, k) && isAlphanumeric(chars[k].c); --k)
+                ++letters;
+            if (letters < 3 || isDigit(before) || cited.numbers.size() == 2)
+                continue;
+        }
+        if (cited.numbers.size() > 1) {
+            // Values, not citations (all there is to tell them apart, and it is not always
+            // enough: "in [1, 2]"; citations come in any order, a long list even twice over):
+            // [8, 8, 8], "= [2, 4]", [5, 9][1, 3], [1, 2],[3, 4], a table's cell of its own
+            if (values && cited.numbers.size() < 5)
+                continue;
+            int previous = i - 1;
+            while (sameLine(i, previous) && isBlank(chars[previous].c))
+                --previous;
+            uint32_t sign = sameLine(i, previous) ? chars[previous].c : 0;
+            if (sign == '=' || sign == ':' || sign == 0x2208 || sign == ']' || after == '[' ||
+                (after == ',' && sameLine(j, j + 2) && chars[j + 2].c == '[') ||
+                (before == ',' && sameLine(i, i - 2) && chars[i - 2].c == ']'))
+                continue;
+            auto& line = text.lines[chars[i].line];
+            if (line.first == i && line.first + line.count == j + 1)
+                continue;
+        }
+        if (sameLine(i, firstDigit))
+            cited.numbers.front().second = cited.numbers.front().second.united(chars[i].box);
+        if (sameLine(j, lastDigit))
+            cited.numbers.back().second = cited.numbers.back().second.united(chars[j].box);
+        out.push_back(std::move(cited));
+    }
+    return out;
+}
+
+// Up to this many pages: reading them all is a moment, and only for a document that cites what
+// it does not link. (A longer one is rather a book.)
+constexpr int kMostPagesSearchedForReferences = 500;
+
+// Each list begins with its 1, and goes on with the next number (one that didn't come out of
+// the text may be missing). Read in the order of the text, which keeps a column's lines
+// together. The text not kept: this reads every page once.
+std::vector<ReferenceList> findReferenceLists(Document& doc, Document::Impl& im)
+{
+    std::vector<ReferenceList> lists;
+    if (doc.pageCount() > kMostPagesSearchedForReferences)
+        return lists;
+    size_t longest = 0;
+    ReferenceList list;
+    int last = 0, sinceHeading = -1;
+    bool dottedList = false;
+    auto finish = [&] {
+        if (list.entries.size() >= 3) {
+            longest = std::max(longest, list.entries.size());
+            lists.push_back(std::move(list));
+        }
+        list = {};
+    };
+    for (int page = 0; page < doc.pageCount(); ++page) {
+        bool kept = im.texts.count(page);
+        try {
+            auto& text = doc.text(page);
+            for (auto& line : text.lines) {
+                if (isReferencesHeading(text, line))
+                    sinceHeading = 0;
+                else if (sinceHeading >= 0)
+                    ++sinceHeading;
+                int at = 0;
+                bool dotted = false;
+                int number = entryNumber(text, line, &at, &dotted);
+                // (numbered sections and steps are written so too: a list of "12." begins just
+                // under the heading, its 1 on one of the next lines)
+                if (number == 1 && dotted && (sinceHeading < 0 || sinceHeading > 3))
+                    continue;
+                if (number == 1) {
+                    finish();
+                    list.page = page;
+                    list.at = at;
+                    dottedList = dotted;
+                } else if (number <= last || number > last + 3 || list.entries.empty() || dotted != dottedList) {
+                    continue;
+                }
+                list.entries[number] = {page, {line.box.x0, line.box.y0}};
+                list.lastPage = page;
+                list.lastAt = at;
+                last = number;
+            }
+        } catch (const std::exception&) {
+            // (a page that can't be read has no entries)
+        }
+        if (!kept)
+            im.texts.erase(page);
+    }
+    finish();
+    // a few numbered lines (steps) are no references beside a list of them
+    lists.erase(std::remove_if(lists.begin(), lists.end(),
+                               [&](const ReferenceList& l) { return l.entries.size() * 4 < longest; }),
+                lists.end());
+    return lists;
+}
+
+} // namespace
+
+std::vector<Link> Document::citationLinks(int n, const std::vector<Link>& except)
+{
+    std::vector<Link> out;
+    auto cited = citedNumbers(text(n));
+    auto covered = [&](const Rect& box) {
+        Point middle{(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2};
+        return std::any_of(except.begin(), except.end(), [&](const Link& l) { return l.rect.contains(middle); });
+    };
+    bool any = false;
+    for (auto& c : cited)
+        for (auto& number : c.numbers)
+            any = any || !covered(number.second);
+    if (!any)  // (nothing to do: the document need not be read)
+        return out;
+
+    if (!d_->references)
+        d_->references = findReferenceLists(*this, *d_);
+    auto& lists = *d_->references;
+    for (auto& c : cited) {
+        // the list after it (each chapter of a book may have its own), the last one after them all
+        const ReferenceList* list = nullptr;
+        bool inside = false;
+        for (auto& l : lists) {
+            list = &l;
+            if (n < l.page || (n == l.page && c.at < l.at))
+                break;
+            inside = n < l.lastPage || (n == l.lastPage && c.at <= l.lastAt);
+            if (inside)
+                break;
+        }
+        if (!list || inside)
+            continue;
+        int largest = list->entries.rbegin()->first;
+        if (std::any_of(c.numbers.begin(), c.numbers.end(), [&](auto& number) { return number.first > largest; }))
+            continue;
+        for (auto& [number, box] : c.numbers) {
+            auto entry = list->entries.find(number);
+            if (entry == list->entries.end() || covered(box))
+                continue;
+            Link link;
+            link.rect = box;
+            link.page = entry->second.page;
+            link.x = entry->second.at.x;
+            link.y = entry->second.at.y;
+            link.uri = "#citation=" + std::to_string(number);
+            out.push_back(std::move(link));
+        }
+    }
     return out;
 }
 

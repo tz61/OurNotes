@@ -125,7 +125,12 @@ public:
     std::vector<std::vector<Rect>> search(int page, const std::string& needle, int maxHits = 512,
                                           bool caseSensitive = false);
     std::vector<OutlineEntry> outline();
+    // The file's links, and links made from the text for what it cites but does not link
+    // (see citationLinks).
     std::vector<Link> links(int page);
+    // "[12]", "[3, 4]", "[5-7]" on a page as links to those entries of the document's numbered
+    // references, found in its text: "#citation=12" their uri. `except`: none over these.
+    std::vector<Link> citationLinks(int page, const std::vector<Link>& except = {});
 
     Point pdfToPage(int page, Point p);
     Point pageToPdf(int page, Point p);

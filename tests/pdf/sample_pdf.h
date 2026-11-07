@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "core/util.h"
 
@@ -82,6 +83,63 @@ inline void writeLinkedPdf(const on::fs::path& path)
                       "/Dest [3 0 R /XYZ 0 792 null] >> endobj\n"
                       "xref\n0 1\n0000000000 65535 f \n"
                       "trailer << /Size 13 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
+    std::ofstream(path, std::ios::binary) << pdf;
+}
+
+// Pages (US letter) of lines of Helvetica, each given as: x, its top from the page's top, text.
+// Links, if any: on a page, the box of a line's text from x0 to x1, to a place on another.
+struct PdfTextLine {
+    double x = 72, y = 0;
+    std::string text;
+};
+struct PdfTextLink {
+    int page = 0;
+    double x0 = 0, x1 = 0, y = 0;
+    int toPage = 0;
+    double toY = 0;
+};
+
+inline void writeTextPdf(const on::fs::path& path, const std::vector<std::vector<PdfTextLine>>& pages,
+                         const std::vector<PdfTextLink>& links = {})
+{
+    auto top = [](double y) { return std::to_string(792 - y); };
+    int count = (int)pages.size(), firstLink = 10 + 2 * count;
+    std::string kids, objects;
+    for (int i = 0; i < count; ++i) {
+        int page = 10 + 2 * i;
+        std::string content, annots;
+        for (auto& line : pages[i]) {
+            std::string text;
+            for (char c : line.text) {
+                if (c == '(' || c == ')' || c == '\\')
+                    text += '\\';
+                text += c;
+            }
+            content += "BT /F1 12 Tf " + std::to_string(line.x) + " " + top(line.y + 10) + " Td (" + text + ") Tj ET\n";
+        }
+        for (size_t k = 0; k < links.size(); ++k)
+            if (links[k].page == i)
+                annots += std::to_string(firstLink + (int)k) + " 0 R ";
+        kids += std::to_string(page) + " 0 R ";
+        objects += std::to_string(page) + " 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents " +
+                   std::to_string(page + 1) + " 0 R /Resources << /Font << /F1 3 0 R >> >> /Annots [" + annots +
+                   "] >> endobj\n" + std::to_string(page + 1) + " 0 obj << /Length " + std::to_string(content.size()) +
+                   " >> stream\n" + content + "endstream endobj\n";
+    }
+    for (size_t k = 0; k < links.size(); ++k) {
+        auto& l = links[k];
+        objects += std::to_string(firstLink + (int)k) + " 0 obj << /Type /Annot /Subtype /Link /Rect [" +
+                   std::to_string(l.x0) + " " + top(l.y + 14) + " " + std::to_string(l.x1) + " " + top(l.y) +
+                   "] /Border [0 0 0] /Dest [" + std::to_string(10 + 2 * l.toPage) + " 0 R /XYZ 0 " + top(l.toY) +
+                   " null] >> endobj\n";
+    }
+    std::string pdf = "%PDF-1.4\n"
+                      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+                      "2 0 obj << /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(count) + " >> endobj\n"
+                      "3 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n" + objects +
+                      "xref\n0 1\n0000000000 65535 f \n"
+                      "trailer << /Size " + std::to_string(firstLink + (int)links.size()) +
+                      " /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
     std::ofstream(path, std::ios::binary) << pdf;
 }
 

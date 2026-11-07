@@ -1913,6 +1913,53 @@ TEST_CASE("dark pages: a part of a page darkened stays dark beside a picture out
     CHECK(withPicture.pixelColor(60, 25).lightness() < 40);
 }
 
+TEST_CASE("pdf view: a citation the PDF does not link is marked, rested on shows its entry, and is followed")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeTextPdf(file, {{{72, 100, "As shown in [2] before, and here at no number."}},
+                        {{72, 100, "References"},
+                         {72, 300, "[1] A. Author. The first paper."},
+                         {72, 320, "[2] B. Author. The second paper."},
+                         {72, 340, "[3] C. Author. The third paper."}}});
+    auto doc = pdf::Document::open(file);
+    REQUIRE(doc->links(0).size() == 1);
+    auto link = doc->links(0)[0];
+    QRectF box(link.rect.x0, link.rect.y0, link.rect.width(), link.rect.height());
+    PdfView view;
+    view.resize(800, 900);
+    view.open(file);
+    view.show();
+    auto onLink = view.pageToViewport(0, box.center()).toPoint();
+    auto blueInk = [&] {
+        auto img = view.viewport()->grab().toImage();
+        double d = img.devicePixelRatio();
+        QRect pixels(QPointF(view.pageToViewport(0, box.topLeft()) * d).toPoint(),
+                     QPointF(view.pageToViewport(0, box.bottomRight()) * d).toPoint());
+        int blue = 0;
+        for (int y = pixels.top(); y <= pixels.bottom(); ++y)
+            for (int x = pixels.left(); x <= pixels.right(); ++x) {
+                auto c = img.pixelColor(x, y);
+                blue += c.blue() > c.red() + 60 && c.blue() > c.green() + 30;
+            }
+        return blue;
+    };
+    CHECK(QTest::qWaitFor([&] { return blueInk() > 0; }));
+
+    QTest::mouseMove(view.viewport(), onLink + QPoint(0, 80));
+    QTest::mouseMove(view.viewport(), onLink);
+    REQUIRE(QTest::qWaitFor([&] { return view.linkPreview()->isVisible(); }, 2000));
+    CHECK(view.linkPreviewArea().top() == doctest::Approx(link.y - 8).epsilon(0.01));
+
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, onLink);
+    CHECK(view.currentPage() == 1);
+    CHECK(view.canGoBack());
+    QTest::keyClick(&view, Qt::Key_Left, Qt::ControlModifier);
+    CHECK(view.currentPage() == 0);
+}
+
 TEST_CASE("pdf view: links' text is blue and bold (in a colour of its own: that colour, bold) unless turned off")
 {
     app();
