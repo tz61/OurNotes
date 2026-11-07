@@ -119,6 +119,7 @@ MainWindow::MainWindow()
     connect(&titleBarTimer_, &QTimer::timeout, this, &MainWindow::followTitleBar);
     status_ = new QLabel(this);
     status_->setTextFormat(Qt::PlainText);  // titles and library names, never rich text (see asPlainText)
+    status_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);  // (at the side, not under what is being read)
     statusBar()->addWidget(status_, 1);
 
     sync_ = new SyncController(this);

@@ -1913,6 +1913,29 @@ TEST_CASE("dark pages: a part of a page darkened stays dark beside a picture out
     CHECK(withPicture.pixelColor(60, 25).lightness() < 40);
 }
 
+TEST_CASE("main window: the status is written at the window's right, not under what is being read")
+{
+    app();
+    Env env;
+    MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    QApplication::processEvents();
+    auto* status = window.statusBar()->findChild<QLabel*>();
+    REQUIRE(status);
+    emit window.findChild<LibraryView*>()->statusMessage("Syncing");
+    CHECK(status->text() == "Syncing");
+    auto image = status->grab().toImage();
+    int leftmost = image.width();
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < leftmost; ++x)
+            if (image.pixelColor(x, y) != image.pixelColor(0, 0))
+                leftmost = x;
+    CHECK(image.width() > 1000);
+    CHECK(leftmost > image.width() * 3 / 4);
+    CHECK(leftmost < image.width());
+}
+
 TEST_CASE("pdf view: a citation the PDF does not link is marked, rested on shows its entry, and is followed")
 {
     app();
