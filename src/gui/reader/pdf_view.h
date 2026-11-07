@@ -249,6 +249,8 @@ private:
     // painting
     void paintAnnotations(QPainter& p, int page);
     void paintTextSelection(QPainter& p, int page);
+    void paintHighlight(QPainter& p, const QRectF& onView, QColor color) const;
+    void paintUnderline(QPainter& p, const QRectF& onView, const QColor& color) const;
     void paintLinks(QPainter& p, int page, Cached& cached, const QRectF& onView);
     // each link's letters on a page (the characters with their middle in its box); no text: its box
     const std::vector<std::vector<QRectF>>& linkGlyphs(int page);

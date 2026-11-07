@@ -236,6 +236,36 @@ std::pair<int, int> PageText::wordAt(int index) const
     return {a, b};
 }
 
+std::pair<int, int> PageText::wordNear(Point p) const
+{
+    int index = hitTest(p, false);
+    if (index < 0) {
+        // (the characters' boxes leave a quarter of a paragraph uncovered, in some PDFs more
+        // than half: between the lines, above and below the letters)
+        index = hitTest(p, true);
+        if (index < 0)
+            return {-1, -1};
+        auto& box = chars[index].box;
+        float dx = p.x < box.x0 ? box.x0 - p.x : p.x > box.x1 ? p.x - box.x1 : 0;
+        float dy = p.y < box.y0 ? box.y0 - p.y : p.y > box.y1 ? p.y - box.y1 : 0;
+        if (dx > 5 || dy > std::max(5.f, 0.6f * box.height()))
+            return {-1, -1};
+    }
+    auto inWord = [&](int i) {
+        return i >= 0 && i < (int)chars.size() && chars[i].line == chars[index].line && chars[i].c != ' ' &&
+               isWordChar(chars[i].c);
+    };
+    if (inWord(index))
+        return wordAt(index);
+    bool leftFirst = p.x < (chars[index].box.x0 + chars[index].box.x1) / 2;
+    int first = leftFirst ? index - 1 : index + 1, second = leftFirst ? index + 1 : index - 1;
+    if (inWord(first))
+        return wordAt(first);
+    if (inWord(second))
+        return wordAt(second);
+    return {-1, -1};
+}
+
 std::pair<int, int> PageText::lineAt(int index) const
 {
     if (index < 0 || index >= (int)chars.size())

@@ -258,49 +258,6 @@ QIcon colorIcon(const QString& color, int size, bool round)
     return QIcon(pm);
 }
 
-QCursor iconCursor(const QString& name, QPoint hotSpot, qreal dpr)
-{
-    static QHash<QString, QCursor> cache;
-    auto key = QString("%1@%2").arg(name).arg(dpr);
-    if (auto it = cache.find(key); it != cache.end())
-        return *it;
-    constexpr int kSize = 24;  // as the icons are drawn
-    int px = qCeil(kSize * dpr);
-    QImage ink(px, px, QImage::Format_ARGB32_Premultiplied);
-    ink.fill(Qt::transparent);
-    {
-        QSvgRenderer svg(QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">%1</svg>")
-                             .arg(QString(sources().value(name)).replace("CUR", "#202020"))
-                             .toUtf8());
-        QPainter p(&ink);
-        p.setRenderHint(QPainter::Antialiasing);
-        svg.render(&p, QRectF(0, 0, px, px));
-    }
-    QImage image(ink.size(), QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    {
-        QPainter p(&image);
-        int w = std::max(1, qRound(1.2 * dpr));  // the rim: the icon spread, then white
-        for (int dx = -w; dx <= w; ++dx)
-            for (int dy = -w; dy <= w; ++dy)
-                if (dx * dx + dy * dy <= w * w)
-                    p.drawImage(dx, dy, ink);
-        p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-        p.fillRect(image.rect(), Qt::white);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-        p.drawImage(0, 0, ink);
-    }
-    auto pm = QPixmap::fromImage(image);
-    pm.setDevicePixelRatio(dpr);
-    // X11 takes the hot spot in the image's own pixels; Windows, macOS and Wayland in the
-    // window's (Qt's platform plugins, 6.8)
-    if (QGuiApplication::platformName() == "xcb")
-        hotSpot = (QPointF(hotSpot) * dpr).toPoint();
-    QCursor cursor(pm, hotSpot.x(), hotSpot.y());
-    cache.insert(key, cursor);
-    return cursor;
-}
-
 QIcon paletteIcon(const QStringList& colors, int size)
 {
     QPixmap pm(size * 3, size * 3);

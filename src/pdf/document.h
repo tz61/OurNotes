@@ -68,6 +68,9 @@ struct PageText {
     std::vector<Rect> rectsOf(int from, int to) const;
     // Expand an index to the surrounding word / line.
     std::pair<int, int> wordAt(int index) const;
+    // The word a double click at p means: under it or close to it, on a space or a comma the
+    // one on the side of p; {-1, -1} if none is near.
+    std::pair<int, int> wordNear(Point p) const;
     std::pair<int, int> lineAt(int index) const;
     std::string utf8() const;
 };

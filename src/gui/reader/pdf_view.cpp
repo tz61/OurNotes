@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCursor>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
 #include <QEvent>
@@ -959,18 +960,10 @@ void PdfView::paintAnnotations(QPainter& p, int page)
         if (a.type == "highlight" || a.type == "underline") {
             for (auto& r : onNext ? a.nextRects : a.rects) {
                 QRectF v = toView(page, r);
-                if (a.type == "highlight") {
-                    QColor fill = c;
-                    fill.setAlphaF(0.42);
-                    // multiply darkens the paper under the text; on dark pages, screen lightens it
-                    p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen
-                                                    : QPainter::CompositionMode_Multiply);
-                    p.fillRect(v, fill);
-                    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-                } else {
-                    double th = std::max(1.5, v.height() * 0.09);
-                    p.fillRect(QRectF(v.left(), v.bottom() - th, v.width(), th), c);
-                }
+                if (a.type == "highlight")
+                    paintHighlight(p, v, c);
+                else
+                    paintUnderline(p, v, c);
             }
         } else if (a.type == "note") {
             QRectF v = toView(page, a.bounds.translated(d));
@@ -1156,14 +1149,39 @@ const std::vector<std::vector<QRectF>>& PdfView::linkGlyphs(int page)
     return linkGlyphs_[page] = std::move(all);
 }
 
+void PdfView::paintHighlight(QPainter& p, const QRectF& onView, QColor color) const
+{
+    color.setAlphaF(0.42);
+    // multiply darkens the paper under the text; on dark pages, screen lightens it
+    p.setCompositionMode(darkPages_ ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
+    p.fillRect(onView, color);
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+}
+
+void PdfView::paintUnderline(QPainter& p, const QRectF& onView, const QColor& color) const
+{
+    double th = std::max(1.5, onView.height() * 0.09);
+    p.fillRect(QRectF(onView.left(), onView.bottom() - th, onView.width(), th), color);
+}
+
 void PdfView::paintTextSelection(QPainter& p, int page)
 {
     QColor c = palette().color(QPalette::Highlight);
     c.setAlphaF(0.35);
+    // being dragged with the highlight or underline tool: already what it will be, as far as
+    // the mouse has come
+    bool marking = drag_ == Drag::Selecting && editable_;
     for (auto& span : selectionSpans())
         if (span.page == page)
-            for (auto& r : doc_->text(page).rectsOf(span.from, span.to))
-                p.fillRect(toView(page, toQ(r)), c);
+            for (auto& r : doc_->text(page).rectsOf(span.from, span.to)) {
+                QRectF v = toView(page, toQ(r));
+                if (marking && tool_ == ReaderTool::Highlight)
+                    paintHighlight(p, v, QColor(color_));
+                else if (marking && tool_ == ReaderTool::Underline)
+                    paintUnderline(p, v, QColor(color_));
+                else
+                    p.fillRect(v, c);
+            }
 }
 
 // --- annotations -------------------------------------------------------------------------------
@@ -1506,31 +1524,6 @@ QRectF PdfView::resizedBounds(const AnnView& a) const
     if (resizeEdges_ & EdgeBottom)
         r.setBottom(std::max(r.bottom() + d.y(), r.top() + minH));
     return r;
-}
-
-// A tool's cursor: its icon in the toolbar, the hot spot where it acts (the marker's tip,
-// the start of the underline and of the pen's line, the note's middle, the corner of the
-// text box and of the area, the eraser's edge).
-static QCursor toolCursor(ReaderTool tool, qreal dpr)
-{
-    switch (tool) {
-    case ReaderTool::Highlight:
-        return iconCursor("tool-highlight", {3, 21}, dpr);
-    case ReaderTool::Underline:
-        return iconCursor("tool-underline", {5, 20}, dpr);
-    case ReaderTool::Note:
-        return iconCursor("tool-note", {12, 12}, dpr);
-    case ReaderTool::Text:
-        return iconCursor("tool-text", {5, 5}, dpr);
-    case ReaderTool::Area:
-        return iconCursor("tool-area", {4, 4}, dpr);
-    case ReaderTool::Ink:
-        return iconCursor("tool-ink", {3, 19}, dpr);
-    case ReaderTool::Eraser:
-        return iconCursor("tool-eraser", {5, 19}, dpr);
-    default:
-        return Qt::ArrowCursor;
-    }
 }
 
 static Qt::CursorShape resizeCursor(int edges)
@@ -2097,9 +2090,12 @@ void PdfView::updateCursor(QPointF pos)
                 shape = Qt::IBeamCursor;
             break;
         }
+        case ReaderTool::Highlight:
+        case ReaderTool::Underline:
+            shape = Qt::IBeamCursor;  // (they select text)
+            break;
         default:
-            viewport()->setCursor(toolCursor(tool_, viewport()->devicePixelRatioF()));
-            return;
+            break;
         }
     }
     viewport()->setCursor(shape);
@@ -2315,8 +2311,10 @@ void PdfView::mouseMoveEvent(QMouseEvent* e)
             if (idx >= 0 || page == selAnchorPage_)
                 break;
         }
-        if (idx >= 0 && (page != selAnchorPage_ || idx != selAnchor_ || selFocusPage_ >= 0 ||
-                         std::hypot(pt.x() - dragStart_.x(), pt.y() - dragStart_.y()) > 2)) {
+        // (a mouse that moved no further than a double click allows has only been clicked: with
+        // the highlight or underline tool a bit of a word would have been marked by it)
+        if (idx >= 0 && (page != selAnchorPage_ || selFocusPage_ >= 0 ||
+                         QLineF(pressPos_, e->position()).length() > QApplication::styleHints()->mouseDoubleClickDistance())) {
             selFocusPage_ = page;
             selFocus_ = idx;
         }
@@ -2428,11 +2426,9 @@ void PdfView::mouseDoubleClickEvent(QMouseEvent* e)
         }
     if (tool_ != ReaderTool::Select && tool_ != ReaderTool::Highlight && tool_ != ReaderTool::Underline)
         return;
-    auto& text = doc_->text(page);
-    int idx = text.hitTest({(float)pt.x(), (float)pt.y()}, false);
-    if (idx < 0)
+    auto [a, b] = doc_->text(page).wordNear({(float)pt.x(), (float)pt.y()});
+    if (a < 0)
         return;
-    auto [a, b] = text.wordAt(idx);
     selAnchorPage_ = selFocusPage_ = page;
     selAnchor_ = a;
     selFocus_ = b;

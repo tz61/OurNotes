@@ -1008,7 +1008,7 @@ TEST_CASE("reader: Q, W and E give three colours of one's own, set with the gear
         tab.findChild<QToolBar*>()->grab().save(dir + "/reader-toolbar.png");
 }
 
-TEST_CASE("reader: on a page the tool's icon is the cursor; Select keeps the usual ones")
+TEST_CASE("reader: on a page Highlight and Underline have the text cursor, the other tools the arrow")
 {
     app();
     Env env;
@@ -1029,26 +1029,156 @@ TEST_CASE("reader: on a page the tool's icon is the cursor; Select keeps the usu
         return view->viewport()->cursor();
     };
     CHECK(cursorAt(onPage).shape() == Qt::ArrowCursor);
-    std::set<qint64> icons;
-    for (auto key : {Qt::Key_2, Qt::Key_3, Qt::Key_4, Qt::Key_5, Qt::Key_6, Qt::Key_7, Qt::Key_8}) {
+    for (auto key : {Qt::Key_2, Qt::Key_3}) {
         QTest::keyClick(view, key);
-        auto cursor = cursorAt(onPage);
-        CHECK(cursor.shape() == Qt::BitmapCursor);
-        CHECK(!cursor.pixmap().isNull());
-        icons.insert(cursor.pixmap().cacheKey());
+        CHECK(cursorAt(onPage).shape() == Qt::IBeamCursor);
+        CHECK(cursorAt(QPoint(2, 2)).shape() == Qt::ArrowCursor);  // (off the pages)
     }
-    CHECK(icons.size() == 7);  // each its own
-    QTest::keyClick(view, Qt::Key_2);
-    CHECK(cursorAt(onPage).hotSpot() == QPoint(3, 21));  // the marker's tip
-    // off the pages, and with Select: as before
-    CHECK(cursorAt(QPoint(2, 2)).shape() == Qt::ArrowCursor);
+    for (auto key : {Qt::Key_4, Qt::Key_5, Qt::Key_6, Qt::Key_7, Qt::Key_8}) {
+        QTest::keyClick(view, key);
+        CHECK(cursorAt(onPage).shape() == Qt::ArrowCursor);
+    }
+    // Select: as before, over the text the text cursor
     QTest::keyClick(view, Qt::Key_1);
     CHECK(cursorAt(onPage).shape() == Qt::ArrowCursor);
     CHECK(cursorAt(charCenter(*view, 1).toPoint()).shape() == Qt::IBeamCursor);
-    if (auto dir = qEnvironmentVariable("OURNOTES_TEST_SNAPSHOT_DIR"); !dir.isEmpty()) {
-        QTest::keyClick(view, Qt::Key_2);
-        cursorAt(onPage).pixmap().save(dir + "/cursor-highlight.png");
+}
+
+TEST_CASE("reader: a word double-clicked with the highlight or underline tool is marked at once, it alone")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto key = qs(jstr(env.library.importAttachment(env.lib, file), "key"));
+    ReaderTab tab(env.lib, key);
+    tab.resize(1200, 900);
+    tab.show();
+    QApplication::processEvents();
+    auto* view = tab.view();
+    view->setFocus();
+    auto annotations = [&] { return env.library.annotations(env.lib, key.toStdString()); };
+    auto has = [&](const std::string& type, const std::string& text) {  // (they come in the page's order)
+        for (auto& a : annotations())
+            if (jstr(a, "annotationType") == type && jstr(a, "annotationText") == text)
+                return true;
+        return false;
+    };
+    auto& chars = view->document()->text(0).chars;
+    QTest::keyClick(view, Qt::Key_2);
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 8).toPoint());
+    auto made = annotations();
+    REQUIRE(made.size() == 1);
+    CHECK(jstr(made[0], "annotationType") == "highlight");
+    CHECK(jstr(made[0], "annotationText") == "World");
+    CHECK(!view->hasTextSelection());
+
+    QTest::keyClick(view, Qt::Key_3);
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, charCenter(*view, 2).toPoint());
+    REQUIRE(annotations().size() == 2);
+    CHECK(has("underline", "Hello"));
+
+    // not exactly on a letter: just under the word (the characters' boxes leave much uncovered)
+    auto& from = chars[14].box;  // "from"
+    auto under = view->pageToViewport(0, QPointF((from.x0 + from.x1) / 2, from.y1 + 3)).toPoint();
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, under);
+    REQUIRE(annotations().size() == 3);
+    CHECK(has("underline", "from"));
+    // on the space between two words: the one on that side
+    auto& space = chars[5].box;
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {},
+                       view->pageToViewport(0, QPointF(space.x1 - 0.5, (space.y0 + space.y1) / 2)).toPoint());
+    REQUIRE(annotations().size() == 4);
+    CHECK(has("underline", "World"));
+    // far from any: nothing
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, view->pageToViewport(0, QPointF(300, 500)).toPoint());
+    CHECK(annotations().size() == 4);
+
+    // the mouse moving a little during the first click, past a letter's edge: only the word
+    QTest::keyClick(view, Qt::Key_2);
+    auto& edge = chars[13].box;  // "r" of "from"
+    auto at = view->pageToViewport(0, QPointF(edge.x1 - 0.5, (edge.y0 + edge.y1) / 2)).toPoint();
+    QTest::mousePress(view->viewport(), Qt::LeftButton, {}, at);
+    QTest::mouseMove(view->viewport(), at + QPoint(3, 0));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, {}, at + QPoint(3, 0));
+    CHECK(annotations().size() == 4);
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, {}, at + QPoint(3, 0));
+    REQUIRE(annotations().size() == 5);
+    CHECK(has("highlight", "from"));
+}
+
+TEST_CASE("pdf view: text dragged over with the highlight or underline tool is marked as the mouse goes, in the tool's colour")
+{
+    app();
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 1000);
+    view.open(file);
+    view.show();
+    view.setColor("#ff2020");
+    QApplication::processEvents();
+    std::vector<Json> created;
+    QObject::connect(&view, &PdfView::annotationCreated, [&](const Json& d) { created.push_back(d); });
+    struct Ink {
+        int red = 0, blue = 0, redInUpperPart = 0;
+    };
+    auto inkIn = [&](int firstChar, int lastChar) {  // over those characters of the first line
+        auto img = view.viewport()->grab().toImage();
+        double d = img.devicePixelRatio();
+        auto& chars = view.document()->text(0).chars;
+        auto from = chars[firstChar].box, to = chars[lastChar].box;
+        QRect pixels(QPointF(view.pageToViewport(0, QPointF(from.x0 + 1, from.y0)) * d).toPoint(),
+                     QPointF(view.pageToViewport(0, QPointF(to.x1 - 1, to.y1)) * d).toPoint());
+        Ink ink;
+        for (int y = pixels.top(); y <= pixels.bottom(); ++y)
+            for (int x = pixels.left(); x <= pixels.right(); ++x) {
+                auto c = img.pixelColor(x, y);
+                if (c.red() > c.green() + 40 && c.red() > c.blue() + 40) {
+                    ++ink.red;
+                    ink.redInUpperPart += y < pixels.center().y();
+                }
+                ink.blue += c.blue() > c.red() + 30;
+            }
+        return ink;
+    };
+    REQUIRE(QTest::qWaitFor([&] { return view.renderedPages() > 0; }));
+    for (auto tool : {ReaderTool::Highlight, ReaderTool::Underline}) {
+        CAPTURE((int)tool);
+        created.clear();
+        view.setTool(tool);
+        QTest::mousePress(view.viewport(), Qt::LeftButton, {}, charCenter(view, 0).toPoint());
+        CHECK(inkIn(0, 4).red == 0);  // (a press alone marks nothing)
+        QTest::mouseMove(view.viewport(), charCenter(view, 4).toPoint());
+        auto part = inkIn(0, 4), beyond = inkIn(7, 10);
+        CHECK(part.red > 0);  // as far as the mouse has come, and no further
+        CHECK(beyond.red == 0);
+        CHECK(part.blue == 0);  // not the selection's blue
+        if (tool == ReaderTool::Underline)
+            CHECK(part.redInUpperPart == 0);  // a line under the text, no more
+        else
+            CHECK(part.redInUpperPart > 0);
+        QTest::mouseMove(view.viewport(), charCenter(view, 10).toPoint());
+        CHECK(inkIn(7, 10).red > 0);
+        // back again: drawn back too
+        QTest::mouseMove(view.viewport(), charCenter(view, 4).toPoint());
+        CHECK(inkIn(7, 10).red == 0);
+        CHECK(created.empty());  // (made when let go)
+        QTest::mouseMove(view.viewport(), charCenter(view, 10).toPoint());
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, {}, charCenter(view, 10).toPoint());
+        REQUIRE(created.size() == 1);
+        CHECK(jstr(created[0], "annotationText") == "Hello World");
+        CHECK(!view.hasTextSelection());
     }
+
+    // Select: the selection's colour, as before
+    view.setTool(ReaderTool::Select);
+    QTest::mousePress(view.viewport(), Qt::LeftButton, {}, charCenter(view, 0).toPoint());
+    QTest::mouseMove(view.viewport(), charCenter(view, 4).toPoint());
+    CHECK(inkIn(0, 4).red == 0);
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, {}, charCenter(view, 4).toPoint());
 }
 
 TEST_CASE("reader: annotation cards stay idle and follow the theme")

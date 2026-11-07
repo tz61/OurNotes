@@ -145,6 +145,39 @@ TEST_CASE("image areas of a page, within their clipping")
     CHECK(Document::open(tmp2.path / "text.pdf")->imageRects(0).empty());
 }
 
+TEST_CASE("the word near a point: on it, close to it, beside a space or a comma; none far away")
+{
+    TempDir tmp;
+    auto file = tmp.path / "words.pdf";
+    writeTextPdf(file, {{{72, 100, "One two, three"}, {72, 114, "four five six"}}});
+    auto doc = Document::open(file);
+    auto& text = doc->text(0);
+    auto wordAtPoint = [&](float x, float y) {
+        auto [a, b] = text.wordNear({x, y});
+        return a < 0 ? std::string("(none)") : text.textOf(a, b);
+    };
+    auto boxOf = [&](int i) { return text.chars[i].box; };
+    auto middle = [&](const Rect& r) { return Point{(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2}; };
+    auto one = middle(boxOf(1));
+    CHECK(wordAtPoint(one.x, one.y) == "One");
+    // just above and under the letters, and by the end of a line
+    CHECK(wordAtPoint(one.x, boxOf(1).y0 - 3) == "One");
+    auto six = boxOf((int)text.chars.size() - 1);
+    CHECK(wordAtPoint(six.x1 + 3, (six.y0 + six.y1) / 2) == "six");
+    // a space: the word on that side
+    auto space = boxOf(3);
+    CHECK(wordAtPoint(space.x0 + 0.2f, (space.y0 + space.y1) / 2) == "One");
+    CHECK(wordAtPoint(space.x1 - 0.2f, (space.y0 + space.y1) / 2) == "two");
+    // a comma too
+    auto comma = boxOf(7);
+    CHECK(text.chars[7].c == ',');
+    CHECK(wordAtPoint(comma.x0 + 0.2f, (comma.y0 + comma.y1) / 2) == "two");
+    // far off: none
+    CHECK(wordAtPoint(300, 100) == "(none)");
+    CHECK(wordAtPoint(one.x, boxOf(1).y0 - 30) == "(none)");
+    CHECK(wordAtPoint(one.x, text.lines[1].box.y1 + 30) == "(none)");
+}
+
 namespace {
 
 // A page's links as text: what each one's box holds, and where it leads
