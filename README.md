@@ -55,6 +55,14 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   colours (in a light theme too); Ctrl+Shift+T reopens a closed tab. A slider in the
   toolbar sets the page colour for all PDFs: white to gray, or black to gray for dark
   pages; only the paper, not the text or the pictures on it. See [Key bindings](#key-bindings).
+- **Reading time** — counted while OurNotes is in front with a PDF shown, up to the last
+  mouse or keyboard input before a pause of 2 minutes (set in Preferences); the time after
+  that input is not counted, nor is time in the library or another program. Today's total
+  is at the right of the status bar, dimmed while not counting. *Tools → Reading Time* (or
+  a click on it) shows the last two weeks as bars, a day's sessions on a line through the
+  day and as a list (double-click opens the PDF), and the papers read most in 30 days. The
+  sessions are kept in your own library, never a group's, and synced with it, so every
+  computer's add up ([format](docs/sync-protocol.md#reading-time)).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
   saved as Zotero-compatible note HTML; add selected text or annotations to a note.
   References: *Copy Reference* on text selected in a PDF (its context menu, or the button

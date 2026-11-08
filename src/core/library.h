@@ -260,6 +260,9 @@ public:
     // --- settings (synced, per library) --------------------------------------------------
     Json setting(int64_t lib, const std::string& name, const Json& def = nullptr);
     void setSetting(int64_t lib, const std::string& name, const Json& value);  // null removes
+    // The settings named from `from` up to (not with) `to`, in the order of their names.
+    std::vector<std::pair<std::string, Json>> settingsBetween(int64_t lib, const std::string& from,
+                                                              const std::string& to);
 
     // --- reader state (local) ------------------------------------------------------------
     // Where an attachment was left in the reader (page, zoom, scroll position), kept in

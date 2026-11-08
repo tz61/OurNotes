@@ -45,6 +45,8 @@ signals:
     void changedElsewhere();
     // The colours of Q, W and E (annotationPalette) changed.
     void annotationPaletteChanged();
+    // Reading time is counted, or shown, otherwise (Preferences).
+    void readingSettingsChanged();
 
 private:
     Config& config_;

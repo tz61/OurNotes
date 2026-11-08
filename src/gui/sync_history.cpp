@@ -9,6 +9,9 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include <cstring>
+
+#include "core/reading_log.h"
 #include "core/schema.h"
 #include "gui/common.h"
 #include "gui/icons.h"
@@ -160,6 +163,12 @@ void SyncHistoryWindow::reload(const sync::SyncHistory& history)
             auto title = jqs(c, "title");
             QString arrow = c.value("incoming", false) ? "↓ " : "↑ ";
             row->setText(0, arrow + kindText(kind) + (title.isEmpty() ? QString() : "  “" + title + "”"));
+            auto key = jqs(c, "key");
+            if (kind == "setting" && key.startsWith(kReadingLogPrefix)) {  // a day's reading time (ReadingTimer)
+                auto day = QDate::fromString(key.mid(int(strlen(kReadingLogPrefix)), 8), "yyyyMMdd");
+                title = QLocale().toString(day, QLocale::ShortFormat);
+                row->setText(0, arrow + tr("Reading time") + "  " + title);
+            }
             row->setToolTip(0, asPlainText(title));
             row->setIcon(0, kindIcon(kind));
             row->setText(1, actionText(jstr(c, "action")));

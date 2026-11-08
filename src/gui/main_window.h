@@ -14,6 +14,8 @@ namespace on::gui {
 
 class LibraryView;
 class ReaderTab;
+class ReadingTimer;
+class ReadingWindow;
 class SyncController;
 class SyncHistoryWindow;
 class StorageWindow;
@@ -95,6 +97,7 @@ private:
     void showConflicts();
     void showSyncHistory();
     void showStorage();
+    void showReadingTime();
     void setStatus(const QString& text, int timeoutMs = 0);
 
     QTabWidget* tabs_;
@@ -102,6 +105,8 @@ private:
     QToolButton* syncButton_ = nullptr;
     SyncHistoryWindow* syncHistory_ = nullptr;
     StorageWindow* storage_ = nullptr;
+    ReadingTimer* reading_ = nullptr;
+    ReadingWindow* readingWindow_ = nullptr;
     ConnectorServer* connector_ = nullptr;
     void startConnector(bool on);
     QLabel* status_;

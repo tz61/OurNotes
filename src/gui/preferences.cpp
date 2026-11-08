@@ -22,6 +22,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 #include "core/hash.h"
 #include "gui/app_context.h"
 #include "gui/common.h"
@@ -188,6 +190,49 @@ QWidget* PreferencesDialog::generalPage()
     fulltext_ = new QCheckBox(tr("Index the text of PDFs for full-text search"), page);
     fulltext_->setChecked(cfg.get("/fulltext/enabled", true).get<bool>());
     form->addRow(QString(), fulltext_);
+
+    // reading time (see ReadingTimer)
+    auto changedReading = [](const char* pointer, const Json& value) {
+        auto& ctx = AppContext::get();
+        ctx.config().set(pointer, value);
+        ctx.config().save();
+        emit ctx.readingSettingsChanged();
+    };
+    auto* reading = new QCheckBox(tr("Count the time spent reading PDFs, kept in your own library and synced with it"),
+                                  page);
+    reading->setObjectName("readingEnabled");
+    reading->setChecked(cfg.get("/reading/enabled", true).get<bool>());
+    form->addRow(tr("Reading time:"), reading);
+    auto* idle = new QSpinBox(page);
+    idle->setObjectName("readingIdleMinutes");
+    idle->setRange(1, 30);
+    idle->setSuffix(tr(" min"));
+    idle->setValue(std::clamp(cfg.get("/reading/idleMinutes", 2).get<int>(), 1, 30));
+    auto* idleRow = new QWidget(page);
+    auto* idleLayout = new QHBoxLayout(idleRow);
+    idleLayout->setContentsMargins(0, 0, 0, 0);
+    idleLayout->addWidget(new QLabel(tr("Pause after"), idleRow));
+    idleLayout->addWidget(idle);
+    idleLayout->addWidget(new QLabel(tr("without mouse or keyboard input"), idleRow), 1);
+    idleRow->setToolTip(tr("The time after the last input is not counted. Reading a page can take a minute or two "
+                           "without touching anything."));
+    form->addRow(QString(), idleRow);
+    auto* showReading = new QCheckBox(tr("Show today's reading time in the status bar"), page);
+    showReading->setObjectName("readingInStatusBar");
+    showReading->setChecked(cfg.get("/reading/showInStatusBar", true).get<bool>());
+    form->addRow(QString(), showReading);
+    auto follow = [reading, idleRow, showReading] {
+        idleRow->setEnabled(reading->isChecked());
+        showReading->setEnabled(reading->isChecked());
+    };
+    follow();
+    connect(reading, &QCheckBox::toggled, this, [changedReading, follow](bool on) {
+        changedReading("/reading/enabled", on);
+        follow();
+    });
+    connect(idle, &QSpinBox::valueChanged, this, [changedReading](int v) { changedReading("/reading/idleMinutes", v); });
+    connect(showReading, &QCheckBox::toggled, this,
+            [changedReading](bool on) { changedReading("/reading/showInStatusBar", on); });
     return page;
 }
 

@@ -37,6 +37,28 @@ since the epoch), `filename` and `contentType`. Files are not versioned:
 clients compare `md5` with their local copy. Deleting an `item` object deletes
 its file; uploading a file for an item that is a tombstone is refused (409).
 
+### Reading time
+
+The app keeps the time PDFs were read as `setting` objects of the user's own
+library (the first of type `user`, never a group's, whose members would see
+them), one for each day and computer: `readingLog_<YYYYMMDD>_<device>`, the date
+being the local date the sessions started on and `device` an id the computer
+made for itself. Only that computer writes its records, so they never conflict.
+
+```json
+{"value": {"device": "laptop",
+           "sessions": [{"start": "2026-11-07T01:12:03Z", "end": "2026-11-07T01:47:10Z",
+                         "library": "LIB1", "item": "ABCD2345", "attachment": "ATTA2345",
+                         "title": "Attention Is All You Need"}]},
+ "dateModified": "2026-11-07T01:47:12Z"}
+```
+
+`library` is the uid of the PDF's library, `item` its top-level item and `title`
+its title at the time. A session going on is written every few minutes and when
+it ends, each time in place of itself (the same `start` and `attachment`). A
+session counts from the first input to the last before a pause (2 minutes unless
+set otherwise), with the app in front and a PDF shown.
+
 ## Client algorithm
 
 1. `ensureLibrary(uid, name, type)` — creates the library (caller becomes owner)

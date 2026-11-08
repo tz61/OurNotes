@@ -52,6 +52,8 @@
 #include "gui/note_tab.h"
 #include "gui/preferences.h"
 #include "gui/reader/reader_tab.h"
+#include "gui/reading_timer.h"
+#include "gui/reading_window.h"
 #include "gui/theme.h"
 #include "gui/sync_controller.h"
 #include "gui/storage_window.h"
@@ -121,6 +123,22 @@ MainWindow::MainWindow()
     status_->setTextFormat(Qt::PlainText);  // titles and library names, never rich text (see asPlainText)
     status_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);  // (at the side, not under what is being read)
     statusBar()->addWidget(status_, 1);
+    // reading time: while a PDF is shown with the window in front, and input comes
+    reading_ = new ReadingTimer(this);
+    reading_->target = [this]() -> std::optional<ReadingTimer::Target> {
+        if (QGuiApplication::applicationState() != Qt::ApplicationActive || QApplication::activeWindow() != this ||
+            isMinimized())
+            return std::nullopt;
+        auto* r = qobject_cast<ReaderTab*>(tabs_->currentWidget());
+        if (!r)
+            return std::nullopt;
+        return ReadingTimer::Target{r->libraryId(), r->attachmentKey(), r->title()};
+    };
+    connect(qApp, &QGuiApplication::applicationStateChanged, reading_, &ReadingTimer::activity);
+    connect(qApp, &QGuiApplication::focusWindowChanged, reading_, &ReadingTimer::activity);
+    auto* readingButton = new ReadingStatusButton(reading_, this);
+    connect(readingButton, &QToolButton::clicked, this, &MainWindow::showReadingTime);
+    statusBar()->addPermanentWidget(readingButton);
 
     sync_ = new SyncController(this);
     AppContext::get().watchDatabase();  // for what ournotes-cli or an agent changes meanwhile
@@ -153,6 +171,7 @@ MainWindow::MainWindow()
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int i) {
         loadPendingTab(i);
         updateTabActions();
+        reading_->activity();  // another PDF, or none
     });
     tabTitlesTimer_.setSingleShot(true);
     tabTitlesTimer_.setInterval(50);
@@ -443,6 +462,7 @@ void MainWindow::buildActions()
     tools->addAction(tr("Sync Conflicts…"), this, &MainWindow::showConflicts);
     tools->addAction(tr("Storage and Sync Status…"), this, &MainWindow::showStorage);
     tools->addSeparator();
+    tools->addAction(tr("Reading Time…"), this, &MainWindow::showReadingTime);
     tools->addAction(tr("Rebuild Full-Text Index"), this, [this] {
         indexer_->rebuild();
         setStatus(tr("Rebuilding the full-text index…"));
@@ -857,6 +877,20 @@ void MainWindow::showStorage()
     storage_->activateWindow();
 }
 
+void MainWindow::showReadingTime()
+{
+    if (!readingWindow_) {
+        readingWindow_ = new ReadingWindow(reading_, this);
+        readingWindow_->setObjectName("readingWindow");
+        connect(readingWindow_, &ReadingWindow::openRequested, this,
+                [this](qint64 lib, const QString& key) { openAttachment(lib, key); });
+    }
+    readingWindow_->reload();
+    readingWindow_->show();
+    readingWindow_->raise();
+    readingWindow_->activateWindow();
+}
+
 void MainWindow::showSyncHistory()
 {
     if (!syncHistory_) {
@@ -1115,6 +1149,8 @@ void MainWindow::shutDown()
     if (shutDown_)
         return;
     shutDown_ = true;
+    reading_->stop();  // (the session going on written)
+    reading_->target = {};  // (nor one begun as the tabs close)
     auto& cfg = AppContext::get().config();
     saveSession();
     cfg.set("/ui/geometry", saveGeometry().toBase64().toStdString());

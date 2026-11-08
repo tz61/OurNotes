@@ -4,6 +4,7 @@ add_library(ournotes_core STATIC
     hash.cpp
     library.cpp
     links.cpp
+    reading_log.cpp
     schema.cpp
     sqlite.cpp
     util.cpp

@@ -25,6 +25,8 @@ set(OURNOTES_GUI_SOURCES
     note_pictures.cpp
     note_tab.cpp
     preferences.cpp
+    reading_timer.cpp
+    reading_window.cpp
     shift_wheel.cpp
     search_field.cpp
     side_pane.cpp

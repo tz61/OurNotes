@@ -1716,6 +1716,20 @@ void Library::setSetting(int64_t lib, const std::string& name, const Json& value
     notify({lib, "setting", existing ? "modify" : "add", {name}});
 }
 
+std::vector<std::pair<std::string, Json>> Library::settingsBetween(int64_t lib, const std::string& from,
+                                                                   const std::string& to)
+{
+    std::vector<std::pair<std::string, Json>> out;
+    auto st = db_.query("SELECT key, data FROM settings WHERE library_id=? AND key>=? AND key<? ORDER BY key", lib,
+                        from, to);
+    while (st.step()) {
+        auto d = Json::parse(st.str(1), nullptr, false);
+        if (d.is_object() && d.contains("value"))
+            out.emplace_back(st.str(0), d["value"]);
+    }
+    return out;
+}
+
 // --- reader state -----------------------------------------------------------------------------
 
 Json Library::readerState(const std::string& key) const

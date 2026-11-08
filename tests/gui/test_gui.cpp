@@ -58,6 +58,8 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QDropEvent>
+#include <QInputMethodEvent>
+#include <QSpinBox>
 #include <QPainter>
 #include <QWheelEvent>
 #ifdef OURNOTES_TEST_BACKING_STORE
@@ -94,6 +96,9 @@
 #include "gui/storage_window.h"
 #include "gui/shift_wheel.h"
 #include "gui/preferences.h"
+#include "gui/reading_timer.h"
+#include "gui/reading_window.h"
+#include "core/reading_log.h"
 #include "gui/sync_controller.h"
 #include "gui/sync_history.h"
 #include "gui/theme.h"
@@ -7618,6 +7623,14 @@ TEST_CASE("sync history: the last syncs, each object once under the last that ch
     CHECK(tree->topLevelItem(0)->text(0).contains("synced by ournotes-cli"));
     CHECK(tree->topLevelItem(0)->child(0)->text(2) == "ournotes-cli");
     CHECK(tree->topLevelItem(1)->child(0)->text(2).isEmpty());
+
+    // a day's reading time: by its day, not its key
+    auto log = change("readingLog_20261107_DEVICE01", "readingLog_20261107_DEVICE01", "changed", false);
+    log.type = log.kind = "setting";
+    again.add("server", report({log}), true, "pushed 1");
+    window.reload(again);
+    CHECK(tree->topLevelItem(0)->child(0)->text(0) ==
+          "↑ Reading time  " + QLocale().toString(QDate(2026, 11, 7), QLocale::ShortFormat));
 }
 
 TEST_CASE("storage window: this computer's disk and libraries, and the sync target's")
@@ -11100,6 +11113,263 @@ TEST_CASE("docs: the README's screenshot" * doctest::skip(!std::getenv("OURNOTES
         QTest::qWait(50);
     }
     window.grab().save(QString::fromLocal8Bit(std::getenv("OURNOTES_SCREENSHOT")));
+}
+
+// --- reading time ------------------------------------------------------------------------------
+
+namespace {
+
+// A ReadingTimer on the test's clock, reading what `shown` says is in front.
+struct ReadingClock {
+    int64_t now = QDateTime(QDate(2026, 11, 7), QTime(9, 0)).toMSecsSinceEpoch();
+    std::optional<ReadingTimer::Target> shown;
+    void attach(ReadingTimer& timer)
+    {
+        timer.clock = [this] { return now; };
+        timer.target = [this] { return shown; };
+    }
+};
+
+std::vector<ReadingSession> writtenSessions(Env& env)
+{
+    return readingSessions(env.library, env.lib, "19700101", "99991231");
+}
+
+} // namespace
+
+TEST_CASE("reading time: from the first input to the last before a pause; leaving the PDF ends it there")
+{
+    app();
+    Env env;
+    ReadingTimer timer;
+    ReadingClock c;
+    c.attach(timer);
+    auto t0 = c.now / 1000;
+    timer.activity();  // the app not in front, or no PDF shown: nothing
+    CHECK_FALSE(timer.reading());
+    c.shown = ReadingTimer::Target{env.lib, "ATTACH01", "A Paper"};
+    timer.activity();
+    CHECK(timer.reading());
+    c.now += 90'000;  // a minute and a half later: still reading (the pause is 2 minutes)
+    timer.activity();
+    c.now += 100'000;
+    timer.activity();
+    c.now += 119'000;
+    timer.check();
+    CHECK(timer.reading());
+    REQUIRE(timer.session());
+    CHECK(timer.session()->seconds() == 190);
+    c.now += 2'000;  // two minutes without input: ended at the last
+    timer.check();
+    CHECK_FALSE(timer.reading());
+    auto s = writtenSessions(env);
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].start == t0);
+    CHECK(s[0].end == t0 + 190);
+    CHECK(s[0].library == env.library.library(env.lib)->uid);
+    CHECK(s[0].attachment == "ATTACH01");
+    CHECK(s[0].title == "A Paper");
+    CHECK_FALSE(s[0].device.empty());
+
+    // input again: another session; another PDF shown ends it then and there and starts that
+    // one's; another program in front ends that
+    c.now += 600'000;
+    auto t1 = c.now / 1000;
+    timer.activity();
+    c.now += 30'000;
+    timer.activity();
+    c.now += 50'000;
+    c.shown->attachmentKey = "ATTACH02";
+    timer.activity();
+    c.now += 20'000;
+    c.shown.reset();
+    timer.activity();
+    CHECK_FALSE(timer.reading());
+    s = writtenSessions(env);
+    REQUIRE(s.size() == 3);
+    CHECK(s[1].start == t1);
+    CHECK(s[1].end == t1 + 80);
+    CHECK(s[2].attachment == "ATTACH02");
+    CHECK(s[2].seconds() == 20);
+    CHECK(timer.secondsOn(QDate(2026, 11, 7)) == 190 + 80 + 20);
+}
+
+TEST_CASE("reading time: a glance is not kept, a long session is written as it goes, the clock set back ends it")
+{
+    app();
+    Env env;
+    ReadingTimer timer;
+    ReadingClock c;
+    c.attach(timer);
+    c.shown = ReadingTimer::Target{env.lib, "ATTACH01", "A Paper"};
+    timer.activity();
+    c.now += 3'000;  // a tab passed through
+    c.shown.reset();
+    timer.activity();
+    CHECK(writtenSessions(env).empty());
+
+    c.shown = ReadingTimer::Target{env.lib, "ATTACH01", "A Paper"};
+    c.now += 60'000;
+    auto t1 = c.now / 1000;
+    timer.activity();
+    for (int i = 0; i < 6; ++i) {
+        c.now += 60'000;
+        timer.activity();
+    }
+    auto s = writtenSessions(env);  // written at five minutes, while it goes on
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].end == t1 + 300);
+    CHECK(timer.reading());
+    CHECK(timer.secondsOn(QDate(2026, 11, 7)) == 360);  // (with the session going on)
+    c.now -= 3'600'000;  // the clock set back an hour: ended at the last input, written once
+    timer.activity();
+    s = writtenSessions(env);
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].start == t1);
+    CHECK(s[0].end == t1 + 360);
+    CHECK(timer.reading());  // (and a session from then)
+
+    // the app quits: the session going on ends then, and is written
+    c.now += 40'000;
+    timer.stop();
+    CHECK_FALSE(timer.reading());
+    CHECK(writtenSessions(env).size() == 2);
+}
+
+TEST_CASE("reading time: the pause set, and nothing counted while it is turned off")
+{
+    app();
+    Env env;
+    env.config.set("/reading/idleMinutes", 1);
+    ReadingTimer timer;
+    ReadingClock c;
+    c.attach(timer);
+    c.shown = ReadingTimer::Target{env.lib, "ATTACH01", "A Paper"};
+    timer.activity();
+    c.now += 30'000;
+    timer.activity();
+    c.now += 61'000;
+    timer.check();
+    CHECK_FALSE(timer.reading());
+    auto s = writtenSessions(env);
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].seconds() == 30);
+
+    env.config.set("/reading/enabled", false);
+    c.now += 1000;
+    timer.activity();
+    CHECK_FALSE(timer.reading());
+}
+
+TEST_CASE("reading time: the user's input counts, typing through an input method too, the app's own events not")
+{
+    app();
+    Env env;
+    ReadingTimer timer;
+    ReadingClock c;
+    c.attach(timer);
+    c.shown = ReadingTimer::Target{env.lib, "ATTACH01", "A Paper"};
+    QWidget w;
+    w.show();
+    QMouseEvent move(QEvent::MouseMove, QPointF(5, 5), QPointF(5, 5), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(&w, &move);  // sent by the app, not spontaneous
+    CHECK_FALSE(timer.reading());
+    QTest::keyClick(&w, Qt::Key_A);  // as from the keyboard
+    CHECK(timer.reading());
+    timer.stop();
+    c.now += 60'000;
+    QInputMethodEvent typed;
+    typed.setCommitString(QString::fromUtf8("字"));
+    QCoreApplication::sendEvent(&w, &typed);
+    CHECK(timer.reading());
+}
+
+TEST_CASE("reading time: today's at the right of the status bar; the window has the days, a day's sessions, the "
+          "papers read most")
+{
+    app();
+    Env env;
+    TempDir tmp;
+    auto file = tmp.path / "paper.pdf";
+    writeSamplePdf(file);
+    auto parent = env.library.createItem(env.lib, Json{{"itemType", "journalArticle"}, {"title", "Real Title"}});
+    auto key = jstr(env.library.importAttachment(env.lib, file, jstr(parent, "key")), "key");
+    auto uid = env.library.library(env.lib)->uid;
+    auto today = QDate::currentDate();
+    auto at = [](QDate d, int h, int m) { return QDateTime(d, QTime(h, m)).toSecsSinceEpoch(); };
+    auto session = [&](QDate d, int h, int m, int minutes, const std::string& attachment, const std::string& title) {
+        ReadingSession s;
+        s.start = at(d, h, m);
+        s.end = s.start + minutes * 60;
+        s.library = uid;
+        s.attachment = attachment;
+        s.item = attachment == key ? jstr(parent, "key") : attachment;
+        s.title = title;
+        return s;
+    };
+    recordReadingSession(env.library, env.lib, readingDay(today), "DEVICE01", "desk",
+                         session(today, 9, 0, 30, key, "Old Title"));
+    recordReadingSession(env.library, env.lib, readingDay(today), "DEVICE02", "laptop",
+                         session(today, 14, 0, 45, "GONE0001", "Gone Paper"));
+    recordReadingSession(env.library, env.lib, readingDay(today.addDays(-1)), "DEVICE01", "desk",
+                         session(today.addDays(-1), 20, 0, 60, key, "Old Title"));
+
+    MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    QApplication::processEvents();
+    auto* button = window.statusBar()->findChild<QToolButton*>("readingTime");
+    REQUIRE(button);
+    CHECK(button->isVisible());
+    CHECK(button->text() == "Read today: 1 h 15 min");
+    CHECK(button->mapTo(&window, QPoint(0, 0)).x() > window.width() * 3 / 4);  // at the right
+    button->click();
+    auto* reading = window.findChild<ReadingWindow*>("readingWindow");
+    REQUIRE(reading);
+    CHECK(reading->isVisible());
+    CHECK(reading->findChild<QLabel*>("readingTotals")->text().startsWith("Today 1 h 15 min    Last 7 days 2 h 15 min"));
+    auto* list = reading->findChild<QTreeWidget*>("readingSessions");
+    REQUIRE(list->topLevelItemCount() == 2);
+    CHECK(list->topLevelItem(0)->text(1) == "30 min");
+    CHECK(list->topLevelItem(0)->text(2) == "Real Title");  // as it is called now
+    CHECK(list->topLevelItem(1)->text(2) == "Gone Paper");  // (no longer in the library: as it was)
+    CHECK(list->topLevelItem(1)->text(3) == "laptop");
+    CHECK_FALSE(list->isColumnHidden(3));  // (read on two computers)
+    auto* papers = reading->findChild<QTreeWidget*>("readingPapers");
+    REQUIRE(papers->topLevelItemCount() == 2);
+    CHECK(papers->topLevelItem(0)->text(0) == "Real Title");
+    CHECK(papers->topLevelItem(0)->text(1) == "1 h 30 min");
+    CHECK(papers->topLevelItem(0)->text(2) == "2");
+    CHECK(papers->topLevelItem(1)->text(1) == "45 min");
+
+    // a day picked on the bars; the day before's sessions
+    auto* days = reading->findChild<QWidget*>("readingDays");
+    QTest::mouseClick(days, Qt::LeftButton, {}, QPoint(days->width() - 3 * days->width() / ReadingWindow::kDays / 2,
+                                                       days->height() / 2));
+    CHECK(reading->selectedDay() == today.addDays(-1));
+    REQUIRE(list->topLevelItemCount() == 1);
+    CHECK(reading->findChild<QLabel*>("readingDay")->text().contains("1 h 0 min, 1 session"));
+    CHECK(list->isColumnHidden(3));
+    // a session opens its PDF
+    emit list->itemActivated(list->topLevelItem(0), 0);
+    auto* reader = qobject_cast<ReaderTab*>(window.findChild<QTabWidget*>("mainTabs")->currentWidget());
+    REQUIRE(reader);
+    CHECK(reader->attachmentKey() == qs(key));
+
+    // not shown in the status bar, when so set
+    PreferencesDialog prefs(window.findChild<SyncController*>());
+    auto* shown = prefs.findChild<QCheckBox*>("readingInStatusBar");
+    REQUIRE(shown);
+    shown->setChecked(false);
+    CHECK_FALSE(button->isVisible());
+    CHECK(env.config.get("/reading/showInStatusBar") == false);
+    prefs.findChild<QSpinBox*>("readingIdleMinutes")->setValue(3);
+    CHECK(ReadingTimer::idleSeconds() == 180);
+    shown->setChecked(true);
+    CHECK(button->isVisible());
+    prefs.findChild<QCheckBox*>("readingEnabled")->setChecked(false);
+    CHECK_FALSE(button->isVisible());
+    CHECK_FALSE(shown->isEnabled());
 }
 
 int main(int argc, char** argv)
