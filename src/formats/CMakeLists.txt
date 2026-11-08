@@ -4,8 +4,10 @@ add_library(ournotes_formats STATIC
     common.cpp
     csljson.cpp
     formats.cpp
+    http.cpp
     metadata.cpp
     pdf_metadata.cpp
     ris.cpp
+    translate.cpp
 )
 target_link_libraries(ournotes_formats PUBLIC ournotes_core ournotes_pdf PRIVATE on_httplib)

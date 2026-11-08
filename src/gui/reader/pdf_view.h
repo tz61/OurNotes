@@ -24,6 +24,7 @@ class CommentBubble;
 class LinkPreview;
 class RenderWorker;
 class SelectionPopup;
+class TranslationPopup;
 
 enum class ReaderTool { Select, Highlight, Underline, Note, Text, Area, Ink, Eraser };
 
@@ -101,6 +102,11 @@ public:
     PdfQuote selectedQuote() const;
     void clearTextSelection();
     void copySelection();
+    // The selected text, or else the selected annotation's, translated by Google Translate,
+    // shown under it (T, the menu, the selection's button; at once if so set).
+    void translateSelection();
+    void translateAnnotation(const QString& key);
+    TranslationPopup* translationPopup() const { return translation_; }
 
     // Viewport position of a point in page space (points).
     QPointF pageToViewport(int page, QPointF pagePoint) const { return toView(page, pagePoint); }
@@ -257,6 +263,10 @@ private:
     std::map<int, std::vector<std::vector<QRectF>>> linkGlyphs_;
     void showPopup();
     void hidePopup();
+    void selectionMade();  // with the select tool: the buttons, and the translation if at once
+    void translateText(const QString& text, int firstPage, const QRectF& first, int lastPage, const QRectF& last);
+    void placeTranslation(bool chooseSide);
+    void hideTranslation();
     void updateCursor(QPointF viewPos);
 
     std::unique_ptr<pdf::Document> doc_;
@@ -345,6 +355,12 @@ private:
     int hitIndex_ = -1;
 
     SelectionPopup* popup_ = nullptr;
+    TranslationPopup* translation_ = nullptr;
+    struct TranslationAnchor {  // what is translated: its first and last line (page points)
+        int firstPage = -1, lastPage = -1;
+        QRectF first, last;
+        bool above = false;  // shown above it (no room below)
+    } translationAnchor_;
     QPlainTextEdit* textEditor_ = nullptr;
     QString editingKey_;
     CommentBubble* bubble_ = nullptr;

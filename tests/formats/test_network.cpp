@@ -5,6 +5,7 @@
 
 #include "core/util.h"
 #include "formats/metadata.h"
+#include "formats/translate.h"
 
 using namespace on;
 using namespace on::formats;
@@ -122,6 +123,20 @@ TEST_SUITE("network" * doctest::skip(noNetwork()))
         CHECK_FALSE(fs::exists(dir / "x.pdf.part"));
         std::error_code ec;
         fs::remove_all(dir, ec);
+    }
+
+    TEST_CASE("Google Translate: a word and a sentence")
+    {
+        auto word = translate("attention", "zh-CN");
+        CAPTURE(word.text);
+        CHECK(word.source == "en");
+        CHECK(word.target == "zh-CN");
+        CHECK(!word.text.empty());
+        CHECK(!word.dictionary.empty());
+        auto sentence = translate("Deep learning allows computational models to learn. It works well.", "de");
+        CAPTURE(sentence.text);
+        CHECK(sentence.source == "en");
+        CHECK(sentence.text.find("Deep Learning") != std::string::npos);
     }
 }
 

@@ -4,4 +4,5 @@ on_add_test(test_formats
     test_identifiers.cpp
     test_citation.cpp
     test_network.cpp
+    test_translate.cpp
     LIBS ournotes_formats)

@@ -13,7 +13,7 @@
 #include "core/schema.h"
 #include "formats/common.h"
 #include "formats/csljson.h"
-#include "ournotes/version.h"
+#include "formats/http.h"
 
 namespace on::formats {
 
@@ -29,11 +29,6 @@ bool isAlnum(char c) { return std::isalnum((unsigned char)c) != 0; }
 // =================================================================================
 // HTTP
 // =================================================================================
-
-std::string userAgent()
-{
-    return std::string("OurNotes/") + OURNOTES_VERSION + " (mailto:ournotes@users.noreply.github.com)";
-}
 
 struct Url {
     std::string scheme;  // http or https
@@ -75,27 +70,6 @@ std::string resolveUrl(const Url& base, const std::string& location)
         return base.origin + location;
     auto path = base.path.substr(0, base.path.find('?'));
     return base.origin + path.substr(0, path.rfind('/') + 1) + location;
-}
-
-[[noreturn]] void throwNetworkError(httplib::Error err, const std::string& host)
-{
-    using E = httplib::Error;
-    switch (err) {
-    case E::SSLConnection:
-    case E::SSLServerVerification:
-    case E::SSLServerHostnameVerification:
-        throw MetadataError("Could not establish a secure connection to " + host + " (" + httplib::to_string(err) +
-                            ").");
-    case E::SSLLoadingCerts:
-        throw MetadataError("HTTPS is unavailable: the system's certificate store could not be loaded.");
-    case E::ConnectionTimeout:
-    case E::Timeout:
-        throw MetadataError(host + " did not respond in time. Please try again later.");
-    case E::Connection:
-        throw MetadataError("Could not connect to " + host + ". Check your internet connection.");
-    default:
-        throw MetadataError("Network error while contacting " + host + ": " + httplib::to_string(err) + ".");
-    }
 }
 
 struct Response {

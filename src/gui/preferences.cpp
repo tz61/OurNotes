@@ -30,6 +30,7 @@
 #include "gui/connector_server.h"
 #include "gui/icons.h"
 #include "gui/note_editor.h"
+#include "gui/reader/translation_popup.h"
 #include "gui/sync_controller.h"
 #include "gui/theme.h"
 #include "gui/ui_scale.h"
@@ -233,6 +234,26 @@ QWidget* PreferencesDialog::generalPage()
     connect(idle, &QSpinBox::valueChanged, this, [changedReading](int v) { changedReading("/reading/idleMinutes", v); });
     connect(showReading, &QCheckBox::toggled, this,
             [changedReading](bool on) { changedReading("/reading/showInStatusBar", on); });
+
+    // translation of text chosen in a PDF (see TranslationPopup)
+    auto* translateTo = new QComboBox(page);
+    translateTo->setObjectName("translateTarget");
+    TranslationPopup::fillLanguages(translateTo, TranslationPopup::targetLanguage());
+    form->addRow(tr("Translate into:"), translateTo);
+    auto* translateAuto = new QCheckBox(tr("Translate text in a PDF as soon as it is selected (else T, or the "
+                                           "Translate button over it)"),
+                                        page);
+    translateAuto->setObjectName("translateAtOnce");
+    translateAuto->setChecked(TranslationPopup::translateAtOnce());
+    translateAuto->setToolTip(tr("The text is sent to Google Translate."));
+    form->addRow(QString(), translateAuto);
+    connect(translateTo, &QComboBox::currentIndexChanged, this,
+            [translateTo] { TranslationPopup::setTargetLanguage(translateTo->currentData().toString()); });
+    connect(translateAuto, &QCheckBox::toggled, this, [](bool on) {
+        auto& ctx = AppContext::get();
+        ctx.config().set("/translate/auto", on);
+        ctx.config().save();
+    });
     return page;
 }
 

@@ -68,6 +68,7 @@ const QHash<QString, QString>& sources()
         {"swap", R"(<path d="M4 8h14l-3-3M20 16H6l3 3" fill="none" stroke="CUR" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>)"},
         {"menu", R"(<circle cx="5" cy="12" r="1.8" fill="CUR"/><circle cx="12" cy="12" r="1.8" fill="CUR"/><circle cx="19" cy="12" r="1.8" fill="CUR"/>)"},
         {"copy", R"(<rect x="8" y="8" width="12" height="13" rx="1.5" fill="none" stroke="CUR" stroke-width="1.6"/><path d="M16 8V4.5A1.5 1.5 0 0 0 14.5 3h-9A1.5 1.5 0 0 0 4 4.5v11A1.5 1.5 0 0 0 5.5 17H8" fill="none" stroke="CUR" stroke-width="1.6"/>)"},
+        {"translate", R"(<path d="M7 2.5v2.5M2.5 5h9M9.5 5c-.8 3.6-3 6.4-6.5 8M4.8 7.5c1.2 2.6 3.2 4.6 5.8 5.8" fill="none" stroke="CUR" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 21.5l4.25-10 4.25 10M14 18h5.5" fill="none" stroke="CUR" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>)"},
         // --- reader -------------------------------------------------------------------------
         {"sidebar", R"(<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="CUR" stroke-width="1.6"/><path d="M9 4v16" stroke="CUR" stroke-width="1.6"/><path d="M5 8h2M5 11h2M5 14h2" stroke="CUR" stroke-width="1.3"/>)"},
         {"dark-pages", R"(<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="none" stroke="CUR" stroke-width="1.7" stroke-linejoin="round"/>)"},

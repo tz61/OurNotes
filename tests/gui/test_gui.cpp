@@ -45,10 +45,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <mutex>
 #include <QNativeGestureEvent>
 #include <QTest>
 #include <QTextDocument>
 #include <QTextTable>
+#include <QTextBrowser>
 #include <QMimeData>
 #include <QPushButton>
 #include <QLineEdit>
@@ -108,6 +110,7 @@
 #include "gui/reader/comment_bubble.h"
 #include "gui/reader/pdf_view.h"
 #include "gui/reader/reader_tab.h"
+#include "gui/reader/translation_popup.h"
 #include "sync/local_transport.h"
 
 using namespace on;
@@ -11370,6 +11373,230 @@ TEST_CASE("reading time: today's at the right of the status bar; the window has 
     prefs.findChild<QCheckBox*>("readingEnabled")->setChecked(false);
     CHECK_FALSE(button->isVisible());
     CHECK_FALSE(shown->isEnabled());
+}
+
+namespace {
+
+// Google Translate in the tests: what it was asked, and an answer made up.
+struct FakeTranslator {
+    std::mutex mutex;
+    std::vector<std::pair<std::string, std::string>> asked;  // the text, the language
+    std::string detected = "en";
+    std::string error;
+    TranslationPopup::Translator saved = TranslationPopup::translator();
+
+    FakeTranslator()
+    {
+        TranslationPopup::translator() = [this](const std::string& text, const std::string& target) {
+            std::lock_guard lock(mutex);
+            asked.emplace_back(text, target);
+            if (!error.empty())
+                throw std::runtime_error(error);
+            formats::Translation t;
+            t.text = "[" + target + "] " + text;
+            t.source = detected;
+            t.target = target;
+            t.phonetic = "wɜːld";
+            t.dictionary.push_back({"名词", {"世界", "天下"}});
+            return t;
+        };
+    }
+    ~FakeTranslator() { TranslationPopup::translator() = saved; }
+    size_t count()
+    {
+        std::lock_guard lock(mutex);
+        return asked.size();
+    }
+    std::pair<std::string, std::string> last()
+    {
+        std::lock_guard lock(mutex);
+        return asked.empty() ? std::pair<std::string, std::string>{} : asked.back();
+    }
+};
+
+} // namespace
+
+TEST_CASE("translation: the lines of a PDF's text joined into one, a word broken at a line's end mended")
+{
+    CHECK(TranslationPopup::cleanText("deep neural net-\nworks are\n  used") == "deep neural networks are used");
+    CHECK(TranslationPopup::cleanText("Self-\nAttention layers") == "Self-Attention layers");
+    CHECK(TranslationPopup::cleanText(QString::fromUtf8("深度\n学习")) == QString::fromUtf8("深度学习"));
+    CHECK(TranslationPopup::cleanText(" a\tb \r\n c ") == "a b c");
+    bool cut = true;
+    CHECK(TranslationPopup::cleanText("short", &cut) == "short");
+    CHECK_FALSE(cut);
+    auto cleaned = TranslationPopup::cleanText(QString("word ").repeated(2000), &cut);
+    CHECK(cut);
+    CHECK(cleaned.size() <= TranslationPopup::kMaxCharacters);
+    CHECK(cleaned.endsWith("word"));  // (not in a word)
+}
+
+TEST_CASE("pdf view: T translates the text selected, shown under it and going with it, until Esc or a click")
+{
+    app();
+    Env env;
+    env.config.set("/translate/target", "zh-CN");
+    FakeTranslator google;
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 600);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    auto* popup = view.translationPopup();
+    QTest::keyClick(&view, Qt::Key_T);  // nothing selected: nothing asked
+    CHECK(google.count() == 0);
+    CHECK_FALSE(popup->isVisible());
+
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 8).toPoint());
+    REQUIRE(view.selectedText() == "World");
+    CHECK_FALSE(popup->isVisible());  // (not at once, unless so set)
+    QTest::keyClick(&view, Qt::Key_T);
+    CHECK(popup->isVisible());
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    CHECK(google.last() == std::pair<std::string, std::string>{"World", "zh-CN"});
+    CHECK(popup->translation() == "[zh-CN] World");
+    auto* body = popup->findChild<QTextBrowser*>("translationText");
+    REQUIRE(body);
+    CHECK(body->toPlainText().contains(QString::fromUtf8("名词")));
+    CHECK(body->toPlainText().contains(QString::fromUtf8("世界, 天下")));
+    CHECK(body->toPlainText().contains(QString::fromUtf8("/wɜːld/")));
+    CHECK(popup->findChild<QLabel*>("translationFrom")->text() == QString::fromUtf8("English  →"));
+    CHECK(popup->findChild<QComboBox*>("translationTarget")->currentData() == "zh-CN");
+    // under the word, all of it in view, and its text whole (no scroll bar)
+    CHECK(popup->y() > charCenter(view, 8).y());
+    CHECK(view.viewport()->rect().contains(popup->geometry()));
+    CHECK_FALSE(body->verticalScrollBar()->isVisible());
+    // it goes with the page (the buttons over the selection gone: right under the word)
+    REQUIRE(view.verticalScrollBar()->maximum() > 80);
+    view.verticalScrollBar()->setValue(view.verticalScrollBar()->value() + 40);
+    int y = popup->y();
+    CHECK(y > charCenter(view, 8).y());
+    CHECK(y < charCenter(view, 8).y() + 30);
+    view.verticalScrollBar()->setValue(view.verticalScrollBar()->value() + 40);
+    CHECK(popup->y() == y - 40);
+    CHECK(popup->isVisible());
+    popup->findChild<QToolButton*>("translationCopy")->click();
+    CHECK(QApplication::clipboard()->text() == "[zh-CN] World");
+    QTest::keyClick(&view, Qt::Key_Escape);
+    CHECK_FALSE(popup->isVisible());
+    CHECK_FALSE(view.hasTextSelection());
+
+    // another language chosen in its corner: asked again, and kept for the next time
+    view.verticalScrollBar()->setValue(0);
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 8).toPoint());
+    QTest::keyClick(&view, Qt::Key_T);
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    auto* to = popup->findChild<QComboBox*>("translationTarget");
+    to->setCurrentIndex(to->findData("ja"));
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    CHECK(google.last().second == "ja");
+    CHECK(popup->translation() == "[ja] World");
+    CHECK(env.config.get("/translate/target") == "ja");
+    CHECK(TranslationPopup::targetLanguage() == "ja");
+    // its text clicked (to select some of it), Esc there closes it too, the keys back to the page
+    body->setFocus();
+    QTest::mouseClick(body->viewport(), Qt::LeftButton, {}, QPoint(5, 5));
+    CHECK(popup->isVisible());  // (a click in it is not one on the page)
+    QTest::keyClick(body, Qt::Key_Escape);
+    CHECK_FALSE(popup->isVisible());
+    CHECK(view.hasFocus());
+    // a click on the page closes it
+    QTest::keyClick(&view, Qt::Key_T);
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    CHECK(popup->isVisible());
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, view.pageToViewport(0, QPointF(300, 500)).toPoint());
+    CHECK_FALSE(popup->isVisible());
+}
+
+TEST_CASE("pdf view: a translation from the button over the selection, or at once; text in the language asked: into English")
+{
+    app();
+    Env env;
+    env.config.set("/translate/target", "zh-CN");
+    FakeTranslator google;
+    TempDir tmp;
+    auto file = tmp.path / "sample.pdf";
+    writeSamplePdf(file);
+    PdfView view;
+    view.resize(800, 600);
+    view.open(file);
+    view.show();
+    QApplication::processEvents();
+    auto* popup = view.translationPopup();
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 8).toPoint());
+    auto* button = view.findChild<QToolButton*>("translateSelection");
+    REQUIRE(button);
+    REQUIRE(button->isVisible());
+    button->click();
+    CHECK_FALSE(button->isVisible());  // (the buttons give way to it)
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    CHECK(popup->isVisible());
+    CHECK(popup->translation() == "[zh-CN] World");
+
+    // the text in Chinese already: into English
+    google.detected = "zh-CN";
+    QTest::keyClick(&view, Qt::Key_T);
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    REQUIRE(google.count() == 3);
+    CHECK(google.asked[1].second == "zh-CN");
+    CHECK(google.asked[2].second == "en");
+    CHECK(popup->translation() == "[en] World");
+    CHECK(popup->findChild<QLabel*>("translationFrom")->text().startsWith(QString::fromUtf8("中文（简体）")));
+    CHECK(popup->findChild<QTextBrowser*>("translationText")->toPlainText().contains("into English"));
+
+    // no answer: why
+    google.error = "Could not connect to translate.googleapis.com. Check your internet connection.";
+    QTest::keyClick(&view, Qt::Key_T);
+    REQUIRE(QTest::qWaitFor([&] { return !popup->busy(); }, 5000));
+    CHECK(popup->isVisible());
+    CHECK(popup->translation().isEmpty());
+    CHECK(popup->error().startsWith("Could not connect"));
+    CHECK(popup->findChild<QTextBrowser*>("translationText")->toPlainText().startsWith("Could not connect"));
+    google.error.clear();
+    google.detected = "en";
+
+    // at once, when so set: under the buttons over the selection
+    env.config.set("/translate/auto", true);
+    QTest::keyClick(&view, Qt::Key_Escape);
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, charCenter(view, 2).toPoint());
+    REQUIRE(view.selectedText() == "Hello");
+    REQUIRE(QTest::qWaitFor([&] { return popup->isVisible() && !popup->busy(); }, 5000));
+    CHECK(popup->translation() == "[zh-CN] Hello");
+    REQUIRE(button->isVisible());
+    CHECK(popup->y() >= button->parentWidget()->geometry().bottom());
+
+    // a highlight's text, from its menu's Translate or with T when it is selected
+    env.config.set("/translate/auto", false);
+    QTest::keyClick(&view, Qt::Key_Escape);
+    view.setAnnotations({Json{{"key", "ANNOT001"}, {"annotationType", "highlight"}, {"annotationText", "from OurNotes"},
+                              {"annotationColor", "#ffd400"},
+                              {"annotationPosition", Json{{"pageIndex", 0}, {"rects", Json::array({Json::array({200, 695, 330, 722})})}}}}});
+    view.translateAnnotation("ANNOT001");
+    REQUIRE(QTest::qWaitFor([&] { return popup->isVisible() && !popup->busy(); }, 5000));
+    CHECK(popup->translation() == "[zh-CN] from OurNotes");
+}
+
+TEST_CASE("preferences: the language to translate into, and whether at once")
+{
+    app();
+    Env env;
+    SyncController sync;
+    PreferencesDialog dialog(&sync);
+    auto* to = dialog.findChild<QComboBox*>("translateTarget");
+    REQUIRE(to);
+    CHECK(to->currentData().toString() == TranslationPopup::targetLanguage());
+    to->setCurrentIndex(to->findData("zh-TW"));
+    CHECK(env.config.get("/translate/target") == "zh-TW");
+    CHECK(TranslationPopup::targetLanguage() == "zh-TW");
+    auto* atOnce = dialog.findChild<QCheckBox*>("translateAtOnce");
+    REQUIRE(atOnce);
+    CHECK_FALSE(atOnce->isChecked());
+    CHECK_FALSE(TranslationPopup::translateAtOnce());
+    atOnce->setChecked(true);
+    CHECK(TranslationPopup::translateAtOnce());
 }
 
 int main(int argc, char** argv)

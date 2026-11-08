@@ -32,6 +32,7 @@
 #include "gui/memory.h"
 #include "gui/reader/comment_bubble.h"
 #include "gui/reader/render_worker.h"
+#include "gui/reader/translation_popup.h"
 #include "gui/theme.h"
 
 namespace on::gui {
@@ -126,12 +127,15 @@ public:
         underline_ = addButton(h, icon("tool-underline"), QObject::tr("Underline"));
         copy_ = addButton(h, icon("copy"), QObject::tr("Copy"));
         reference_ = addButton(h, icon("type-link"), QObject::tr("Copy Reference (pasted into a note: the text, and a link here)"));
+        translate_ = addButton(h, icon("translate"), QObject::tr("Translate (T)"));
+        translate_->setObjectName("translateSelection");
         note_ = addButton(h, icon("new-note"), QObject::tr("Add to Note"));
         Q_UNUSED(view);
     }
     QToolButton* underline_;
     QToolButton* copy_;
     QToolButton* reference_;
+    QToolButton* translate_;
     QToolButton* note_;
     std::function<void(const QString&)> highlight;
 
@@ -311,6 +315,8 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
     horizontalScrollBar()->setSingleStep(40);
     popup_ = new SelectionPopup(this, viewport());
     popup_->hide();
+    translation_ = new TranslationPopup(viewport());
+    connect(translation_, &TranslationPopup::sizeChanged, this, [this] { placeTranslation(true); });
     bubble_ = new CommentBubble(viewport());
     hoverTimer_.setSingleShot(true);
     hoverTimer_.setInterval(350);
@@ -376,6 +382,10 @@ PdfView::PdfView(QWidget* parent) : QAbstractScrollArea(parent)
             emit referenceCopied(selectedQuote());
         hidePopup();
     });
+    connect(popup_->translate_, &QToolButton::clicked, this, [this] {
+        hidePopup();
+        translateSelection();
+    });
     connect(popup_->note_, &QToolButton::clicked, this, [this] {
         if (hasTextSelection())
             emit quoteToNote(selectedQuote());
@@ -424,6 +434,7 @@ void PdfView::open(const fs::path& path)
         pageSizes_.push_back(QSizeF(s.width, s.height));
     }
     path_ = path;
+    hideTranslation();
     cache_.clear();
     links_.clear();
     linkGlyphs_.clear();
@@ -748,6 +759,7 @@ void PdfView::scrollContentsBy(int, int)
 void PdfView::scrolled()
 {
     hidePopup();
+    placeTranslation(false);  // (it goes with the text)
     hideLinkPreview();
     placeComment();
     if (textEditor_ && !editingKey_.isEmpty())
@@ -2029,13 +2041,90 @@ void PdfView::showPopup()
 
 void PdfView::hidePopup() { popup_->hide(); }
 
+void PdfView::selectionMade()
+{
+    showPopup();
+    if (TranslationPopup::translateAtOnce())
+        translateSelection();
+}
+
+void PdfView::translateSelection()
+{
+    auto spans = selectionSpans();
+    if (spans.empty()) {
+        if (!selectedAnn_.isEmpty())
+            translateAnnotation(selectedAnn_);
+        return;
+    }
+    auto firstRects = doc_->text(spans.front().page).rectsOf(spans.front().from, spans.front().to);
+    auto lastRects = doc_->text(spans.back().page).rectsOf(spans.back().from, spans.back().to);
+    if (firstRects.empty() || lastRects.empty())
+        return;
+    translateText(selectedText(), spans.front().page, toQ(firstRects.front()), spans.back().page,
+                  toQ(lastRects.back()));
+}
+
+void PdfView::translateAnnotation(const QString& key)
+{
+    auto* a = findAnn(key);
+    if (!a || a->page < 0)
+        return;
+    auto text = jqs(a->data, "annotationText");
+    if (text.trimmed().isEmpty())
+        text = a->comment;  // (a note: what it says)
+    if (text.trimmed().isEmpty())
+        return;
+    QRectF first = a->rects.empty() ? a->bounds : a->rects.front();
+    QRectF last = a->rects.empty() ? a->bounds : a->rects.back();
+    translateText(text, a->page, first, a->page, last);
+}
+
+void PdfView::translateText(const QString& text, int firstPage, const QRectF& first, int lastPage, const QRectF& last)
+{
+    if (firstPage < 0 || lastPage < 0 || firstPage >= pageCount() || lastPage >= pageCount())
+        return;
+    translationAnchor_ = {firstPage, lastPage, first, last, false};
+    translation_->translate(text);  // (shown, then placed: see sizeChanged)
+}
+
+// Under the text (under the selection's buttons when they are there), or above it when
+// there is no room below. Scrolled, it stays on the side it was put.
+void PdfView::placeTranslation(bool chooseSide)
+{
+    auto& a = translationAnchor_;
+    if (!translation_->isVisible() || a.firstPage < 0 || a.lastPage >= (int)pageRects_.size())
+        return;
+    QRectF first = toView(a.firstPage, a.first), last = toView(a.lastPage, a.last);
+    QRect buttons = popup_->isVisible() ? popup_->geometry() : QRect();
+    int h = translation_->height(), w = translation_->width();
+    int below = int(std::ceil(last.bottom())) + 6;
+    if (!buttons.isNull() && buttons.top() >= last.bottom())
+        below = buttons.bottom() + 4;
+    int above = int(first.top()) - 6 - h;
+    if (!buttons.isNull() && buttons.bottom() <= first.top())
+        above = buttons.top() - 4 - h;
+    if (chooseSide)
+        a.above = below + h > viewport()->height() && above >= 0;
+    int x = std::clamp(int(last.center().x()) - w / 2, 2, std::max(2, viewport()->width() - w - 2));
+    translation_->move(x, a.above ? above : below);
+    translation_->raise();
+}
+
+void PdfView::hideTranslation()
+{
+    if (translation_)
+        translation_->cancel();
+}
+
 // --- mouse --------------------------------------------------------------------------------------
 
 void PdfView::setTool(ReaderTool tool)
 {
     tool_ = tool;
-    if (tool != ReaderTool::Select && tool != ReaderTool::Highlight && tool != ReaderTool::Underline)
+    if (tool != ReaderTool::Select && tool != ReaderTool::Highlight && tool != ReaderTool::Underline) {
         clearTextSelection();
+        hideTranslation();
+    }
     hidePopup();
     updateCursor(viewport()->mapFromGlobal(QCursor::pos()));
 }
@@ -2114,6 +2203,7 @@ void PdfView::mousePressEvent(QMouseEvent* e)
     }
     setFocus();
     hidePopup();
+    hideTranslation();
     closeTextEditor(true);
     bubble_->finish(true);
     hoverTimer_.stop();
@@ -2349,7 +2439,7 @@ void PdfView::mouseReleaseEvent(QMouseEvent* e)
             else if (tool_ == ReaderTool::Underline)
                 createFromSelection("underline", color_);
             else
-                showPopup();
+                selectionMade();
         } else if (!pressedLink_.isEmpty()) {
             if (pressedLinkPage_ >= 0)
                 followLink(pressedLinkPage_, pressedLinkY_);
@@ -2440,7 +2530,7 @@ void PdfView::mouseDoubleClickEvent(QMouseEvent* e)
     else if (tool_ == ReaderTool::Underline)
         createFromSelection("underline", color_);
     else
-        showPopup();
+        selectionMade();
 }
 
 void PdfView::wheelEvent(QWheelEvent* e)
@@ -2494,6 +2584,9 @@ void PdfView::keyPressEvent(QKeyEvent* e)
         case Qt::Key_L:
             emit darkPagesToggleRequested();
             return;
+        case Qt::Key_T:
+            translateSelection();
+            return;
         case Qt::Key_Q:
         case Qt::Key_W:
         case Qt::Key_E:
@@ -2527,6 +2620,7 @@ void PdfView::keyPressEvent(QKeyEvent* e)
     case Qt::Key_Escape:
         clearTextSelection();
         hidePopup();
+        hideTranslation();
         bubble_->finish(true);
         selectedAnn_.clear();
         if (tool_ != ReaderTool::Select)
@@ -2585,6 +2679,8 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
                 menu.addAction(tr("Edit Text"), this, [this, key] { editTextAnnotation(key); })->setEnabled(can);
             menu.addAction(icon("copy"), tr("Copy"), this, &PdfView::copySelection);
             menu.addAction(icon("type-link"), tr("Copy Reference"), this, [this, key] { emit annotationReferenceCopied(key); });
+            if (!jqs(a->data, "annotationText").trimmed().isEmpty() || !a->comment.trimmed().isEmpty())
+                menu.addAction(icon("translate"), tr("Translate") + "\tT", this, [this, key] { translateAnnotation(key); });
             menu.addSeparator();
             menu.addAction(icon("trash"), tr("Delete"), this, &PdfView::deleteSelectedAnnotation)->setEnabled(can);
             menu.exec(e->globalPos());
@@ -2594,6 +2690,7 @@ void PdfView::contextMenuEvent(QContextMenuEvent* e)
     if (hasTextSelection()) {
         menu.addAction(icon("copy"), tr("Copy"), this, &PdfView::copySelection);
         menu.addAction(icon("type-link"), tr("Copy Reference"), this, [this] { emit referenceCopied(selectedQuote()); });
+        menu.addAction(icon("translate"), tr("Translate") + "\tT", this, &PdfView::translateSelection);
         menu.addAction(icon("tool-highlight"), tr("Highlight"), this, [this] { createFromSelection("highlight", color_); })
             ->setEnabled(editable_);
         menu.addAction(icon("tool-underline"), tr("Underline"), this, [this] { createFromSelection("underline", color_); })

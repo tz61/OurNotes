@@ -44,6 +44,7 @@ set(OURNOTES_GUI_SOURCES
     reader/pdf_view.cpp
     reader/reader_tab.cpp
     reader/render_worker.cpp
+    reader/translation_popup.cpp
     rich_text_images.cpp
 )
 

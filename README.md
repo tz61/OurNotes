@@ -52,9 +52,14 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   gear beside the colour button changes them, for every PDF), F fits the width (twice: the
   page), H goes back to the library, `[` and `]` show or hide the left and right panels,
   I and N open Info and Notes, and L turns the pages dark or back to the PDF's own
-  colours (in a light theme too); Ctrl+Shift+T reopens a closed tab. A slider in the
+  colours (in a light theme too), T translates the selection; Ctrl+Shift+T reopens a closed tab. A slider in the
   toolbar sets the page colour for all PDFs: white to gray, or black to gray for dark
   pages; only the paper, not the text or the pictures on it. See [Key bindings](#key-bindings).
+- **Translation** — text selected in a PDF, or a highlight's text, is translated by Google
+  Translate (T, the Translate button over the selection, or its menu) and shown under it: a
+  word with how it is said and its meanings by part of speech. The language to translate into
+  is chosen there and kept (text already in it is put into English); in Preferences the
+  selection can be translated as soon as it is made. What is translated is sent to Google.
 - **Reading time** — counted while OurNotes is in front with a PDF shown, up to the last
   mouse or keyboard input before a pause of 2 minutes (set in Preferences); the time after
   that input is not counted, nor is time in the library or another program. Today's total
