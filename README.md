@@ -46,8 +46,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   restart; restored tabs load when first shown. Beside the PDF the paper's Info (authors,
   year and the other fields, tags, related items) and its notes, the top note open;
   Info or Notes, whichever was chosen last, there and in the library alike. Shift+wheel
-  scrolls sideways. On the page, keys 1–8 pick the tools (each but Select shows its icon
-  as the cursor), Q, W and E your three colours (yellow, red and green to begin with; the
+  scrolls sideways. On the page, keys 1–8 pick the tools (Highlight and Underline have the
+  text cursor and mark as the mouse goes, in the colour chosen; a double click marks a
+  word), Q, W and E your three colours (yellow, red and green to begin with; the
   gear beside the colour button changes them, for every PDF), F fits the width (twice: the
   page), H goes back to the library, `[` and `]` show or hide the left and right panels,
   I and N open Info and Notes, and L turns the pages dark or back to the PDF's own
