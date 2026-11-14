@@ -138,7 +138,8 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
 - **Command line** — `ournotes-cli` does what the app does with a library: items, their
   fields and authors, notes, attachments, annotations on PDFs, collections, tags, the
   trash, import/export and citing, indexing, syncing and the preferences; also on headless
-  machines.
+  machines. `ournotes-cli mcp` lets a chat with Claude search and read the library (and,
+  if allowed, change it).
 
 ## Building
 
@@ -311,6 +312,11 @@ summarise the papers in a collection into notes, rename titles, tag and file ite
 [docs/agents.md](docs/agents.md) tells them how (also `ournotes-cli guide`); point an agent
 at it. Changes go out with the app's next sync, and an open app shows them within seconds;
 *Tools → Sync History* tells them apart from the user's own.
+
+**A chat with Claude** (the desktop app, or another MCP client) can use the library too:
+`ournotes-cli mcp` is a local MCP server that searches items, reads PDFs and notes, shows
+your highlights, cites and exports, and with `--write` writes notes, tags, files and
+marks passages. [docs/mcp.md](docs/mcp.md) shows how to add it to Claude.
 
 ## Architecture
 

@@ -4,6 +4,7 @@ add_library(ournotes_cli STATIC
     agent_commands.cpp
     edit_commands.cpp
     annotation_commands.cpp
+    mcp_server.cpp
 )
 target_link_libraries(ournotes_cli PUBLIC ournotes_core ournotes_sync ournotes_pdf ournotes_formats)
 # docs/agents.md, built in for `ournotes-cli guide` (under 16 KB: MSVC's longest string literal)

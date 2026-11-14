@@ -52,7 +52,8 @@ Reading:
         [--tag T,T] [--unfiled | --trash] [--json]
                                     list top-level items (all libraries)
   show KEY [--json]                 an item as JSON (--json: with its notes and attachments)
-  text KEY [--pages N]              a PDF's text (an item's PDF, or an attachment's), or a note's
+  text KEY [--from P] [--pages N]   a PDF's text (an item's PDF, or an attachment's), or a note's;
+                                    N pages from page P
   annotations KEY [--json]          the highlights and comments in an item's PDFs
   types [TYPE] [--json]             item types; a type's fields and kinds of authors
   tags [--library L] [--json]       tags, how many items have each, their colours
@@ -150,6 +151,11 @@ Sync and settings:
   conflicts [--clear] [--json]      changes that met other changes made elsewhere
   storage [--remote] [--json]       what the library takes on disk (--remote: the target too)
   config [NAME [VALUE]] [--json]    the app's preferences (quit the app before changing them)
+
+For a chat with Claude (or another MCP client):
+  mcp [--write]                     a Model Context Protocol server on standard input and
+                                    output: tools to search and read the library (--write:
+                                    and to change it); see docs/mcp.md
 
 The data directory defaults to the one configured in the desktop app
 (~/OurNotes unless changed); OURNOTES_DATA_DIR overrides it.

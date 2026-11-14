@@ -39,7 +39,7 @@ struct Args {
             "--parent",   "--to",      "--to-library", "--into", "--title",     "--tag",       "--position",
             "--type",     "--page",    "--quote",   "--at",     "--rect",       "--ink",       "--color",
             "--comment",  "--tags",    "--font-size", "--zoom", "--limit",      "--name",      "--width",
-            "--dpi",      "--margin",  "--height",  "--caption"};
+            "--dpi",      "--margin",  "--height",  "--caption", "--from"};
         bool text = false;  // after --
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];

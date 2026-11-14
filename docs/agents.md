@@ -67,6 +67,7 @@ ournotes-cli items --collection "FA26/CS8803" --json
 ournotes-cli items --search "diffusion" --json        # all libraries; --library to narrow
 ournotes-cli show ABCD2345 --json          # the item, its notes (HTML and text), its attachments
 ournotes-cli text ABCD2345 --pages 15      # the item's PDF as text, "[page N]" before each page
+ournotes-cli text ABCD2345 --from 16 --pages 15     # pages 16 to 30
 ournotes-cli text NOTE2345                 # a note as text
 ournotes-cli annotations ABCD2345 --json   # highlights and comments in its PDFs
 ournotes-cli export ABCD2345 --format csljson         # or bibtex, ris

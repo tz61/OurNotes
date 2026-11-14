@@ -20,6 +20,7 @@
 
 #include "cli/agent_guide.h"
 #include "cli/commands.h"
+#include "cli/mcp_server.h"
 #include "core/hash.h"
 #include "core/links.h"
 #include "core/schema.h"
@@ -395,11 +396,15 @@ int cmdText(Library& lib, Args& args)
     auto [pid, pdf] = pdfOf(lib, args);
     requireFile(lib, pid, pdf);
     auto doc = pdf::Document::open(lib.attachmentFile(pid, pdf));
-    int pages = doc->pageCount();
-    if (auto n = args.option("--pages"); !n.empty())
-        pages = std::min(pages, std::max(1, std::stoi(n)));
-    for (int i = 0; i < pages; ++i)
+    int total = doc->pageCount();
+    int first = (int)numberOption(args, "--from", 1, 1, std::max(1, total)) - 1;
+    int end = total;
+    if (!args.option("--pages").empty())
+        end = std::min(total, first + (int)numberOption(args, "--pages", 1, 1, 1e6));
+    for (int i = first; i < end; ++i)
         std::cout << "[page " << (i + 1) << "]\n" << doc->pageText(i) << "\n";
+    if (first > 0 || end < total)  // (a part: where it is in the whole)
+        std::cout << "[pages " << (first + 1) << "-" << end << " of " << total << "]\n";
     return 0;
 }
 
@@ -1057,6 +1062,7 @@ void registerAllCommands(CommandMap& commands, Config& config)
     registerExtraCommands(commands, config);
     registerEditCommands(commands, config);
     registerAnnotationCommands(commands, config);
+    registerMcpCommand(commands);
 }
 
 void registerAgentCommands(CommandMap& commands, Config& config)

@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
+#include <map>
+#include <set>
 #include <iostream>
 #include <sstream>
 #include <tuple>
@@ -11,6 +14,7 @@
 #include "../core/test_helpers.h"
 #include "../pdf/sample_pdf.h"
 #include "cli/commands.h"
+#include "cli/mcp_server.h"
 #include "core/config.h"
 #include "core/library.h"
 #include "core/sync/history.h"
@@ -1124,4 +1128,251 @@ TEST_CASE("cli: pictures in notes, from files or data: URIs, in Markdown too, ke
     CHECK(moveCode == 1);
     CHECK(moveOut.find("a picture in a note") != npos);
     CHECK(jstr(*lib.item(group, jstr(picture2, "key")), "parentItem") == copy);
+}
+
+namespace {
+
+// A conversation with `ournotes-cli mcp`: the messages sent, one per line; the replies.
+std::vector<Json> mcp(Cli& cli, const std::vector<Json>& messages, bool write = false)
+{
+    std::string sent;
+    for (auto& m : messages)
+        sent += m.dump() + "\n";
+    std::istringstream in(sent);
+    std::ostringstream out;
+    runMcpServer(cli.commands, {cli.lib.dataDir(), write}, in, out);
+    std::vector<Json> replies;
+    std::istringstream lines(out.str());
+    for (std::string line; std::getline(lines, line);)
+        replies.push_back(Json::parse(line));
+    return replies;
+}
+
+Json call(int id, const std::string& tool, const Json& arguments)
+{
+    return Json{{"jsonrpc", "2.0"}, {"id", id}, {"method", "tools/call"},
+                {"params", Json{{"name", tool}, {"arguments", arguments}}}};
+}
+
+// A tool's answer: {its text, whether it is an error}.
+std::pair<std::string, bool> answer(const Json& reply)
+{
+    INFO(reply.dump());
+    REQUIRE(reply.contains("result"));
+    auto& r = reply["result"];
+    return {r["content"][0]["text"].get<std::string>(), r.value("isError", false)};
+}
+
+} // namespace
+
+TEST_CASE("cli: mcp: the protocol, and only the tools that read unless --write")
+{
+    Cli cli;
+    auto r = mcp(cli, {Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "initialize"},
+                            {"params", Json{{"protocolVersion", "2025-06-18"}, {"capabilities", Json::object()}}}},
+                       Json{{"jsonrpc", "2.0"}, {"method", "notifications/initialized"}},  // no reply
+                       Json{{"jsonrpc", "2.0"}, {"id", 2}, {"method", "ping"}},
+                       Json{{"jsonrpc", "2.0"}, {"id", "three"}, {"method", "tools/list"}},
+                       Json{{"jsonrpc", "2.0"}, {"id", 4}, {"method", "no/such"}},
+                       call(5, "no_such_tool", Json::object()),
+                       call(6, "add_note", Json{{"text", "x"}}),
+                       Json{{"jsonrpc", "2.0"}, {"id", 7}, {"method", "initialize"},
+                            {"params", Json{{"protocolVersion", "1999-01-01"}}}}});
+    REQUIRE(r.size() == 7);
+    CHECK(r[0]["id"] == 1);
+    CHECK(r[0]["result"]["protocolVersion"] == "2025-06-18");
+    CHECK(r[0]["result"]["serverInfo"]["name"] == "ournotes");
+    CHECK(r[0]["result"]["capabilities"].contains("tools"));
+    CHECK(!jstr(r[0]["result"], "instructions").empty());
+    CHECK(r[1]["id"] == 2);
+    CHECK(r[1]["result"] == Json::object());
+    CHECK(r[2]["id"] == "three");
+    std::set<std::string> names;
+    for (auto& t : r[2]["result"]["tools"]) {
+        names.insert(jstr(t, "name"));
+        CHECK(t["annotations"]["readOnlyHint"] == true);
+        CHECK(t["inputSchema"]["type"] == "object");
+        CHECK(!jstr(t, "description").empty());
+    }
+    CHECK(names.count("search_items"));
+    CHECK(names.count("read_text"));
+    CHECK(!names.count("add_note"));
+    CHECK(!names.count("trash_items"));
+    CHECK(r[3]["error"]["code"] == -32601);
+    CHECK(r[4]["error"]["code"] == -32602);
+    CHECK(r[5]["error"]["code"] == -32602);
+    CHECK(jstr(r[5]["error"], "message").find("--write") != std::string::npos);
+    CHECK(r[6]["result"]["protocolVersion"] == "2025-11-25");  // (the newest it speaks)
+
+    // with --write, the tools that change the library too, and said to
+    auto w = mcp(cli, {Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}}}, true);
+    REQUIRE(w.size() == 1);
+    std::map<std::string, Json> tools;
+    for (auto& t : w[0]["result"]["tools"])
+        tools[jstr(t, "name")] = t;
+    REQUIRE(tools.count("add_note"));
+    CHECK(tools["add_note"]["annotations"]["readOnlyHint"] == false);
+    CHECK(tools["add_note"]["annotations"]["destructiveHint"] == false);
+    CHECK(tools["trash_items"]["annotations"]["destructiveHint"] == true);
+    CHECK(tools["add_items"]["annotations"]["openWorldHint"] == true);
+    CHECK(tools["search_items"]["annotations"]["readOnlyHint"] == true);
+
+    // what is not JSON, and a blank line
+    std::istringstream in("not json\n\n{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}\r\n");
+    std::ostringstream out;
+    runMcpServer(cli.commands, {cli.lib.dataDir(), false}, in, out);
+    std::istringstream lines(out.str());
+    std::string first, second;
+    std::getline(lines, first);
+    std::getline(lines, second);
+    CHECK(Json::parse(first)["error"]["code"] == -32700);
+    CHECK(Json::parse(first)["id"].is_null());
+    CHECK(Json::parse(second)["id"] == 9);
+}
+
+TEST_CASE("cli: mcp: items searched and read, a PDF in parts, its annotations, citations")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto fa26 = jstr(lib.createCollection(mine, "FA26"), "key");
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"},
+                                                {"title", "Attention Is All You Need"},
+                                                {"date", "2017"},
+                                                {"creators", Json::array({Json{{"creatorType", "author"},
+                                                                               {"lastName", "Vaswani"},
+                                                                               {"firstName", "Ashish"}}})},
+                                                {"tags", Json::array({Json{{"tag", "transformers"}}})},
+                                                {"collections", Json::array({fa26})}}),
+                      "key");
+    lib.createItem(mine, Json{{"itemType", "book"}, {"title", "Deep Learning"}});
+    auto pdfPath = cli.dir.path / "long.pdf";
+    writeManyPagesPdf(pdfPath, 30);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+    lib.createItem(mine, Json{{"itemType", "annotation"},
+                              {"parentItem", pdf},
+                              {"annotationType", "highlight"},
+                              {"annotationText", "Page 3"},
+                              {"annotationComment", "the third"},
+                              {"annotationPageLabel", "3"}});
+
+    auto r = mcp(cli, {call(1, "search_items", Json{{"query", "attention"}}),
+                       call(2, "search_items", Json{{"limit", 1}}),
+                       call(3, "search_items", Json{{"collection", "FA26"}, {"tags", Json::array({"transformers"})}}),
+                       call(4, "get_item", Json{{"key", paper}}),
+                       call(5, "read_text", Json{{"key", paper}}),
+                       call(6, "read_text", Json{{"key", paper}, {"from_page", 29}}),
+                       call(7, "get_annotations", Json{{"key", paper}}),
+                       call(8, "format_citations", Json{{"keys", Json::array({paper})}}),
+                       call(9, "get_link", Json{{"key", paper}, {"page", 3}}),
+                       call(10, "get_item", Json::object()),
+                       call(11, "get_item", Json{{"key", "NOSUCHKY"}}),
+                       call(12, "search_items", Json{{"query", "nothing like it"}}),
+                       call(13, "export_items", Json{{"keys", paper}}),
+                       call(14, "format_citations", Json::object())});
+    REQUIRE(r.size() == 14);
+    for (size_t i = 0; i < r.size(); ++i)
+        CHECK(r[i]["id"] == (int)i + 1);
+
+    auto [found, e1] = answer(r[0]);
+    CHECK(!e1);
+    auto items = Json::parse(found);
+    REQUIRE(items.size() == 1);
+    CHECK(items[0]["key"] == paper);
+
+    auto [limited, e2] = answer(r[1]);
+    CHECK(!e2);
+    CHECK(limited.find("(1 of 2 items") != std::string::npos);
+    CHECK(Json::parse(limited.substr(0, limited.find('\n'))).size() == 1);
+
+    auto [filed, e3] = answer(r[2]);
+    CHECK(Json::parse(filed).size() == 1);
+
+    auto [shown, e4] = answer(r[3]);
+    CHECK(Json::parse(shown)["item"]["title"] == "Attention Is All You Need");
+
+    auto [first, e5] = answer(r[4]);  // 20 pages, then where they are in the whole
+    CHECK(first.find("[page 20]") != std::string::npos);
+    CHECK(first.find("[page 21]") == std::string::npos);
+    CHECK(first.find("[pages 1-20 of 30]") != std::string::npos);
+    auto [last, e6] = answer(r[5]);
+    CHECK(last.find("[page 28]") == std::string::npos);
+    CHECK(last.find("Page 29") != std::string::npos);
+    CHECK(last.find("[pages 29-30 of 30]") != std::string::npos);
+
+    auto [marked, e7] = answer(r[6]);
+    CHECK(marked.find("the third") != std::string::npos);
+    auto [cited, e8] = answer(r[7]);
+    CHECK(cited.find("Vaswani") != std::string::npos);
+    auto [link, e9] = answer(r[8]);
+    CHECK(link.find("ournotes://") != std::string::npos);
+    CHECK(link.find("p. 3") != std::string::npos);
+
+    auto [missing, e10] = answer(r[9]);
+    CHECK(e10);
+    CHECK(missing.find("missing argument: key") != std::string::npos);
+    auto [unknown, e11] = answer(r[10]);
+    CHECK(e11);
+    CHECK(!unknown.empty());
+    auto [none, e12] = answer(r[11]);
+    CHECK(!e12);
+    CHECK(none.find("(no items)") != std::string::npos);
+    auto [bibtex, e13] = answer(r[12]);  // (one key given alone, not in a list)
+    CHECK(!e13);
+    CHECK(bibtex.find("@article") != std::string::npos);
+    auto [nothing, e14] = answer(r[13]);
+    CHECK(e14);
+}
+
+TEST_CASE("cli: mcp: notes, fields, tags and collections changed with --write, as ournotes-cli mcp's")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "Old"}}), "key");
+    // standard input holds something: no tool reads it (it is the protocol's)
+    std::istringstream stdinText("from standard input");
+    auto* oldIn = std::cin.rdbuf(stdinText.rdbuf());
+    auto r = mcp(cli,
+                 {call(1, "add_note", Json{{"item_key", paper}, {"text", "--json is not an option here"}}),
+                  call(2, "add_note", Json{{"text", "-"}}),
+                  call(3, "set_fields", Json{{"key", paper}, {"fields", Json{{"title", "New"}, {"date", "2020"}}}}),
+                  call(4, "tag_items", Json{{"keys", Json::array({paper})}, {"add", Json::array({"one", "two"})}}),
+                  call(5, "create_collection", Json{{"name", "Reading"}}),
+                  call(6, "file_items", Json{{"keys", Json::array({paper})}, {"collection", "Reading"}}),
+                  call(7, "set_fields", Json{{"key", paper}, {"fields", Json{{"noSuchField", "x"}}}}),
+                  call(8, "tag_items", Json{{"keys", Json::array({paper})}, {"add", Json::array({"a,b"})}}),
+                  call(9, "add_note", Json{{"text", ""}})},
+                 true);
+    std::cin.rdbuf(oldIn);
+    REQUIRE(r.size() == 9);
+    CHECK(std::string(std::istreambuf_iterator<char>(stdinText), {}) == "from standard input");
+
+    auto [noteKey, e1] = answer(r[0]);
+    CHECK(!e1);
+    auto notes = lib.children(mine, paper, "note");
+    REQUIRE(notes.size() == 1);
+    CHECK(jstr(notes[0], "key") == trim(noteKey));
+    CHECK(jstr(notes[0], "note").find("--json is not an option here") != std::string::npos);
+    CHECK(lib.changedBy(mine, "item", trim(noteKey)) == "ournotes-cli mcp");
+
+    auto [dash, e2] = answer(r[1]);  // a note of its own: "-" is its text, not "read standard input"
+    CHECK(!e2);
+    auto standalone = lib.item(mine, trim(dash));
+    REQUIRE(standalone);
+    CHECK(jstr(*standalone, "note").find("-") != std::string::npos);
+    CHECK(jstr(*standalone, "note").find("from standard input") == std::string::npos);
+
+    CHECK(!answer(r[2]).second);
+    auto item = *lib.item(mine, paper);
+    CHECK(jstr(item, "title") == "New");
+    CHECK(jstr(item, "date") == "2020");
+    CHECK(!answer(r[3]).second);
+    CHECK(lib.item(mine, paper)->at("tags").size() == 2);
+    CHECK(!answer(r[4]).second);
+    CHECK(!answer(r[5]).second);
+    CHECK(lib.item(mine, paper)->at("collections").size() == 1);
+    CHECK(answer(r[6]).second);  // refused, with the fields it has
+    CHECK(answer(r[7]).second);
+    CHECK(answer(r[8]).second);  // an empty note: missing
 }
