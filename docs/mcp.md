@@ -37,10 +37,9 @@ and add OurNotes under `mcpServers` (keep what else is in the file):
 - Windows: the folder you unzipped OurNotes into, as
   `C:\\Users\\you\\OurNotes\\ournotes-cli.exe` (backslashes doubled in JSON)
 
-Quit the Claude app completely and start it again. In a chat, the tools menu (the
-sliders icon under the message box) then lists *ournotes* with its tools; each can be
-turned off there. Claude asks before it uses a tool the first time, and you can allow it
-once or always.
+Quit the Claude app completely and start it again. In a chat, the **+** button under the
+message box → *Connectors* then lists *ournotes*, with a switch that turns it on or off.
+Claude asks before it uses a tool the first time, and you can allow it once or always.
 
 ### Letting it change the library
 
