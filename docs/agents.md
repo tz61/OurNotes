@@ -133,14 +133,18 @@ ournotes-cli rename-tag todo later     # tag-color later red
 - Text for a note: an argument, or standard input with `-` (best for anything longer than a
   line). Text that begins with `-` and has no space in it goes after `--`
   (`edit-note NOTE2345 -- "-v2"`); empty text is refused, the note left as it was. It is read as Markdown unless `--html` or
-  `--text` says otherwise, or it begins with `<` (then it is taken as HTML).
+  `--text` says otherwise, or it begins with a tag such as `<div>` (then it is HTML). To
+  change a note the user formatted, edit its HTML (`show NOTE --json`) and send it back
+  with `--html`: a replacement in plain Markdown loses its colours.
 - Markdown in notes: paragraphs, `#` headings (`###` and deeper become level 3), `-` and
   `1.` lists (not nested), `>` quotes, code blocks between ```` ``` ````, `---`, tables
   (a header row, a `|---|:-:|--:|` row, then rows of cells; `\|` for a | in a cell),
   `**bold**`, `*italic*`, `` `code` ``, `[links](https://...)`, pictures
   (`![what it shows](figure.png)`: a PNG, JPEG, GIF or SVG file, a web address or a
   `data:` URI, stored in the note as the app stores a pasted one), and formulas: `$x^2$`
-  in a line, `$$...$$` on lines of their own, shown as formulas in the app.
+  in a line, `$$...$$` on lines of their own, shown as formulas in the app. Coloured text:
+  `<span style="color: #ff6666">...</span>` (red; blue `#2ea8e5`, green `#5fb236`, orange
+  `#f19837`; `background-color` too); `<u>`, `<s>`, `<sub>`, `<sup>`. Other tags are text.
   `add-image NOTE a.png b.png [--row] [--caption TEXT] [--width PX | --height PX]` puts
   pictures at the end of a note, each on a line of its own, or side by side with `--row`
   (a row: the app shows them as high as each other, as wide as the note at most), with a

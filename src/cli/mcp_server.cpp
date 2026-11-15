@@ -131,6 +131,16 @@ struct Line {
     }
 };
 
+// --markdown or --html, as `format` says (else the command tells HTML from Markdown itself).
+void noteFormat(Line& l, const Json& a)
+{
+    auto format = text(a, "format");
+    if (format == "markdown" || format == "html")
+        l.flag(format == "html" ? "--html" : "--markdown");
+    else if (!format.empty())
+        throw ToolError("format should be markdown or html");
+}
+
 // --- the tools -----------------------------------------------------------------------------------
 
 struct Tool {
@@ -164,6 +174,11 @@ Json schema(Json properties, const std::vector<std::string>& required = {})
     return s;
 }
 
+const char* const kNoteFormat =
+    "markdown (default): headings, lists, tables, **bold**, *italic*, links, $formulas$; a colour as "
+    "<span style=\"color: #ff6666\">...</span> (the app's: red #ff6666, orange #f19837, yellow #ffd400, "
+    "green #5fb236, blue #2ea8e5, purple #a28ae5, magenta #e56eee, gray #aaaaaa; background-color too), "
+    "<u>, <s>, <sub>, <sup>. html: the note's HTML, as get_item gives it";
 const char* const kKey = "An item's key (8 letters and digits), as search_items or get_item gave it";
 const char* const kLibrary = "A library's name or ID (list_libraries); all libraries, or the user's own, if not given";
 const char* const kCollection = "A collection's path (names joined by '/', such as \"FA26/CS8803\") or key";
@@ -343,10 +358,11 @@ const std::vector<Tool>& tools()
 
         // changing (with --write)
         t.push_back({"add_note", "Add a note",
-                     "A new note, written in Markdown (headings, lists, tables, **bold**, links, $formulas$, "
-                     "links from get_link): under an item (item_key), or a note of its own in a collection or "
-                     "in a library. Answers with the new note's key.",
-                     schema({{"text", prop("string", "The note, in Markdown")},
+                     "A new note, in Markdown (or HTML): under an item (item_key), or a note of its own in a "
+                     "collection or in a library. Links from get_link work in it. Coloured text: "
+                     "<span style=\"color: #ff6666\">...</span> in the Markdown. Answers with the new note's key.",
+                     schema({{"text", prop("string", "The note, in Markdown (or HTML, with format html)")},
+                             {"format", choice({"markdown", "html"}, kNoteFormat)},
                              {"item_key", prop("string", "The item to put it under")},
                              {"collection", prop("string", kCollection + std::string(": a note of its own there"))},
                              {"library", prop("string", "A library's name or ID, for a note of its own (default: the user's)")}},
@@ -356,6 +372,7 @@ const std::vector<Tool>& tools()
                          Line l;
                          auto body = markdownText(text(a, "text", true));
                          auto item = text(a, "item_key");
+                         noteFormat(l, a);
                          l.option("--library", text(a, "library"));
                          if (!item.empty()) {
                              l.positionals = {item, body};
@@ -366,14 +383,21 @@ const std::vector<Tool>& tools()
                          }
                          return l.words("add-note");
                      }, {}});
-        t.push_back({"edit_note", "Edit a note", "Replaces a note's text with new Markdown, or adds it at the end (append).",
+        t.push_back({"edit_note", "Edit a note",
+                     "Replaces a note's whole text, or adds to its end (append). Replacing loses what the new "
+                     "text does not have: to change a note the user formatted (colours, underlines, a "
+                     "formula's colour), read its HTML with get_item first, change only what should change, "
+                     "and send all of it back with format html; or keep its colours as <span style=\"color: "
+                     "...\"> in Markdown.",
                      schema({{"note_key", prop("string", "The note's key")},
-                             {"text", prop("string", "The text, in Markdown")},
+                             {"text", prop("string", "The text, in Markdown (or HTML, with format html)")},
+                             {"format", choice({"markdown", "html"}, kNoteFormat)},
                              {"append", prop("boolean", "Add to the end instead of replacing")}},
                             {"note_key", "text"}),
                      true, true, false,
                      [](const Json& a) {
                          Line l;
+                         noteFormat(l, a);
                          l.flag("--append", yes(a, "append"));
                          l.positionals = {text(a, "note_key", true), markdownText(text(a, "text", true))};
                          return l.words("edit-note");

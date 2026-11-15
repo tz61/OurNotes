@@ -1376,3 +1376,44 @@ TEST_CASE("cli: mcp: notes, fields, tags and collections changed with --write, a
     CHECK(answer(r[7]).second);
     CHECK(answer(r[8]).second);  // an empty note: missing
 }
+
+TEST_CASE("cli: mcp: coloured notes, in Markdown or as their HTML, kept as the app keeps them")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "L04"}}), "key");
+    const std::string red = "<span style=\"color: #ff6666\">";
+    // the user's note, coloured in the app (a formula's colour too)
+    auto mineHtml = "<div data-schema-version=\"9\"><h1>L04</h1><p>" + red +
+                    "max</span> moves</p><pre class=\"math\" style=\"color: #ff6666\">$$Q$$</pre></div>";
+    auto note = jstr(lib.createItem(mine, Json{{"itemType", "note"}, {"parentItem", paper}, {"note", mineHtml}}), "key");
+
+    auto r = mcp(cli,
+                 {call(1, "add_note", Json{{"item_key", paper},
+                                           {"text", "# Colours\n\n" + red + "red = risk</span>, "
+                                                    "<span style=\"color: #2ea8e5\">**blue = key**</span>"}}),
+                  // a Markdown note that begins with a colour is Markdown still
+                  call(2, "add_note", Json{{"item_key", paper}, {"text", red + "first</span> and **bold**"}}),
+                  call(3, "get_item", Json{{"key", note}}),
+                  call(4, "edit_note", Json{{"note_key", note}, {"format", "html"},
+                                            {"text", replaceAll(mineHtml, "moves", "moves to Q's output")}}),
+                  call(5, "edit_note", Json{{"note_key", note}, {"format", "rtf"}, {"text", "x"}}),
+                  call(6, "add_note", Json{{"item_key", paper}, {"format", "markdown"}, {"text", "<p>not HTML</p>"}})},
+                 true);
+    REQUIRE(r.size() == 6);
+    auto noteHtml = [&](const Json& reply) { return jstr(*lib.item(mine, trim(answer(reply).first)), "note"); };
+    auto first = noteHtml(r[0]);
+    CHECK(first.find("<h1>Colours</h1>") != std::string::npos);
+    CHECK(first.find(red + "red = risk</span>") != std::string::npos);
+    CHECK(first.find("<span style=\"color: #2ea8e5\"><strong>blue = key</strong></span>") != std::string::npos);
+    CHECK(noteHtml(r[1]).find("<p>" + red + "first</span> and <strong>bold</strong></p>") != std::string::npos);
+    // the note's HTML read, changed in one place, sent back whole: its colours stay
+    CHECK(answer(r[2]).first.find("color: #ff6666") != std::string::npos);
+    CHECK(!answer(r[3]).second);
+    auto edited = jstr(*lib.item(mine, note), "note");
+    CHECK(edited.find(red + "max</span> moves to Q's output") != std::string::npos);
+    CHECK(edited.find("<pre class=\"math\" style=\"color: #ff6666\">") != std::string::npos);
+    CHECK(answer(r[4]).second);
+    CHECK(noteHtml(r[5]).find("&lt;p&gt;not HTML&lt;/p&gt;") != std::string::npos);
+}

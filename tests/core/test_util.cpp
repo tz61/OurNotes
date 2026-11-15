@@ -114,6 +114,33 @@ TEST_CASE("markdownToNoteHtml: a note as an agent writes it")
           "<div data-schema-version=\"9\"><p>*args and **kwargs, __x</p></div>");
 }
 
+TEST_CASE("markdownToNoteHtml: colours and the other inline HTML the app writes, and no other")
+{
+    auto body = [](const std::string& md) {
+        auto html = markdownToNoteHtml(md);
+        return html.substr(29, html.size() - 29 - 6);  // (inside <div data-schema-version="9"> ... </div>)
+    };
+    CHECK(body("a <span style=\"color: #ff6666\">red **bold** $x$</span> word") ==
+          "<p>a <span style=\"color: #ff6666\">red <strong>bold</strong> <span class=\"math\">$x$</span></span> word</p>");
+    CHECK(body("<span style='COLOR:#2EA8E5;background-color: yellow;'>both</span>") ==
+          "<p><span style=\"color: #2ea8e5; background-color: yellow\">both</span></p>");
+    CHECK(body("- <u>under</u>, <s>gone</s>, x<sub>i</sub><sup>2</sup><br>next") ==
+          "<ul><li><u>under</u>, <s>gone</s>, x<sub>i</sub><sup>2</sup><br>next</li></ul>");
+    // nested, the closing tag found past the inner one
+    CHECK(body("<span style=\"color: red\">a <span style=\"background-color: #ffd400\">b</span> c</span>") ==
+          "<p><span style=\"color: red\">a <span style=\"background-color: #ffd400\">b</span> c</span></p>");
+    // what else is text: other tags, other styles, a tag not closed, \<
+    CHECK(body("<script>x</script>") == "<p>&lt;script&gt;x&lt;/script&gt;</p>");
+    CHECK(body("<span style=\"color: red\" onclick=\"x\">a</span>") ==
+          "<p>&lt;span style=&quot;color: red&quot; onclick=&quot;x&quot;&gt;a&lt;/span&gt;</p>");
+    CHECK(body("<span style=\"position: fixed\">a</span>").find("<span") == std::string::npos);
+    CHECK(body("<span style=\"color: url(x)\">a</span>").find("<span") == std::string::npos);
+    CHECK(body("<u>open") == "<p>&lt;u&gt;open</p>");
+    CHECK(body("\\<u>x</u>") == "<p>&lt;u&gt;x&lt;/u&gt;</p>");
+    CHECK(body("`<u>x</u>`") == "<p><code>&lt;u&gt;x&lt;/u&gt;</code></p>");
+    CHECK(body("1 < 2 and 3 > 2") == "<p>1 &lt; 2 and 3 &gt; 2</p>");
+}
+
 TEST_CASE("markdownToNoteHtml: tables, as GitHub has them")
 {
     auto html = markdownToNoteHtml("Results:\n\n| Model | Acc. | Notes |\n|:------|----:|:-:|\n| **A** | 0.91 | a \\| b |\n"

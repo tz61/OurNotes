@@ -63,7 +63,9 @@ std::string textToNoteHtml(std::string_view text);
 // Markdown as a note (Zotero's note HTML): paragraphs, # headings (### and deeper as
 // level 3), - and 1. lists, > quotes, ``` code blocks, --- rules, | tables |, **bold**,
 // *italic*, `code`, [links](url), ![images](where) (as <img src>, for the caller to store),
-// and $…$ / $$…$$ formulas as the app keeps them.
+// and $…$ / $$…$$ formulas as the app keeps them. Of inline HTML, what the app writes is
+// kept: <span style="color: #ff6666">, background-color too, <u>, <s>, <sub>, <sup>, <br>;
+// other tags are text (\< writes a < that opens none).
 std::string markdownToNoteHtml(std::string_view markdown);
 // A row of a Markdown table (GitHub's): its cells, trimmed, "\|" in them as "|". Empty
 // when the line has no |.

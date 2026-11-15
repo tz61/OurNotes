@@ -72,9 +72,21 @@ std::vector<CollectionInfo> allCollections(Library& lib, std::optional<int64_t> 
     return out;
 }
 
+// HTML, unless it begins with a tag Markdown keeps too (<span style="color: …">, <u>...).
+bool looksLikeHtml(const std::string& content)
+{
+    auto t = toLower(trim(content).substr(0, 8));
+    if (!startsWith(t, "<"))
+        return false;
+    for (const char* inlineTag : {"<span ", "<span\t", "<u>", "<s>", "<sub>", "<sup>", "<br"})
+        if (startsWith(t, inlineTag))
+            return false;
+    return true;
+}
+
 std::string asNoteHtml(const Args& args, const std::string& content)
 {
-    if (args.flag("--html") || (!args.flag("--markdown") && !args.flag("--text") && startsWith(trim(content), "<")))
+    if (args.flag("--html") || (!args.flag("--markdown") && !args.flag("--text") && looksLikeHtml(content)))
         return content;
     return args.flag("--text") ? textToNoteHtml(content) : markdownToNoteHtml(content);
 }

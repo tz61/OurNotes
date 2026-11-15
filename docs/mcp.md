@@ -100,6 +100,12 @@ Changing (with `--write`):
 | `add_items` | items by DOI, arXiv ID, ISBN or PMID (looked up online) |
 | `trash_items` | items, notes or attachments moved to the trash |
 
+Notes are written in Markdown; coloured text is `<span style="color: #ff6666">...</span>`
+in it (the app's colours: red `#ff6666`, blue `#2ea8e5`, green `#5fb236`, ...), and
+`<u>`, `<s>`, `<sub>`, `<sup>` work too. To change a note you formatted, Claude reads its
+HTML with `get_item`, changes what it should, and sends it back whole with `format: html`,
+so your colours stay.
+
 Each tool runs the `ournotes-cli` command of the same purpose (`items`, `show`, `text`,
 `add-note`, ...), on the library as it is at that moment, so the chat sees what the app
 has just changed and the app sees what the chat changed.

@@ -8,7 +8,9 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <random>
+#include <regex>
 #include <sstream>
 
 namespace on {
@@ -478,6 +480,85 @@ std::string textToNoteHtml(std::string_view text)
 
 namespace {
 
+std::string inlineMarkdown(std::string_view line);
+
+bool isCssColor(std::string_view v)
+{
+    if (v.size() == 4 || v.size() == 7)
+        if (v[0] == '#' && std::all_of(v.begin() + 1, v.end(), [](char c) { return std::isxdigit((unsigned char)c); }))
+            return true;
+    return !v.empty() && v.size() <= 20 && std::all_of(v.begin(), v.end(), [](char c) { return std::isalpha((unsigned char)c); });
+}
+
+// `<span style="color: …; background-color: …">` as the app writes it: the style kept (only
+// those two, with a colour as #rgb, #rrggbb or a name), or empty when it is not such a tag.
+std::string spanStyle(std::string_view tag)
+{
+    static const std::regex re(R"re(^<span\s+style\s*=\s*(?:"([^"<>]*)"|'([^'<>]*)')\s*>$)re", std::regex::icase);
+    std::match_results<std::string_view::const_iterator> m;
+    if (!std::regex_match(tag.begin(), tag.end(), m, re))
+        return {};
+    std::vector<std::string> kept;
+    for (auto& decl : split(m[1].matched ? m[1].str() : m[2].str(), ';', false)) {
+        if (trim(decl).empty())
+            continue;
+        auto colon = decl.find(':');
+        if (colon == std::string::npos)
+            return {};
+        auto name = toLower(trim(decl.substr(0, colon)));
+        auto value = trim(decl.substr(colon + 1));
+        if ((name != "color" && name != "background-color") || !isCssColor(value))
+            return {};
+        kept.push_back(name + ": " + toLower(value));
+    }
+    return join(kept, "; ");
+}
+
+// Inline HTML a note keeps (as the app writes it), at `at` in `line`: <span style="color: …">,
+// <u>, <s>, <sub>, <sup>, each with its closing tag (what is between is Markdown too), and
+// <br>. The HTML and where it ends; or nothing, when the tag is another one or is not closed
+// (it is then text).
+std::optional<std::pair<std::string, size_t>> inlineHtml(std::string_view line, size_t at)
+{
+    constexpr auto npos = std::string_view::npos;
+    auto gt = line.find('>', at);
+    if (gt == npos)
+        return std::nullopt;
+    auto tag = line.substr(at, gt - at + 1);
+    auto lowerTag = toLower(tag);
+    if (lowerTag == "<br>" || lowerTag == "<br/>" || lowerTag == "<br />")
+        return std::make_pair(std::string("<br>"), gt + 1);
+    std::string name, open;
+    for (const char* simple : {"u", "s", "sub", "sup"})
+        if (lowerTag == std::string("<") + simple + ">")
+            name = simple, open = lowerTag;
+    if (name.empty() && startsWith(lowerTag, "<span")) {
+        auto style = spanStyle(tag);
+        if (style.empty())
+            return std::nullopt;
+        name = "span";
+        open = "<span style=\"" + style + "\">";
+    }
+    if (name.empty())
+        return std::nullopt;
+    // its closing tag, past those of the same name opened inside it
+    int depth = 1;
+    for (size_t j = gt + 1; j < line.size(); ++j) {
+        if (line[j] != '<')
+            continue;
+        auto rest = toLower(line.substr(j, name.size() + 3));
+        if (rest == "</" + name + ">") {
+            if (--depth == 0)
+                return std::make_pair(open + inlineMarkdown(line.substr(gt + 1, j - gt - 1)) + "</" + name + ">",
+                                      j + name.size() + 3);
+        } else if (startsWith(rest, "<" + name) && rest.size() > name.size() + 1 &&
+                   (rest[name.size() + 1] == '>' || rest[name.size() + 1] == ' ')) {
+            ++depth;
+        }
+    }
+    return std::nullopt;
+}
+
 // One line's inline Markdown, escaped for HTML.
 std::string inlineMarkdown(std::string_view line)
 {
@@ -486,7 +567,14 @@ std::string inlineMarkdown(std::string_view line)
     size_t i = 0;
     while (i < line.size()) {
         char c = line[i];
-        if (c == '\\' && i + 1 < line.size() && std::string_view("\\`*_[]$#").find(line[i + 1]) != npos) {
+        if (c == '<') {
+            if (auto html = inlineHtml(line, i)) {
+                out += html->first;
+                i = html->second;
+                continue;
+            }
+        }
+        if (c == '\\' && i + 1 < line.size() && std::string_view("\\`*_[]$#<").find(line[i + 1]) != npos) {
             out += htmlEscape(line.substr(i + 1, 1));
             i += 2;
             continue;
