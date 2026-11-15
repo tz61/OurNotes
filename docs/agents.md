@@ -154,7 +154,8 @@ ournotes-cli rename-tag todo later     # tag-color later red
   (`[picture: PATH]`), to look at it.
 - `trash` moves items to the trash, where the user can look them over. What deletes for
   good (`delete`, `empty-trash`, `delete-collection`, `delete-tag`, `delete-library`)
-  asks for `--yes`: use it only when the user asks for exactly that.
+  asks for `--yes`: use it only when the user asks for exactly that. Annotations have no
+  trash: `delete KEY... --annotations-only --yes` deletes them and nothing else.
 
 ## Annotations
 

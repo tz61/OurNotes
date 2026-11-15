@@ -51,8 +51,10 @@ too, add `--write`:
 ```
 
 What it changes goes out with the app's next sync and shows in an open app within
-seconds; *Tools → Sync History* lists it as `ournotes-cli mcp`. Nothing is deleted for
-good: `trash_items` moves to the trash, where you can restore it.
+seconds; *Tools → Sync History* lists it as `ournotes-cli mcp`. Items, notes and
+attachments are not deleted for good: `trash_items` moves them to the trash, where you can
+restore them. Annotations have no trash, in the app either: `delete_annotations` deletes
+them for good, and tells what each was (its page, text and comment).
 
 ### Another library
 
@@ -99,6 +101,7 @@ Changing (with `--write`):
 | `annotate_pdf` | a highlight, underline or note on a passage of a PDF, found by its words |
 | `add_items` | items by DOI, arXiv ID, ISBN or PMID (looked up online) |
 | `trash_items` | items, notes or attachments moved to the trash |
+| `delete_annotations` | highlights, notes and drawings in PDFs deleted (annotations only) |
 
 Notes are written in Markdown; coloured text is `<span style="color: #ff6666">...</span>`
 in it (the app's colours: red `#ff6666`, blue `#2ea8e5`, green `#5fb236`, ...), and

@@ -37,7 +37,9 @@ const char* const kInstructions =
     "a PDF's or a note's text, get_annotations for what the user marked. When a reply speaks of an item "
     "or a page, get_link gives a Markdown link that opens it in OurNotes. Tools that change the library "
     "are offered only when the user allowed it; changes are synced to the user's other computers, and "
-    "nothing is deleted for good (trash_items can be undone in the app).";
+    "items, notes and attachments are not deleted for good (trash_items puts them in the trash, where the "
+    "user can restore them); annotations, which have no trash in the app either, are deleted for good with "
+    "delete_annotations.";
 
 class ToolError : public on::Error {
 public:
@@ -502,12 +504,27 @@ const std::vector<Tool>& tools()
                      }, {}});
         t.push_back({"trash_items", "Move items to the trash",
                      "Moves items, notes or attachments to the trash, where the user can look them over and restore "
-                     "them. Nothing is deleted for good.",
+                     "them. Nothing is deleted for good. Not for annotations: delete_annotations.",
                      schema({{"keys", stringList("The keys")}}, {"keys"}), true, true, false,
                      [](const Json& a) {
                          Line l;
                          l.positionals = strings(a, "keys", true);
                          return l.words("trash");
+                     }, {}});
+        t.push_back({"delete_annotations", "Delete annotations",
+                     "Deletes annotations (highlights, underlines, notes, text boxes, drawings in PDFs; their keys "
+                     "from get_annotations) for good, as deleting them in the app does: annotations have no "
+                     "trash, and the deletion syncs to the user's other computers. Only annotations: if any key "
+                     "is something else, nothing is deleted. Delete what the user asked to have deleted. "
+                     "Answers with each deleted annotation's type, page, colour, text and comment, so that one "
+                     "can be made again with annotate_pdf.",
+                     schema({{"keys", stringList("The annotations' keys")}}, {"keys"}), true, true, false,
+                     [](const Json& a) {
+                         Line l;
+                         l.flag("--annotations-only");
+                         l.flag("--yes");
+                         l.positionals = strings(a, "keys", true);
+                         return l.words("delete");
                      }, {}});
         return t;
     }();

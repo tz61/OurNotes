@@ -503,24 +503,53 @@ int cmdCopy(Library& lib, Args& args, Config& config)
     return 0;
 }
 
+// An annotation in a line: its type, page, colour, the text it marks and its comment.
+std::string annotationSummary(const Json& a)
+{
+    std::string out = jstr(a, "annotationType");
+    if (!jstr(a, "annotationPageLabel").empty())
+        out += "  p. " + jstr(a, "annotationPageLabel");
+    if (!jstr(a, "annotationColor").empty())
+        out += "  " + jstr(a, "annotationColor");
+    auto oneLine = [](std::string t) {
+        for (auto& c : t)
+            if (c == '\n' || c == '\r')
+                c = ' ';
+        return t;
+    };
+    if (!jstr(a, "annotationText").empty())
+        out += "  \"" + oneLine(jstr(a, "annotationText")) + "\"";
+    if (!jstr(a, "annotationComment").empty())
+        out += "  comment: " + oneLine(jstr(a, "annotationComment"));
+    return out;
+}
+
 int cmdDelete(Library& lib, Args& args)
 {
     auto keys = keysFrom(args);
+    bool annotations = args.flag("--annotations-only");  // anything else given: nothing deleted
     std::map<int64_t, std::vector<std::string>> byLibrary;
+    std::map<std::string, std::string> summaries;
     auto only = libraryOption(lib, args);
     for (auto& k : keys) {
         auto [id, d] = findItem(lib, k, only);
+        if (annotations && jstr(d, "itemType") != "annotation")
+            throw Error(k + " is not an annotation (a " + jstr(d, "itemType") +
+                        "): nothing was deleted; items, notes and attachments go to the trash (trash KEY)");
         if (jbool(d, "annotationIsExternal"))
             throw Error(k + " is an annotation in the PDF file itself: it cannot be deleted here");
         requireEditable(lib, id);
         byLibrary[id].push_back(k);
+        if (annotations)
+            summaries[k] = annotationSummary(d);
     }
-    requireYes(args, "this deletes " + std::to_string(keys.size()) +
-                         " item(s) for good, with the notes, attachments, files and annotations under them");
+    requireYes(args, annotations ? "this deletes " + std::to_string(keys.size()) + " annotation(s) for good"
+                                 : "this deletes " + std::to_string(keys.size()) +
+                                       " item(s) for good, with the notes, attachments, files and annotations under them");
     for (auto& [id, ks] : byLibrary)
         lib.eraseItems(id, ks);
-    for (auto& k : keys)
-        std::cout << k << "\n";
+    for (auto& k : keys)  // (with --annotations-only: and what each was)
+        std::cout << k << (annotations ? "  " + summaries[k] : std::string()) << "\n";
     return 0;
 }
 

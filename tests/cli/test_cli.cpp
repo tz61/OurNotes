@@ -1417,3 +1417,64 @@ TEST_CASE("cli: mcp: coloured notes, in Markdown or as their HTML, kept as the a
     CHECK(answer(r[4]).second);
     CHECK(noteHtml(r[5]).find("&lt;p&gt;not HTML&lt;/p&gt;") != std::string::npos);
 }
+
+TEST_CASE("cli: mcp: annotations deleted, and only annotations, each told what it was")
+{
+    Cli cli;
+    auto& lib = cli.lib;
+    auto mine = lib.defaultLibrary();
+    auto paper = jstr(lib.createItem(mine, Json{{"itemType", "journalArticle"}, {"title", "L05"}}), "key");
+    auto pdfPath = cli.dir.path / "one.pdf";
+    writeSamplePdf(pdfPath);
+    auto pdf = jstr(lib.importAttachment(mine, pdfPath, paper), "key");
+    auto mark = [&](const std::string& text, const std::string& comment) {
+        return jstr(lib.createItem(mine, Json{{"itemType", "annotation"},
+                                              {"parentItem", pdf},
+                                              {"annotationType", "highlight"},
+                                              {"annotationText", text},
+                                              {"annotationComment", comment},
+                                              {"annotationColor", "#ffd400"},
+                                              {"annotationPageLabel", "2"}}),
+                    "key");
+    };
+    auto one = mark("Bellman backup", "why backup"), two = mark("projection", ""), kept = mark("kept", "");
+
+    // without --write: not offered
+    auto ro = mcp(cli, {call(1, "delete_annotations", Json{{"keys", Json::array({one})}})});
+    CHECK(ro[0]["error"]["code"] == -32602);
+    CHECK(lib.item(mine, one));
+
+    // an item among them: none deleted
+    auto mixed = mcp(cli, {call(1, "delete_annotations", Json{{"keys", Json::array({two, paper})}})}, true);
+    auto [refused, e2] = answer(mixed[0]);
+    CHECK(e2);
+    CHECK(refused.find("not an annotation") != std::string::npos);
+    CHECK(lib.item(mine, two));
+    CHECK(lib.item(mine, paper));
+
+    auto r = mcp(cli,
+                 {Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}},
+                  call(2, "trash_items", Json{{"keys", Json::array({one})}}),  // no trash for annotations
+                  call(3, "delete_annotations", Json{{"keys", Json::array({one, two})}})},
+                 true);
+    REQUIRE(r.size() == 3);
+    bool listed = false;
+    for (auto& t : r[0]["result"]["tools"])
+        if (jstr(t, "name") == "delete_annotations") {
+            listed = true;
+            CHECK(t["annotations"]["destructiveHint"] == true);
+        }
+    CHECK(listed);
+    auto [trashed, e3] = answer(r[1]);
+    CHECK(e3);
+    CHECK(trashed.find("delete") != std::string::npos);
+    auto [deleted, e4] = answer(r[2]);
+    INFO(deleted);
+    CHECK(!e4);
+    CHECK(deleted.find(one + "  highlight  p. 2  #ffd400  \"Bellman backup\"  comment: why backup") != std::string::npos);
+    CHECK(deleted.find(two + "  highlight  p. 2  #ffd400  \"projection\"") != std::string::npos);
+    CHECK(!lib.item(mine, one));
+    CHECK(!lib.item(mine, two));
+    CHECK(lib.item(mine, kept));
+    CHECK(lib.item(mine, pdf));
+}

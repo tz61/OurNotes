@@ -79,6 +79,9 @@ Items:
                                     copies (with notes, files and annotations) elsewhere
   trash KEY... | restore KEY...     move to the trash, or back
   delete KEY... --yes               delete for good (an item, note, attachment or annotation)
+  delete KEY... --annotations-only --yes
+                                    annotations only (anything else given: nothing deleted),
+                                    each listed with what it was
   empty-trash [LIBRARY] --yes       the trash of the default library, or of the one named
 
 Notes and attachments:
