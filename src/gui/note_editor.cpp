@@ -1526,6 +1526,11 @@ void NoteTextEdit::keyPressEvent(QKeyEvent* e)
             edit->ensureCursorVisible();  // (laid out only now)
         }
     } endStep{this};
+    if (bool undo = e->matches(QKeySequence::Undo); undo || e->matches(QKeySequence::Redo)) {
+        if (!isReadOnly() && !(undo ? document()->isUndoAvailable() : document()->isRedoAvailable()) && stepBeyond &&
+            stepBeyond(undo))
+            return;
+    }
     if (int zoom = zoomKey(e); zoom != -2) {
         zoomBy(zoom);
         return;
@@ -1719,6 +1724,17 @@ void NoteTextEdit::mousePressEvent(QMouseEvent* e)
 void NoteTextEdit::contextMenuEvent(QContextMenuEvent* e)
 {
     std::unique_ptr<QMenu> menu(createStandardContextMenu(e->pos()));
+    for (auto* a : menu->actions()) {  // Undo and Redo: a change made elsewhere too
+        bool undo = a->objectName() == "edit-undo";
+        if ((undo || a->objectName() == "edit-redo") && !isReadOnly() && !a->isEnabled() && canStepBeyond &&
+            canStepBeyond(undo)) {
+            a->setEnabled(true);
+            connect(a, &QAction::triggered, this, [this, undo] {
+                if (stepBeyond)
+                    stepBeyond(undo);
+            });
+        }
+    }
     auto math = mathAt(e->pos());
     auto* first = menu->actions().isEmpty() ? nullptr : menu->actions().first();
     if (!math.isNull()) {
@@ -2411,9 +2427,13 @@ NoteEditor::NoteEditor(QWidget* parent) : QWidget(parent)
     saveTimer_.setInterval(700);
     connect(&saveTimer_, &QTimer::timeout, this, &NoteEditor::save);
     connect(edit_->document(), &QTextDocument::contentsChanged, this, [this] {
-        if (!loading_ && !key_.isEmpty() && !edit_->isInternalEdit())
+        if (!loading_ && !key_.isEmpty() && !edit_->isInternalEdit()) {
+            outsideRedo_.clear();  // (typed: a change undone is not brought back over it)
             saveTimer_.start();
+        }
     });
+    edit_->stepBeyond = [this](bool undo) { return stepOutside(undo); };
+    edit_->canStepBeyond = [this](bool undo) { return !(undo ? outsideUndo_ : outsideRedo_).empty(); };
     connect(edit_, &QTextEdit::cursorPositionChanged, this, &NoteEditor::updateToolbar);
     connect(edit_, &QTextEdit::currentCharFormatChanged, this, &NoteEditor::updateToolbar);
     connect(&AppContext::get(), &AppContext::changed, this,
@@ -2611,6 +2631,8 @@ void NoteEditor::clear()
     flush();
     key_.clear();
     libraryId_ = 0;
+    outsideUndo_.clear();
+    outsideRedo_.clear();
     loading_ = true;
     edit_->clear();
     loading_ = false;
@@ -2627,6 +2649,27 @@ void NoteEditor::load(bool force)
     auto html = jqs(*data, "note");
     if (!force && (html == lastSaved_ || html == lastSerialized_))
         return;
+    bool editable = AppContext::get().editable(libraryId_);
+    if (force) {
+        outsideUndo_.clear();
+        outsideRedo_.clear();
+    } else if (editable) {  // changed elsewhere: a step to undo
+        outsideUndo_.push_back({lastSaved_, html});
+        if (outsideUndo_.size() > kOutsideSteps)
+            outsideUndo_.erase(outsideUndo_.begin());
+        outsideRedo_.clear();
+    }
+    display(html, !force);
+    lastSaved_ = html;
+    edit_->setReadOnly(!editable);
+    toolbar_->setEnabled(editable);
+    for (auto* a : actions())  // the shortcuts too (bold, a formula, a link): none for a note that can't change
+        a->setEnabled(editable);
+    setEnabled(true);
+}
+
+void NoteEditor::display(const QString& html, bool keepPlace)
+{
     loading_ = true;
     int pos = edit_->textCursor().position();
     int scroll = edit_->verticalScrollBar()->value();
@@ -2639,19 +2682,29 @@ void NoteEditor::load(bool force)
     auto cursor = edit_->textCursor();
     cursor.setPosition(std::min(pos, edit_->document()->characterCount() - 1));
     edit_->setTextCursor(cursor);
-    if (!force) {  // changed elsewhere, while being read here: it stays where it was
+    if (keepPlace) {  // changed elsewhere, while being read here: it stays where it was
         edit_->verticalScrollBar()->setValue(scroll);
         if (findBar_->isVisible())
             updateHits(false);
     }
-    lastSaved_ = html;
     loading_ = false;
-    bool editable = AppContext::get().editable(libraryId_);
-    edit_->setReadOnly(!editable);
-    toolbar_->setEnabled(editable);
-    for (auto* a : actions())  // the shortcuts too (bold, a formula, a link): none for a note that can't change
-        a->setEnabled(editable);
-    setEnabled(true);
+}
+
+bool NoteEditor::stepOutside(bool undo)
+{
+    auto& from = undo ? outsideUndo_ : outsideRedo_;
+    if (from.empty() || key_.isEmpty() || edit_->isReadOnly())
+        return false;
+    auto change = from.back();
+    from.pop_back();
+    (undo ? outsideRedo_ : outsideUndo_).push_back(change);
+    const QString& html = undo ? change.before : change.after;  // (as it was stored, not as shown)
+    saveTimer_.stop();
+    display(html, true);
+    lastSaved_ = html;
+    AppContext::get().library().updateItem(libraryId_, ss(key_), [&](Json& d) { d["note"] = ss(html); });
+    emit saved(key_);
+    return true;
 }
 
 void NoteEditor::save()

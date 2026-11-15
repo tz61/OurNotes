@@ -41,6 +41,11 @@ public:
     std::function<void(const QString& kind)> markdownBlock;
     // Ctrl+F in the note (not the window's search, or a PDF's find), when set
     std::function<void()> findRequested;
+    // Undo (redo) with nothing of the document's own left to undo (redo): Ctrl+Z, Ctrl+Shift+Z
+    // and the context menu's Undo and Redo then take this step instead, when there is one
+    // (see NoteEditor's changes made elsewhere). canStepBeyond says whether there is.
+    std::function<bool(bool undo)> stepBeyond;
+    std::function<bool(bool undo)> canStepBeyond;
 
     // Starts an empty formula (or one made of the selected text) at the cursor, in place.
     void insertMath(bool display);
@@ -275,7 +280,19 @@ private:
     // force = false: a change notification, which is skipped when it is this editor's
     // own save (reloading would lose the undo history)
     void load(bool force = true);
+    void display(const QString& html, bool keepPlace);  // (load's: the note shown as html)
     void save();
+    // Changes made elsewhere while the note is open (a sync, ournotes-cli, a chat through
+    // MCP, the note in another editor): each, as it is loaded, one step that Ctrl+Z takes
+    // back, past the editor's own history (which loading clears), and Ctrl+Shift+Z brings
+    // again. A step saves the note as it was then, which syncs as any edit does. Kept while
+    // the note stays open in this editor.
+    struct OutsideChange {
+        QString before, after;
+    };
+    std::vector<OutsideChange> outsideUndo_, outsideRedo_;
+    static constexpr size_t kOutsideSteps = 20;
+    bool stepOutside(bool undo);
     void setHeading(int level);
     void toggleList(bool ordered);
     void toggleQuote();

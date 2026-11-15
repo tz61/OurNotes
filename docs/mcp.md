@@ -104,7 +104,8 @@ Notes are written in Markdown; coloured text is `<span style="color: #ff6666">..
 in it (the app's colours: red `#ff6666`, blue `#2ea8e5`, green `#5fb236`, ...), and
 `<u>`, `<s>`, `<sub>`, `<sup>` work too. To change a note you formatted, Claude reads its
 HTML with `get_item`, changes what it should, and sends it back whole with `format: html`,
-so your colours stay.
+so your colours stay. If the note is open in OurNotes when Claude changes it, Ctrl+Z in
+the note takes the change back (and Ctrl+Shift+Z brings it again), while it stays open.
 
 Each tool runs the `ournotes-cli` command of the same purpose (`items`, `show`, `text`,
 `add-note`, ...), on the library as it is at that moment, so the chat sees what the app

@@ -69,7 +69,9 @@ It is written in C++17 with Qt 6 and MuPDF, and targets Linux, macOS and Windows
   sessions are kept in your own library, never a group's, and synced with it, so every
   computer's add up ([format](docs/sync-protocol.md#reading-time)).
 - **Notes** — rich-text notes (headings, lists, quotes, links, colours, pasted images)
-  saved as Zotero-compatible note HTML; add selected text or annotations to a note.
+  saved as Zotero-compatible note HTML; add selected text or annotations to a note. A
+  change made elsewhere to an open note (a sync, `ournotes-cli`, a chat) is shown at once,
+  and Ctrl+Z takes it back while the note stays open.
   References: *Copy Reference* on text selected in a PDF (its context menu, or the button
   over the selection) or on an annotation, pasted into a note, is the text in quotes and
   (Smith, 2020, p. 3), a link back to that place; *Add to Note* and *Add Note from

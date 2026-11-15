@@ -11618,3 +11618,83 @@ int main(int argc, char** argv)
 }
 
 
+
+TEST_CASE("notes: a change made elsewhere to the open note is undone with Ctrl+Z, and saved as it was")
+{
+    app();
+    Env env;
+    const std::string coloured = "<div data-schema-version=\"9\"><h1>L04</h1><p><span style=\"color: #ff6666\">max"
+                                 "</span> moves to <span style=\"color: #2ea8e5\">Q's output</span></p></div>";
+    auto key = qs(jstr(env.library.createNote(env.lib, coloured), "key"));
+    auto other = qs(jstr(env.library.createNote(env.lib, "<div data-schema-version=\"9\"><p>Other</p></div>"), "key"));
+    NoteEditor editor;
+    editor.resize(500, 400);
+    editor.show();
+    editor.setNote(env.lib, key);
+    QApplication::processEvents();
+    auto* edit = editor.findChild<NoteTextEdit*>();
+    auto stored = [&] { return jstr(*env.library.item(env.lib, ss(key)), "note"); };
+    auto shown = [&] { return edit->toPlainText(); };
+    CHECK(!edit->canStepBeyond(true));
+    // typed here, saved
+    edit->setFocus();
+    edit->moveCursor(QTextCursor::End);
+    QTest::keyClicks(edit, " now");
+    editor.flush();
+    auto mine = stored();
+    REQUIRE(mine.find(" now") != std::string::npos);
+
+    // replaced elsewhere (a chat through MCP): shown, and one step to undo
+    const std::string plain = "<div data-schema-version=\"9\"><h1>L04</h1><p><strong>max moves</strong></p></div>";
+    env.library.updateItem(env.lib, ss(key), [&](Json& d) { d["note"] = plain; });
+    QTest::qWait(50);
+    CHECK(shown() == "L04\nmax moves");
+    CHECK(edit->canStepBeyond(true));
+    CHECK(!edit->canStepBeyond(false));
+    {  // (the context menu's Undo and Redo, as NoteTextEdit finds them)
+        std::unique_ptr<QMenu> menu(edit->createStandardContextMenu());
+        int found = 0;
+        for (auto* a : menu->actions())
+            found += a->objectName() == "edit-undo" || a->objectName() == "edit-redo";
+        CHECK(found == 2);
+    }
+
+    QTest::keySequence(edit, QKeySequence::Undo);  // back, colours and all, and saved so
+    QTest::qWait(50);
+    CHECK(shown().endsWith("Q's output now"));
+    CHECK(stored() == mine);
+    CHECK(stored().find("color: #ff6666") != std::string::npos);
+    QTest::keySequence(edit, QKeySequence::Undo);  // nothing before it (the reload took the typing's steps)
+    QTest::qWait(50);
+    CHECK(stored() == mine);
+
+    QTest::keySequence(edit, QKeySequence::Redo);  // and again
+    QTest::qWait(50);
+    CHECK(shown() == "L04\nmax moves");
+    CHECK(stored() == plain);
+    QTest::keySequence(edit, QKeySequence::Undo);
+    QTest::qWait(50);
+    CHECK(stored() == mine);
+
+    // typed after undoing it: it is not brought back over what was typed
+    edit->moveCursor(QTextCursor::End);
+    QTest::keyClicks(edit, "!");
+    editor.flush();
+    CHECK(!edit->canStepBeyond(false));
+    QTest::keySequence(edit, QKeySequence::Redo);
+    QTest::qWait(50);
+    CHECK(shown().endsWith("now!"));
+    QTest::keySequence(edit, QKeySequence::Undo);  // the "!" (the document's own step)
+    editor.flush();
+    CHECK(shown().endsWith("now"));
+    CHECK(stored() == mine);
+
+    // another note opened: the steps were this note's
+    env.library.updateItem(env.lib, ss(key), [&](Json& d) { d["note"] = plain; });
+    QTest::qWait(50);
+    CHECK(edit->canStepBeyond(true));
+    editor.setNote(env.lib, other);
+    CHECK(!edit->canStepBeyond(true));
+    editor.setNote(env.lib, key);
+    CHECK(!edit->canStepBeyond(true));
+}
