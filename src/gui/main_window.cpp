@@ -1,4 +1,6 @@
 #include "gui/main_window.h"
+
+#include <QDateTime>
 #include "gui/metadata_progress.h"
 
 #include <QAction>
@@ -791,16 +793,29 @@ void MainWindow::restartApplication()
         QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
 }
 
+namespace {
+QString& buildTime()
+{
+    static QString time;
+    return time;
+}
+} // namespace
+
+void MainWindow::setBuildTime(const QString& isoUtc) { buildTime() = isoUtc; }
+
 void MainWindow::showAbout()
 {
+    QString built;  // in local time
+    if (auto t = QDateTime::fromString(buildTime(), Qt::ISODate); t.isValid())
+        built = "<p>" + tr("Built %1").arg(t.toLocalTime().toString("yyyy-MM-dd HH:mm")) + "</p>";
     QMessageBox::about(
         this, tr("About OurNotes"),
-        tr("<h3>OurNotes %1</h3>"
+        tr("<h3>OurNotes %1</h3>%3"
            "<p>An open-source reference manager: collect and organise papers, read and annotate PDFs, write "
            "notes, and sync through your own server or a folder.</p>"
            "<p>Licensed under the GNU Affero General Public License v3.</p>"
            "<p>Built with Qt %2 and MuPDF. Item type schema from Zotero.</p>")
-            .arg(OURNOTES_VERSION, qVersion()));
+            .arg(OURNOTES_VERSION, qVersion(), built));
 }
 
 void MainWindow::newLibrary()

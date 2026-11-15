@@ -22,6 +22,8 @@
 #include "gui/ui_scale.h"
 #include "gui/x11_size_hints.h"
 
+extern const char* const kOurNotesBuildTime;  // (generated: cmake/BuildTime.cmake)
+
 using namespace on;
 using namespace on::gui;
 
@@ -112,6 +114,7 @@ int main(int argc, char** argv)
         QMessageBox::critical(nullptr, "OurNotes", QObject::tr("Could not open the library:\n\n%1").arg(qs(e.what())));
         return 1;
     }
+    MainWindow::setBuildTime(QString::fromLatin1(kOurNotesBuildTime));
     bool firstRun = library->libraries().empty();
     AppContext context(*config, *library);
     if (firstRun) {

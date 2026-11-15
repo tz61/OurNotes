@@ -28,6 +28,8 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow();
     ~MainWindow() override;
+    // When the program was built (ISO 8601, UTC), for About; main() sets it.
+    static void setBuildTime(const QString& isoUtc);
 
     // A PDF in a tab, at a page (from 0), at a place on it (see PdfView::showPlace), or at
     // an annotation.

@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QTimer>
@@ -76,6 +77,7 @@
 #include "core/links.h"
 #include "core/schema.h"
 #include "core/sync/engine.h"
+#include "ournotes/version.h"
 #include "gui/app_context.h"
 #include "gui/close_shortcut.h"
 #include "gui/collection_tree.h"
@@ -11697,4 +11699,30 @@ TEST_CASE("notes: a change made elsewhere to the open note is undone with Ctrl+Z
     CHECK(!edit->canStepBeyond(true));
     editor.setNote(env.lib, key);
     CHECK(!edit->canStepBeyond(true));
+}
+
+TEST_CASE("about: the version, and when it was built, in local time")
+{
+    app();
+    Env env;
+    MainWindow window;
+    MainWindow::setBuildTime("2026-11-15T04:53:13Z");
+    QAction* about = nullptr;
+    for (auto* a : window.findChildren<QAction*>())
+        if (a->text() == "About OurNotes")
+            about = a;
+    REQUIRE(about);
+    QString text;
+    QTimer::singleShot(100, [&] {
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            text = box->text();
+            box->accept();
+        }
+    });
+    about->trigger();
+    auto local = QDateTime::fromString("2026-11-15T04:53:13Z", Qt::ISODate).toLocalTime().toString("yyyy-MM-dd HH:mm");
+    INFO(text.toStdString());
+    CHECK(text.contains("OurNotes " OURNOTES_VERSION));
+    CHECK(text.contains("Built " + local));
+    MainWindow::setBuildTime({});  // (not set: no such line)
 }

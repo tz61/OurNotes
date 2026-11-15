@@ -80,7 +80,16 @@ elseif(APPLE)
     set_source_files_properties("${OURNOTES_ICON_DIR}/ournotes.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 endif()
 
-qt_add_executable(ournotes WIN32 MACOSX_BUNDLE main.cpp resources.qrc ${OURNOTES_PLATFORM_SOURCES})
+# The time of the build, for About: written at every build into a file of its own, which only
+# the program (not ournotes_gui, so not the tests) is linked with
+set(_build_time "${CMAKE_CURRENT_BINARY_DIR}/generated/build_time.cpp")
+add_custom_target(ournotes_build_time
+    COMMAND "${CMAKE_COMMAND}" "-DOUT=${_build_time}" -P "${PROJECT_SOURCE_DIR}/cmake/BuildTime.cmake"
+    BYPRODUCTS "${_build_time}"
+    COMMENT "Build time for About"
+    VERBATIM)
+qt_add_executable(ournotes WIN32 MACOSX_BUNDLE main.cpp resources.qrc "${_build_time}" ${OURNOTES_PLATFORM_SOURCES})
+add_dependencies(ournotes ournotes_build_time)
 set_target_properties(ournotes PROPERTIES
     AUTORCC ON
     MACOSX_BUNDLE_BUNDLE_NAME OurNotes
