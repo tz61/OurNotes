@@ -11713,13 +11713,18 @@ TEST_CASE("about: the version, and when it was built, in local time")
             about = a;
     REQUIRE(about);
     QString text;
-    QTimer::singleShot(100, [&] {
-        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
-            text = box->text();
-            box->accept();
-        }
-    });
+    auto take = [&] {  // (modal, but on macOS a window of its own: not modal)
+        for (auto* w : QApplication::topLevelWidgets())
+            if (auto* box = qobject_cast<QMessageBox*>(w); box && box->isVisible()) {
+                text = box->text();
+                box->close();
+            }
+    };
+    QTimer::singleShot(100, &window, take);
     about->trigger();
+    QApplication::processEvents();
+    if (text.isEmpty())
+        take();
     auto local = QDateTime::fromString("2026-11-15T04:53:13Z", Qt::ISODate).toLocalTime().toString("yyyy-MM-dd HH:mm");
     INFO(text.toStdString());
     CHECK(text.contains("OurNotes " OURNOTES_VERSION));
